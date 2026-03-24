@@ -1,0 +1,17 @@
+name: windows-native
+on:
+  workflow_dispatch:
+  push:
+    branches: [ work ]
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake --preset windows-vs2022-x64
+      - name: Build
+        run: cmake --build --preset windows-release
+      - name: Test
+        run: ctest --preset windows-test
