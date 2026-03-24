@@ -1,5 +1,7 @@
 #include "core/AppConfig.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -48,6 +50,47 @@ float ExtractFloat(const std::string& text, const std::string& key, float fallba
   const auto colon = text.find(':', pos);
   if (colon == std::string::npos) return fallback;
   return std::atof(text.c_str() + colon + 1);
+}
+
+std::vector<std::string> ExtractStringArray(const std::string& text, const std::string& key) {
+  std::vector<std::string> out;
+  const auto pos = text.find("\"" + key + "\"");
+  if (pos == std::string::npos) return out;
+  const auto lb = text.find('[', pos);
+  const auto rb = text.find(']', lb + 1);
+  if (lb == std::string::npos || rb == std::string::npos) return out;
+  const auto content = text.substr(lb + 1, rb - lb - 1);
+
+  std::stringstream ss(content);
+  std::string token;
+  while (std::getline(ss, token, ',')) {
+    token.erase(std::remove_if(token.begin(), token.end(), [](unsigned char c) {
+      return std::isspace(c) != 0 || c == '"';
+    }), token.end());
+    if (!token.empty()) out.push_back(token);
+  }
+  return out;
+}
+
+PostAction ParsePostAction(const std::string& action) {
+  if (action == "right") return PostAction::Right;
+  if (action == "enter") return PostAction::Enter;
+  if (action == "tab") return PostAction::Tab;
+  if (action == "none") return PostAction::None;
+  if (action == "custom_sequence") return PostAction::CustomSequence;
+  return PostAction::Down;
+}
+
+std::string ToPostAction(PostAction action) {
+  switch (action) {
+    case PostAction::Right: return "right";
+    case PostAction::Enter: return "enter";
+    case PostAction::Tab: return "tab";
+    case PostAction::None: return "none";
+    case PostAction::CustomSequence: return "custom_sequence";
+    case PostAction::Down:
+    default: return "down";
+  }
 }
 } // namespace
 
@@ -98,6 +141,8 @@ AppSettings LoadPreset(const std::filesystem::path& path) {
   s.parsing.normalizeSign = ExtractBool(text, "normalize_sign", true);
   s.parsing.dropPlusSign = ExtractBool(text, "drop_plus_sign", false);
   s.parsing.numericValidation = ExtractBool(text, "numeric_validation", true);
+  s.output.postAction = ParsePostAction(ExtractString(text, "post_action", "down"));
+  s.output.customSequence = ExtractStringArray(text, "custom_sequence");
   return s;
 }
 

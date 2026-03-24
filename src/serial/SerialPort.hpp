@@ -2,11 +2,13 @@
 
 #include "core/Types.hpp"
 
+#include <atomic>
 #include <functional>
 #include <string>
 
 #ifdef _WIN32
 #include <Windows.h>
+#include <thread>
 #endif
 
 namespace scalelogger {
@@ -24,6 +26,12 @@ class SerialPort {
 #ifdef _WIN32
   void ReceiveLoop();
   HANDLE handle_{INVALID_HANDLE_VALUE};
+  std::thread receiveThread_{};
+  std::atomic<bool> stopRequested_{false};
+  SerialSettings settings_{};
+  LineHandler onLine_{};
+  LogHandler onLog_{};
+  LogHandler onError_{};
 #endif
   bool connected_{false};
 };

@@ -9,9 +9,11 @@ std::vector<std::string> ScanComPorts() {
   std::vector<std::string> ports;
 #ifdef _WIN32
   char target[16];
+  char devicePathBuffer[4096];
   for (int i = 1; i <= 256; ++i) {
     wsprintfA(target, "COM%d", i);
-    if (QueryDosDeviceA(target, nullptr, 0) != 0) ports.emplace_back(target);
+    const DWORD result = QueryDosDeviceA(target, devicePathBuffer, static_cast<DWORD>(sizeof(devicePathBuffer)));
+    if (result != 0) ports.emplace_back(target);
   }
 #endif
   return ports;

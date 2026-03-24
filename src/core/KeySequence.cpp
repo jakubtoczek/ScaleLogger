@@ -14,6 +14,7 @@ std::optional<std::string> NormalizeKeyToken(const std::string& token) {
   if (valid.contains(t)) return t;
   if (t.size() == 1 && std::isalnum(static_cast<unsigned char>(t[0])) != 0) return t;
   if (t.size() == 2 && t[0] == 'f' && t[1] >= '1' && t[1] <= '9') return t;
+  if (t == "f10" || t == "f11" || t == "f12") return t;
   return std::nullopt;
 }
 

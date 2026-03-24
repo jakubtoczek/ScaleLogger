@@ -6,8 +6,16 @@
 #include <thread>
 
 namespace scalelogger {
+namespace {
+bool EndsWith(const std::string& value, const std::string& suffix) {
+  if (suffix.size() > value.size()) return false;
+  return std::equal(suffix.rbegin(), suffix.rend(), value.rbegin());
+}
+} // namespace
 
-bool SerialPort::Connect(const SerialSettings& settings, const LineHandler&, const LogHandler& onLog, const LogHandler& onError) {
+bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLine, const LogHandler& onLog, const LogHandler& onError) {
+  Disconnect();
+
   const std::string full = "\\\\.\\" + settings.port;
   handle_ = CreateFileA(full.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
   if (handle_ == INVALID_HANDLE_VALUE) {
@@ -17,7 +25,11 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler&, con
 
   DCB dcb{};
   dcb.DCBlength = sizeof(DCB);
-  GetCommState(handle_, &dcb);
+  if (!GetCommState(handle_, &dcb)) {
+    onError("GetCommState failed.");
+    Disconnect();
+    return false;
+  }
   dcb.BaudRate = static_cast<DWORD>(settings.baudRate);
   dcb.ByteSize = static_cast<BYTE>(settings.dataBits);
   dcb.Parity = settings.parity == 'O' ? ODDPARITY : (settings.parity == 'E' ? EVENPARITY : NOPARITY);
@@ -31,6 +43,7 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler&, con
   COMMTIMEOUTS t{};
   t.ReadIntervalTimeout = MAXDWORD;
   t.ReadTotalTimeoutConstant = static_cast<DWORD>(settings.timeoutSeconds * 1000);
+  t.ReadTotalTimeoutMultiplier = 0;
   SetCommTimeouts(handle_, &t);
 
   // Required stale-buffer handling order.
@@ -43,17 +56,50 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler&, con
   PurgeComm(handle_, PURGE_RXCLEAR | PURGE_RXABORT);
   onLog("Discarded buffered serial data on connect.");
 
+  settings_ = settings;
+  onLine_ = onLine;
+  onLog_ = onLog;
+  onError_ = onError;
+  stopRequested_.store(false);
   connected_ = true;
   onLog("Serial connection opened on " + settings.port + ".");
+
+  receiveThread_ = std::thread([this]() { ReceiveLoop(); });
   return true;
 }
 
+void SerialPort::ReceiveLoop() {
+  std::string buffer;
+  char ch = 0;
+  DWORD read = 0;
+
+  while (!stopRequested_.load()) {
+    const BOOL ok = ReadFile(handle_, &ch, 1, &read, nullptr);
+    if (!ok) {
+      if (!stopRequested_.load() && onError_) onError_("Serial read error.");
+      break;
+    }
+    if (read == 0) continue;
+
+    buffer.push_back(ch);
+    if (EndsWith(buffer, settings_.eol)) {
+      const auto line = buffer.substr(0, buffer.size() - settings_.eol.size());
+      buffer.clear();
+      if (onLine_) onLine_(line);
+    }
+  }
+}
+
 void SerialPort::Disconnect() {
+  stopRequested_.store(true);
   connected_ = false;
+
   if (handle_ != INVALID_HANDLE_VALUE) {
     CloseHandle(handle_);
     handle_ = INVALID_HANDLE_VALUE;
   }
+
+  if (receiveThread_.joinable()) receiveThread_.join();
 }
 
 bool SerialPort::IsConnected() const { return connected_; }
