@@ -34,6 +34,10 @@ This produces:
 - `release\SHA256SUMS.txt`
 - `release\BUILD_MANIFEST_0.95.txt`
 
+## First real runtime test pass
+After successful build/test, run the focused manual runtime checklist:
+- [docs/first_windows_runtime_test_checklist.md](docs/first_windows_runtime_test_checklist.md)
+
 ## Notes
 - The repository no longer uses Python/PySide6/Nuitka for the main build/release path.
 - The migration document is kept for behavior reference: `docs/migration_from_current_implementation.md`.

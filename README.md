@@ -37,6 +37,9 @@ Use `ScaleLogger_build_release.bat` to create a native release folder with:
 - `SHA256SUMS.txt`
 - `BUILD_MANIFEST_0.95.txt`
 
+## First runtime validation
+Use [docs/first_windows_runtime_test_checklist.md](docs/first_windows_runtime_test_checklist.md) for the exact first real Windows runtime test pass (build -> launch -> COM/serial -> parse/inject -> after-send actions -> release script).
+
 ## Compatibility/migration docs
 `docs/migration_from_current_implementation.md` captures the behavior mapping from the previous implementation and known intentional differences.
 
