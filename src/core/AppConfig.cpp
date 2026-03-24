@@ -134,6 +134,9 @@ AppSettings LoadPreset(const std::filesystem::path& path) {
   s.serial.stopBits = ExtractFloat(text, "stopbits", s.serial.stopBits);
   s.serial.timeoutSeconds = ExtractFloat(text, "timeout", s.serial.timeoutSeconds);
   s.serial.eol = ExtractString(text, "eol", "\\r\\n");
+  if (s.serial.eol == "\\r\\n") s.serial.eol = "\r\n";
+  else if (s.serial.eol == "\\n") s.serial.eol = "\n";
+  else if (s.serial.eol == "\\r") s.serial.eol = "\r";
   s.parsing.mode = ExtractString(text, "mode", "parsed") == "raw" ? ParseMode::Raw : ParseMode::Parsed;
   s.parsing.trimWhitespace = ExtractBool(text, "trim_whitespace", true);
   s.parsing.stripSuffix = ExtractBool(text, "strip_suffix", true);
