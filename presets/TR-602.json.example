@@ -1,0 +1,18 @@
+{
+  "name": "TR-602",
+  "port": "COM6",
+  "baudrate": 1200,
+  "databits": 7,
+  "parity": "O",
+  "stopbits": 1.0,
+  "timeout": 1.0,
+  "eol": "\\r\\n",
+  "mode": "parsed",
+  "trim_whitespace": true,
+  "strip_suffix": true,
+  "suffix": "g",
+  "normalize_sign": true,
+  "drop_plus_sign": false,
+  "numeric_validation": true,
+  "post_action": "down"
+}

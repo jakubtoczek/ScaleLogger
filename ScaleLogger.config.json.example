@@ -1,0 +1,10 @@
+{
+  "log_mode": "per_session",
+  "line_log_mode": "compact",
+  "connect_on_startup": true,
+  "logs_folder": "logs",
+  "presets_folder": "presets",
+  "startup_mode": "last_used_preset",
+  "startup_preset_name": "",
+  "last_used_preset_name": ""
+}
