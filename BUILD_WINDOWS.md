@@ -1,7 +1,8 @@
 # Build ScaleLogger Native (Windows)
 
-## Requirements
-- Visual Studio 2022 (Desktop C++)
+## Prerequisites
+- Windows 10/11
+- Visual Studio 2022 with Desktop C++ workload
 - CMake 3.24+
 
 ## Configure
@@ -9,16 +10,30 @@
 cmake --preset windows-vs2022-x64
 ```
 
-## Build
+## Build (Release)
 ```powershell
 cmake --build --preset windows-release
 ```
 
-## Test
+Expected executable location:
+`out/build/windows-vs2022-x64/Release/ScaleLogger.exe`
+
+## Run tests
 ```powershell
 ctest --preset windows-test
 ```
 
+## Create release bundle
+From repository root:
+```bat
+ScaleLogger_build_release.bat
+```
+
+This produces:
+- `release\ScaleLogger.exe`
+- `release\SHA256SUMS.txt`
+- `release\BUILD_MANIFEST_0.95.txt`
+
 ## Notes
-- Native target executable: `ScaleLogger` (Win32 app).
-- Tests validate parser/config/key-sequence logic.
+- The repository no longer uses Python/PySide6/Nuitka for the main build/release path.
+- The migration document is kept for behavior reference: `docs/migration_from_current_implementation.md`.

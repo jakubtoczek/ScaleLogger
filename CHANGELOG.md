@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.96 - 2026-03-24
+
+- cleaned repository to align with the native C++20/Win32/CMake baseline
+- removed obsolete Python/PySide6/Nuitka runtime and packaging files from active branch
+- updated README, Windows build instructions, and release script to the native build/release workflow
+- updated build-manifest template for native compiler/CMake metadata
+
 ## 0.95 - 2026-03-20
 
 - added COM-port scanning and a compact Test Receive dialog in Serial settings to make serial troubleshooting easier without affecting the main capture flow
