@@ -11,7 +11,7 @@ Legacy Python/PySide6/Nuitka runtime/build files were removed from the active bu
 - C++20
 - Win32 APIs (GUI, serial, SendInput)
 - CMake
-- MSVC / Visual Studio 2022 x64
+- MSVC / Visual Studio 2026 x64
 
 ## Repository layout
 - `src/` native application code
@@ -26,7 +26,7 @@ See [BUILD_WINDOWS.md](BUILD_WINDOWS.md).
 
 Quick start:
 ```powershell
-cmake --preset windows-vs2022-x64
+cmake --preset windows-vs2026-x64
 cmake --build --preset windows-release
 ctest --preset windows-test
 ```
@@ -35,7 +35,7 @@ ctest --preset windows-test
 Use `ScaleLogger_build_release.bat` to create a native release folder with:
 - `ScaleLogger.exe`
 - `SHA256SUMS.txt`
-- `BUILD_MANIFEST_0.95.txt`
+- `BUILD_MANIFEST_0.96.txt`
 
 ## First runtime validation
 Use [docs/first_windows_runtime_test_checklist.md](docs/first_windows_runtime_test_checklist.md) for the exact first real Windows runtime test pass (build -> launch -> COM/serial -> parse/inject -> after-send actions -> release script).

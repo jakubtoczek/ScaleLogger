@@ -1,9 +1,9 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-set "APP_VERSION=0.95"
+set "APP_VERSION=0.96"
 set "RELEASE_DIR=release"
-set "BUILD_DIR=out\build\windows-vs2022-x64"
+set "BUILD_DIR=out\build\windows-vs2026-x64"
 set "SOURCE_EXE=%BUILD_DIR%\Release\ScaleLogger.exe"
 set "OUTPUT_EXE=%RELEASE_DIR%\ScaleLogger.exe"
 set "CHECKSUM_FILE=%RELEASE_DIR%\SHA256SUMS.txt"
@@ -19,8 +19,8 @@ if exist "%RELEASE_DIR%" rmdir /s /q "%RELEASE_DIR%"
 mkdir "%RELEASE_DIR%"
 if %errorlevel% neq 0 exit /b %errorlevel%
 
-echo Configuring (windows-vs2022-x64)...
-cmake --preset windows-vs2022-x64
+echo Configuring (windows-vs2026-x64)...
+cmake --preset windows-vs2026-x64
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 echo Building (windows-release)...

@@ -4,12 +4,12 @@ Use this template for native Windows release artifacts.
 
 ```text
 App name: ScaleLogger
-Version: 0.95
+Version: 0.96
 Build date/time (UTC):
 Windows version/build:
-Compiler: MSVC (Visual Studio 2022)
+Compiler: MSVC (Visual Studio 2026)
 CMake version:
-CMake configure preset: windows-vs2022-x64
+CMake configure preset: windows-vs2026-x64
 CMake build preset: windows-release
 CTest preset: windows-test
 Build script/command:

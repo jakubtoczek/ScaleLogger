@@ -1,5 +1,5 @@
 param(
-  [string]$Version = "0.95",
+  [string]$Version = "0.96",
   [string]$OutputExe = "ScaleLogger.exe",
   [string]$ChecksumFile = "SHA256SUMS.txt"
 )

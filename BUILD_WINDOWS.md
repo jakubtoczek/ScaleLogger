@@ -2,12 +2,12 @@
 
 ## Prerequisites
 - Windows 10/11
-- Visual Studio 2022 with Desktop C++ workload
+- Visual Studio 2026 with Desktop C++ workload
 - CMake 3.24+
 
 ## Configure
 ```powershell
-cmake --preset windows-vs2022-x64
+cmake --preset windows-vs2026-x64
 ```
 
 ## Build (Release)
@@ -16,7 +16,7 @@ cmake --build --preset windows-release
 ```
 
 Expected executable location:
-`out/build/windows-vs2022-x64/Release/ScaleLogger.exe`
+`out/build/windows-vs2026-x64/Release/ScaleLogger.exe`
 
 ## Run tests
 ```powershell
@@ -32,7 +32,7 @@ ScaleLogger_build_release.bat
 This produces:
 - `release\ScaleLogger.exe`
 - `release\SHA256SUMS.txt`
-- `release\BUILD_MANIFEST_0.95.txt`
+- `release\BUILD_MANIFEST_0.96.txt`
 
 ## First real runtime test pass
 After successful build/test, run the focused manual runtime checklist:

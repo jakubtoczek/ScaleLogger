@@ -42,6 +42,6 @@ The prior implementation behavior was derived from:
 - Preset flat schema loading keeps the existing serial/parsing fields (`port`, `baudrate`, `databits`, `parity`, `stopbits`, `timeout`, `eol`, etc.).
 
 ## Release/tooling direction
-- CMake + VS2022 x64 presets.
+- CMake + VS2026 x64 presets.
 - Windows `.rc` resource included for icon/version metadata.
 - Packaging helper placeholders added under `tools/` and `packaging/`.

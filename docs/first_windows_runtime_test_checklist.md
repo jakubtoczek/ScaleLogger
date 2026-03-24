@@ -15,7 +15,7 @@ Validate these paths end-to-end:
 
 ## Prerequisites
 - Windows 10/11 machine with a real serial device (or stable virtual COM pair).
-- Visual Studio 2022 Desktop C++ workload.
+- Visual Studio 2026 Desktop C++ workload.
 - CMake 3.24+ in `PATH`.
 - A target app/window where injected text/keys can be observed (e.g., Notepad).
 
@@ -23,14 +23,14 @@ Validate these paths end-to-end:
 From repo root in PowerShell:
 
 ```powershell
-cmake --preset windows-vs2022-x64
+cmake --preset windows-vs2026-x64
 cmake --build --preset windows-release
 ctest --preset windows-test
 ```
 
 Pass criteria:
 - Configure/build/test complete with no errors.
-- `out/build/windows-vs2022-x64/Release/ScaleLogger.exe` exists.
+- `out/build/windows-vs2026-x64/Release/ScaleLogger.exe` exists.
 
 Expected Results:
 - CMake configure and build complete without fatal errors.
@@ -60,7 +60,7 @@ In `ScaleLogger.config.json`, set:
 Run app from terminal:
 
 ```powershell
-out/build/windows-vs2022-x64/Release/ScaleLogger.exe
+out/build/windows-vs2026-x64/Release/ScaleLogger.exe
 ```
 
 Pass criteria (terminal log order):
@@ -145,7 +145,7 @@ Pass criteria:
 - Script exits success.
 - `release\ScaleLogger.exe` exists.
 - `release\SHA256SUMS.txt` exists and references `ScaleLogger.exe`.
-- `release\BUILD_MANIFEST_0.95.txt` exists.
+- `release\BUILD_MANIFEST_0.96.txt` exists.
 
 Expected Results:
 - Release script completes end-to-end without manual intervention.
