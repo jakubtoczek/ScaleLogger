@@ -67,8 +67,11 @@ struct UiState {
   std::unique_ptr<AppController> controller;
   HINSTANCE hInstance{nullptr};
   HWND mainWindow{nullptr};
+  HWND presetsLabel{nullptr};
   HWND presetsCombo{nullptr};
+  HWND refreshButton{nullptr};
   HWND settingsButton{nullptr};
+  HWND aboutButton{nullptr};
   HWND connectButton{nullptr};
   HWND connectionStatus{nullptr};
   HWND logEdit{nullptr};
@@ -107,14 +110,45 @@ void UpdateConnectionUi(bool connected) {
   SetWindowTextW(g_ui.connectionStatus, connected ? L"Connected" : L"Disconnected");
 }
 
-std::string DescribeLastError(DWORD error) {
-  LPWSTR buffer = nullptr;
-  const DWORD length = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr,
-                                      error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), reinterpret_cast<LPWSTR>(&buffer), 0, nullptr);
-  std::wstring message = (length != 0 && buffer != nullptr) ? std::wstring(buffer, length) : L"Unknown error";
-  if (buffer != nullptr) LocalFree(buffer);
-  while (!message.empty() && (message.back() == L'\r' || message.back() == L'\n')) message.pop_back();
-  return std::to_string(error) + " (" + ToUtf8(message) + ")";
+std::string DescribeLastErrorEnglish(DWORD error) {
+  switch (error) {
+    case ERROR_CLASS_DOES_NOT_EXIST: return "Window class is not registered.";
+    case ERROR_CANNOT_FIND_WND_CLASS: return "Window class cannot be found.";
+    case ERROR_INVALID_WINDOW_HANDLE: return "Invalid window handle.";
+    case ERROR_NOT_ENOUGH_MEMORY: return "Not enough memory to create window.";
+    case ERROR_OUTOFMEMORY: return "Out of memory.";
+    case 0: return "No Win32 error code reported by the failing call.";
+    default: return "Win32 error code " + std::to_string(error) + ".";
+  }
+}
+
+void LayoutMainControls(HWND hwnd) {
+  RECT rc{};
+  GetClientRect(hwnd, &rc);
+
+  const int margin = 16;
+  const int top = 14;
+  const int rowH = 28;
+  const int gap = 8;
+
+  int left = margin;
+  MoveWindow(g_ui.presetsLabel, left, top + 3, 58, 22, TRUE);
+  left += 64;
+  MoveWindow(g_ui.presetsCombo, left, top, 250, 300, TRUE);
+  left += 250 + gap;
+  MoveWindow(g_ui.refreshButton, left, top, 72, rowH, TRUE);
+
+  int right = rc.right - margin;
+  right -= 64;
+  MoveWindow(g_ui.aboutButton, right, top, 64, rowH, TRUE);
+  right -= gap + 82;
+  MoveWindow(g_ui.settingsButton, right, top, 82, rowH, TRUE);
+  right -= gap + 102;
+  MoveWindow(g_ui.connectButton, right, top, 102, rowH, TRUE);
+  right -= gap + 130;
+  MoveWindow(g_ui.connectionStatus, right, top + 4, 130, 22, TRUE);
+
+  MoveWindow(g_ui.logEdit, margin, 52, rc.right - margin * 2, rc.bottom - 68, TRUE);
 }
 
 void PopulateComboWithValues(HWND combo, const std::vector<std::wstring>& values) {
@@ -258,14 +292,14 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
 }
 
 void CreateTopRow(HWND hwnd) {
-  CreateWindowW(L"STATIC", L"Presets", WS_CHILD | WS_VISIBLE, 16, 16, 58, 24, hwnd, nullptr, nullptr, nullptr);
+  g_ui.presetsLabel = CreateWindowW(L"STATIC", L"Presets", WS_CHILD | WS_VISIBLE, 16, 16, 58, 24, hwnd, nullptr, nullptr, nullptr);
   g_ui.presetsCombo = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWNLIST, 80, 14, 240, 300,
                                     hwnd, reinterpret_cast<HMENU>(kComboPresets), nullptr, nullptr);
   SendMessageW(g_ui.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
   SendMessageW(g_ui.presetsCombo, CB_SETCURSEL, 0, 0);
 
-  CreateWindowW(L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 328, 14, 70, 26, hwnd,
-                reinterpret_cast<HMENU>(kBtnRefreshPresets), nullptr, nullptr);
+  g_ui.refreshButton = CreateWindowW(L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 328, 14, 70, 26, hwnd,
+                                     reinterpret_cast<HMENU>(kBtnRefreshPresets), nullptr, nullptr);
 
   g_ui.connectionStatus = CreateWindowW(L"STATIC", L"Disconnected", WS_CHILD | WS_VISIBLE, 500, 17, 120, 22, hwnd,
                                         reinterpret_cast<HMENU>(kLblConnectionStatus), nullptr, nullptr);
@@ -273,8 +307,8 @@ void CreateTopRow(HWND hwnd) {
                                      reinterpret_cast<HMENU>(kBtnConnect), nullptr, nullptr);
   g_ui.settingsButton = CreateWindowW(L"BUTTON", L"Settings", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 736, 14, 82, 28, hwnd,
                                       reinterpret_cast<HMENU>(kBtnSettings), nullptr, nullptr);
-  CreateWindowW(L"BUTTON", L"About", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 822, 14, 64, 28, hwnd,
-                reinterpret_cast<HMENU>(kBtnAbout), nullptr, nullptr);
+  g_ui.aboutButton = CreateWindowW(L"BUTTON", L"About", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 822, 14, 64, 28, hwnd,
+                                   reinterpret_cast<HMENU>(kBtnAbout), nullptr, nullptr);
 }
 
 void CreateLogPane(HWND hwnd) {
@@ -447,7 +481,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       g_ui.applicationTabControls.clear();
       return 0;
     default:
-      return DefWindowProcW(hwnd, msg, wParam, 0);
+      return DefWindowProcW(hwnd, msg, wParam, lParam);
   }
 }
 
@@ -466,8 +500,10 @@ void OpenSettingsWindow(HINSTANCE hInstance) {
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
     const ATOM atom = RegisterClassW(&wc);
-    if (atom == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
-      AddLogLine("ERROR: Failed to register settings window class: " + DescribeLastError(GetLastError()));
+    const DWORD registerError = GetLastError();
+    if (atom == 0 && registerError != ERROR_CLASS_ALREADY_EXISTS) {
+      AddLogLine("ERROR: Failed to register settings window class (code " + std::to_string(registerError) + "): " +
+                 DescribeLastErrorEnglish(registerError));
       MessageBoxW(g_ui.mainWindow, L"Unable to open the settings window.", L"ScaleLogger", MB_OK | MB_ICONERROR);
       return;
     }
@@ -478,7 +514,9 @@ void OpenSettingsWindow(HINSTANCE hInstance) {
                                         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 890, 610,
                                         g_ui.mainWindow, nullptr, hInstance, nullptr);
   if (!g_ui.settingsWindow) {
-    AddLogLine("ERROR: Failed to create settings window: " + DescribeLastError(GetLastError()));
+    const DWORD createError = GetLastError();
+    AddLogLine("ERROR: Failed to create settings window (code " + std::to_string(createError) + "): " +
+               DescribeLastErrorEnglish(createError));
     MessageBoxW(g_ui.mainWindow, L"Unable to open the settings window.", L"ScaleLogger", MB_OK | MB_ICONERROR);
     return;
   }
@@ -491,15 +529,21 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
       g_ui.mainWindow = hwnd;
       CreateTopRow(hwnd);
       CreateLogPane(hwnd);
+      LayoutMainControls(hwnd);
 
       AddLogLine("ScaleLogger started.");
       return 0;
     }
     case WM_SIZE: {
+      LayoutMainControls(hwnd);
+      InvalidateRect(hwnd, nullptr, TRUE);
+      return 0;
+    }
+    case WM_ERASEBKGND: {
       RECT rc{};
       GetClientRect(hwnd, &rc);
-      MoveWindow(g_ui.logEdit, 16, 52, rc.right - 32, rc.bottom - 68, TRUE);
-      return 0;
+      FillRect(reinterpret_cast<HDC>(wParam), &rc, reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1));
+      return 1;
     }
     case WM_COMMAND: {
       const int id = LOWORD(wParam);
@@ -549,6 +593,7 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   wc.hInstance = hInstance;
   wc.lpszClassName = L"ScaleLoggerMainWindow";
   wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+  wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
   RegisterClassW(&wc);
 
   HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"ScaleLogger 0.96", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX |
