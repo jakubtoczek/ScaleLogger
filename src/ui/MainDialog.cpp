@@ -271,7 +271,7 @@ void CreateLogPane(HWND hwnd) {
 
 void AddControl(std::vector<HWND>& tabControls, HWND control) { tabControls.push_back(control); }
 
-LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM) {
+LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   switch (msg) {
     case WM_CREATE: {
       g_ui.settingsTab = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS, 12, 12, 840, 500, hwnd,
