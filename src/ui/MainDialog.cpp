@@ -61,6 +61,7 @@ constexpr int kAppLogModeCombo = 502;
 constexpr int kAppConnectStartupCheck = 503;
 constexpr int kAppStartupPresetCombo = 504;
 constexpr int kAppPathsLabel = 505;
+constexpr wchar_t kSettingsWindowClassName[] = L"ScaleLoggerSettingsWindow";
 
 struct UiState {
   std::unique_ptr<AppController> controller;
@@ -73,6 +74,7 @@ struct UiState {
   HWND logEdit{nullptr};
   HWND settingsWindow{nullptr};
   HWND settingsTab{nullptr};
+  bool settingsClassRegistered{false};
   std::vector<HWND> serialTabControls{};
   std::vector<HWND> outputTabControls{};
   std::vector<HWND> applicationTabControls{};
@@ -102,7 +104,17 @@ void AddLogLine(const std::string& text) {
 void UpdateConnectionUi(bool connected) {
   if (!g_ui.connectButton || !g_ui.connectionStatus) return;
   SetWindowTextW(g_ui.connectButton, connected ? L"Disconnect" : L"Connect");
-  SetWindowTextW(g_ui.connectionStatus, connected ? L"Status: Connected" : L"Status: Disconnected");
+  SetWindowTextW(g_ui.connectionStatus, connected ? L"Connected" : L"Disconnected");
+}
+
+std::string DescribeLastError(DWORD error) {
+  LPWSTR buffer = nullptr;
+  const DWORD length = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr,
+                                      error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), reinterpret_cast<LPWSTR>(&buffer), 0, nullptr);
+  std::wstring message = (length != 0 && buffer != nullptr) ? std::wstring(buffer, length) : L"Unknown error";
+  if (buffer != nullptr) LocalFree(buffer);
+  while (!message.empty() && (message.back() == L'\r' || message.back() == L'\n')) message.pop_back();
+  return std::to_string(error) + " (" + ToUtf8(message) + ")";
 }
 
 void PopulateComboWithValues(HWND combo, const std::vector<std::wstring>& values) {
@@ -255,13 +267,13 @@ void CreateTopRow(HWND hwnd) {
   CreateWindowW(L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 328, 14, 70, 26, hwnd,
                 reinterpret_cast<HMENU>(kBtnRefreshPresets), nullptr, nullptr);
 
-  g_ui.connectionStatus = CreateWindowW(L"STATIC", L"Status: Disconnected", WS_CHILD | WS_VISIBLE, 500, 17, 140, 22, hwnd,
+  g_ui.connectionStatus = CreateWindowW(L"STATIC", L"Disconnected", WS_CHILD | WS_VISIBLE, 500, 17, 120, 22, hwnd,
                                         reinterpret_cast<HMENU>(kLblConnectionStatus), nullptr, nullptr);
-  g_ui.connectButton = CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 650, 14, 100, 28, hwnd,
+  g_ui.connectButton = CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 628, 14, 100, 28, hwnd,
                                      reinterpret_cast<HMENU>(kBtnConnect), nullptr, nullptr);
-  g_ui.settingsButton = CreateWindowW(L"BUTTON", L"Settings", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 758, 14, 82, 28, hwnd,
+  g_ui.settingsButton = CreateWindowW(L"BUTTON", L"Settings", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 736, 14, 82, 28, hwnd,
                                       reinterpret_cast<HMENU>(kBtnSettings), nullptr, nullptr);
-  CreateWindowW(L"BUTTON", L"About", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 844, 14, 64, 28, hwnd,
+  CreateWindowW(L"BUTTON", L"About", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 822, 14, 64, 28, hwnd,
                 reinterpret_cast<HMENU>(kBtnAbout), nullptr, nullptr);
 }
 
@@ -446,17 +458,27 @@ void OpenSettingsWindow(HINSTANCE hInstance) {
     return;
   }
 
-  WNDCLASSW wc{};
-  wc.lpfnWndProc = SettingsWndProc;
-  wc.hInstance = hInstance;
-  wc.lpszClassName = L"ScaleLoggerSettingsWindow";
-  wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-  RegisterClassW(&wc);
+  if (!g_ui.settingsClassRegistered) {
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = SettingsWndProc;
+    wc.hInstance = hInstance;
+    wc.lpszClassName = kSettingsWindowClassName;
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
+    const ATOM atom = RegisterClassW(&wc);
+    if (atom == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+      AddLogLine("ERROR: Failed to register settings window class: " + DescribeLastError(GetLastError()));
+      MessageBoxW(g_ui.mainWindow, L"Unable to open the settings window.", L"ScaleLogger", MB_OK | MB_ICONERROR);
+      return;
+    }
+    g_ui.settingsClassRegistered = true;
+  }
 
-  g_ui.settingsWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, wc.lpszClassName, L"ScaleLogger Settings",
+  g_ui.settingsWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, kSettingsWindowClassName, L"ScaleLogger Settings",
                                         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 890, 610,
                                         g_ui.mainWindow, nullptr, hInstance, nullptr);
   if (!g_ui.settingsWindow) {
+    AddLogLine("ERROR: Failed to create settings window: " + DescribeLastError(GetLastError()));
     MessageBoxW(g_ui.mainWindow, L"Unable to open the settings window.", L"ScaleLogger", MB_OK | MB_ICONERROR);
     return;
   }

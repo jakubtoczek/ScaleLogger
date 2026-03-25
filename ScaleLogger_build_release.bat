@@ -46,7 +46,14 @@ if %errorlevel% neq 0 (
 call generate_sha256.bat "%OUTPUT_EXE%" "%CHECKSUM_FILE%"
 if %errorlevel% neq 0 exit /b %errorlevel%
 
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\build_manifest.ps1 -Version "%APP_VERSION%" -OutputExe "ScaleLogger.exe" -ChecksumFile "SHA256SUMS.txt"
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\build_manifest.ps1 ^
+  -Version "%APP_VERSION%" ^
+  -OutputExe "ScaleLogger.exe" ^
+  -ChecksumFile "%CHECKSUM_FILE%" ^
+  -ConfigurePreset "windows-vs2026-x64" ^
+  -BuildPreset "windows-release" ^
+  -BuildType "Release" ^
+  -Platform "x64"
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 if exist BUILD_MANIFEST.md move /y BUILD_MANIFEST.md "%MANIFEST_FILE%" >nul
