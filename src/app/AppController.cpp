@@ -52,10 +52,14 @@ void AppController::Connect() {
   const bool connected = serial_.Connect(
       settings_.serial,
       [this](const std::string& rawLine) {
+        EmitLog("Raw received line: '" + rawLine + "'");
         const auto parsed = parser_.Process(rawLine, settings_.parsing);
         if (!parsed.ok) {
           EmitLog("Parse rejected: " + parsed.message + " raw='" + rawLine + "'", true);
           return;
+        }
+        if (settings_.parsing.mode == ParseMode::Parsed) {
+          EmitLog("Parsed value: '" + parsed.processed + "'");
         }
         if (!injector_.SendTextAndAction(Utf8ToWide(parsed.processed), settings_.output)) {
           EmitLog("Injection failed for value: " + parsed.processed, true);
@@ -65,6 +69,7 @@ void AppController::Connect() {
 
   connected_ = connected;
   EmitConnectionState(connected_);
+  if (connected_) EmitLog("Connected to " + settings_.serial.port + ". No valid scale data received yet.");
 }
 
 void AppController::Disconnect() {
@@ -84,7 +89,8 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
       settings_.parsing.trimWhitespace != nextSettings.parsing.trimWhitespace ||
       settings_.parsing.stripSuffix != nextSettings.parsing.stripSuffix || settings_.parsing.suffix != nextSettings.parsing.suffix ||
       settings_.parsing.normalizeSign != nextSettings.parsing.normalizeSign ||
-      settings_.parsing.dropPlusSign != nextSettings.parsing.dropPlusSign ||
+      settings_.parsing.preservePlusSign != nextSettings.parsing.preservePlusSign ||
+      settings_.parsing.preserveMinusSign != nextSettings.parsing.preserveMinusSign ||
       settings_.parsing.numericValidation != nextSettings.parsing.numericValidation ||
       settings_.output.postAction != nextSettings.output.postAction || settings_.output.customSequence != nextSettings.output.customSequence;
   const bool configChanged =

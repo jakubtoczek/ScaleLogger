@@ -62,7 +62,7 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLi
   onError_ = onError;
   stopRequested_.store(false);
   connected_ = true;
-  onLog("Serial connection opened on " + settings.port + ".");
+  onLog("Serial connection opened on " + settings.port + " at " + std::to_string(settings.baudRate) + " baud.");
 
   receiveThread_ = std::thread([this]() { ReceiveLoop(); });
   return true;
@@ -81,11 +81,14 @@ void SerialPort::ReceiveLoop() {
     }
     if (read == 0) continue;
 
+    const bool fallbackTerminator = (ch == '\r' || ch == '\n');
     buffer.push_back(ch);
-    if (EndsWith(buffer, settings_.eol)) {
-      const auto line = buffer.substr(0, buffer.size() - settings_.eol.size());
+    if (EndsWith(buffer, settings_.eol) || fallbackTerminator) {
+      std::string line = buffer;
+      if (EndsWith(line, settings_.eol)) line = line.substr(0, line.size() - settings_.eol.size());
+      while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
       buffer.clear();
-      if (onLine_) onLine_(line);
+      if (onLine_ && !line.empty()) onLine_(line);
     }
   }
 }

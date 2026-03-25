@@ -143,7 +143,9 @@ AppSettings LoadPreset(const std::filesystem::path& path) {
   s.parsing.stripSuffix = ExtractBool(text, "strip_suffix", true);
   s.parsing.suffix = ExtractString(text, "suffix", "g");
   s.parsing.normalizeSign = ExtractBool(text, "normalize_sign", true);
-  s.parsing.dropPlusSign = ExtractBool(text, "drop_plus_sign", false);
+  const bool dropPlusSign = ExtractBool(text, "drop_plus_sign", false);
+  s.parsing.preservePlusSign = ExtractBool(text, "preserve_plus_sign", !dropPlusSign);
+  s.parsing.preserveMinusSign = ExtractBool(text, "preserve_minus_sign", true);
   s.parsing.numericValidation = ExtractBool(text, "numeric_validation", true);
   s.output.postAction = ParsePostAction(ExtractString(text, "post_action", "down"));
   s.output.customSequence = ExtractStringArray(text, "custom_sequence");
@@ -185,7 +187,8 @@ void SavePreset(const std::filesystem::path& path, const AppSettings& settings) 
       << "  \"strip_suffix\": " << (settings.parsing.stripSuffix ? "true" : "false") << ",\n"
       << "  \"suffix\": \"" << settings.parsing.suffix << "\",\n"
       << "  \"normalize_sign\": " << (settings.parsing.normalizeSign ? "true" : "false") << ",\n"
-      << "  \"drop_plus_sign\": " << (settings.parsing.dropPlusSign ? "true" : "false") << ",\n"
+      << "  \"preserve_plus_sign\": " << (settings.parsing.preservePlusSign ? "true" : "false") << ",\n"
+      << "  \"preserve_minus_sign\": " << (settings.parsing.preserveMinusSign ? "true" : "false") << ",\n"
       << "  \"numeric_validation\": " << (settings.parsing.numericValidation ? "true" : "false") << ",\n"
       << "  \"post_action\": \"" << postAction << "\",\n"
       << "  \"custom_sequence\": [";

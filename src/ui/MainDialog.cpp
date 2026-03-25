@@ -6,6 +6,7 @@
 
 #include <CommCtrl.h>
 #include <CommDlg.h>
+#include <ShlObj.h>
 #include <Windows.h>
 
 #include <chrono>
@@ -60,6 +61,7 @@ constexpr int kOutputCustomSequenceEdit = 408;
 constexpr int kOutputCaptureKeyBtn = 409;
 constexpr int kOutputRemoveLastBtn = 410;
 constexpr int kOutputClearBtn = 411;
+constexpr int kOutputPreserveMinusCheck = 412;
 
 constexpr int kAppPresetsFolderEdit = 500;
 constexpr int kAppLogsFolderEdit = 501;
@@ -67,6 +69,8 @@ constexpr int kAppLogModeCombo = 502;
 constexpr int kAppConnectStartupCheck = 503;
 constexpr int kAppStartupPresetCombo = 504;
 constexpr int kAppPathsLabel = 505;
+constexpr int kAppPresetsBrowseBtn = 506;
+constexpr int kAppLogsBrowseBtn = 507;
 constexpr wchar_t kSettingsWindowClassName[] = L"ScaleLoggerSettingsWindow";
 
 struct UiState {
@@ -216,6 +220,31 @@ void UpdateCustomSequenceUiState(HWND settingsHwnd) {
   EnableWindow(GetDlgItem(settingsHwnd, kOutputClearBtn), enabled ? TRUE : FALSE);
 }
 
+void UpdateParseControlsUiState(HWND settingsHwnd) {
+  const auto mode = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputModeCombo)));
+  const bool parsedMode = mode != "raw";
+  for (int id : {kOutputTrimCheck, kOutputStripSuffixCheck, kOutputSuffixEdit, kOutputNormalizeCheck, kOutputPreservePlusCheck,
+                 kOutputPreserveMinusCheck,
+                 kOutputRequireNumericCheck}) {
+    EnableWindow(GetDlgItem(settingsHwnd, id), parsedMode ? TRUE : FALSE);
+  }
+}
+
+bool BrowseForFolder(HWND owner, std::wstring& output) {
+  BROWSEINFOW bi{};
+  bi.hwndOwner = owner;
+  bi.lpszTitle = L"Select folder";
+  bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+  PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
+  if (!pidl) return false;
+  wchar_t path[MAX_PATH]{};
+  const bool ok = SHGetPathFromIDListW(pidl, path) == TRUE;
+  CoTaskMemFree(pidl);
+  if (!ok) return false;
+  output = path;
+  return true;
+}
+
 std::vector<std::string> ScanPresetNames() {
   std::vector<std::string> names;
   const auto presetDir = g_ui.controller->DataRoot() / g_ui.controller->Config().presetsFolder;
@@ -280,7 +309,8 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   SendMessageW(GetDlgItem(settingsHwnd, kOutputStripSuffixCheck), BM_SETCHECK, settings.parsing.stripSuffix ? BST_CHECKED : BST_UNCHECKED, 0);
   SetWindowTextW(GetDlgItem(settingsHwnd, kOutputSuffixEdit), ToWide(settings.parsing.suffix).c_str());
   SendMessageW(GetDlgItem(settingsHwnd, kOutputNormalizeCheck), BM_SETCHECK, settings.parsing.normalizeSign ? BST_CHECKED : BST_UNCHECKED, 0);
-  SendMessageW(GetDlgItem(settingsHwnd, kOutputPreservePlusCheck), BM_SETCHECK, settings.parsing.dropPlusSign ? BST_UNCHECKED : BST_CHECKED, 0);
+  SendMessageW(GetDlgItem(settingsHwnd, kOutputPreservePlusCheck), BM_SETCHECK, settings.parsing.preservePlusSign ? BST_CHECKED : BST_UNCHECKED, 0);
+  SendMessageW(GetDlgItem(settingsHwnd, kOutputPreserveMinusCheck), BM_SETCHECK, settings.parsing.preserveMinusSign ? BST_CHECKED : BST_UNCHECKED, 0);
   SendMessageW(GetDlgItem(settingsHwnd, kOutputRequireNumericCheck), BM_SETCHECK, settings.parsing.numericValidation ? BST_CHECKED : BST_UNCHECKED, 0);
 
   std::wstring action = L"down";
@@ -302,12 +332,17 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   }
   SetWindowTextW(GetDlgItem(settingsHwnd, kOutputCustomSequenceEdit), sequence.c_str());
   UpdateCustomSequenceUiState(settingsHwnd);
+  UpdateParseControlsUiState(settingsHwnd);
 
-  SetWindowTextW(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit), ToWide(config.presetsFolder).c_str());
-  SetWindowTextW(GetDlgItem(settingsHwnd, kAppLogsFolderEdit), ToWide(config.logsFolder).c_str());
+  SetWindowTextW(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit), (g_ui.controller->DataRoot() / ToWide(config.presetsFolder)).wstring().c_str());
+  SetWindowTextW(GetDlgItem(settingsHwnd, kAppLogsFolderEdit), (g_ui.controller->DataRoot() / ToWide(config.logsFolder)).wstring().c_str());
   SetComboToText(GetDlgItem(settingsHwnd, kAppLogModeCombo), config.logMode == LogMode::SingleFile ? L"Single file" : L"New file per session");
   SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_SETCHECK, config.connectOnStartup ? BST_CHECKED : BST_UNCHECKED, 0);
-  SetComboToText(GetDlgItem(settingsHwnd, kAppStartupPresetCombo), config.startupMode == "specific_preset" ? ToWide(config.startupPresetName) : L"Last used / defaults");
+  auto startupCombo = GetDlgItem(settingsHwnd, kAppStartupPresetCombo);
+  SendMessageW(startupCombo, CB_RESETCONTENT, 0, 0);
+  SendMessageW(startupCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
+  for (const auto& name : ScanPresetNames()) SendMessageW(startupCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ToWide(name).c_str()));
+  SetComboToText(startupCombo, config.startupMode == "specific_preset" ? ToWide(config.startupPresetName) : L"Last used / defaults");
 
   const auto dataRoot = g_ui.controller->DataRoot();
   const std::wstring pathSummary = L"Config: " + (dataRoot / L"ScaleLogger.config.json").wstring() +
@@ -340,7 +375,8 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
   nextSettings.parsing.stripSuffix = SendMessageW(GetDlgItem(settingsHwnd, kOutputStripSuffixCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
   nextSettings.parsing.suffix = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputSuffixEdit)));
   nextSettings.parsing.normalizeSign = SendMessageW(GetDlgItem(settingsHwnd, kOutputNormalizeCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
-  nextSettings.parsing.dropPlusSign = SendMessageW(GetDlgItem(settingsHwnd, kOutputPreservePlusCheck), BM_GETCHECK, 0, 0) != BST_CHECKED;
+  nextSettings.parsing.preservePlusSign = SendMessageW(GetDlgItem(settingsHwnd, kOutputPreservePlusCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
+  nextSettings.parsing.preserveMinusSign = SendMessageW(GetDlgItem(settingsHwnd, kOutputPreserveMinusCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
   nextSettings.parsing.numericValidation = SendMessageW(GetDlgItem(settingsHwnd, kOutputRequireNumericCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
 
   const auto action = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputActionCombo)));
@@ -508,6 +544,12 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         AddControl(list, c);
         return c;
       };
+      auto editableCombo = [&](int id, int y, int width, std::vector<HWND>& list) {
+        HWND c = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWN, fieldLeft, y, width, 300, hwnd,
+                               reinterpret_cast<HMENU>(id), nullptr, nullptr);
+        AddControl(list, c);
+        return c;
+      };
 
       label(L"Port", top, g_ui.serialTabControls);
       HWND port = combo(kSerialPortCombo, top, 430, g_ui.serialTabControls);
@@ -518,7 +560,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                                                        reinterpret_cast<HMENU>(kSerialTestBtn), nullptr, nullptr));
 
       label(L"Baud", top + 36, g_ui.serialTabControls);
-      HWND baud = combo(kSerialBaudCombo, top + 36, 645, g_ui.serialTabControls);
+      HWND baud = editableCombo(kSerialBaudCombo, top + 36, 645, g_ui.serialTabControls);
       for (const wchar_t* value : {L"1200", L"2400", L"4800", L"9600"}) SendMessageW(baud, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
 
       label(L"Data bits", top + 72, g_ui.serialTabControls);
@@ -534,7 +576,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       for (const wchar_t* value : {L"1", L"1.5", L"2"}) SendMessageW(stopBits, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
 
       label(L"Timeout", top + 180, g_ui.serialTabControls);
-      HWND timeout = combo(kSerialTimeoutCombo, top + 180, 645, g_ui.serialTabControls);
+      HWND timeout = editableCombo(kSerialTimeoutCombo, top + 180, 645, g_ui.serialTabControls);
       for (const wchar_t* value : {L"0.50", L"1.00", L"2.00"}) SendMessageW(timeout, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
 
       label(L"Line ending", top + 216, g_ui.serialTabControls);
@@ -556,35 +598,42 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 100, 645, 24, hwnd,
                                  reinterpret_cast<HMENU>(kOutputSuffixEdit), nullptr, nullptr));
       checkbox(L"Normalize sign spacing", kOutputNormalizeCheck, top + 132);
-      checkbox(L"Preserve leading sign", kOutputPreservePlusCheck, top + 160);
-      checkbox(L"Require numeric result", kOutputRequireNumericCheck, top + 188);
-      label(L"After-send action", top + 220, g_ui.outputTabControls);
-      HWND postAction = combo(kOutputActionCombo, top + 218, 645, g_ui.outputTabControls);
+      checkbox(L"Preserve leading plus sign", kOutputPreservePlusCheck, top + 160);
+      checkbox(L"Preserve leading minus sign", kOutputPreserveMinusCheck, top + 188);
+      checkbox(L"Require numeric result", kOutputRequireNumericCheck, top + 216);
+      label(L"After-send action", top + 248, g_ui.outputTabControls);
+      HWND postAction = combo(kOutputActionCombo, top + 246, 645, g_ui.outputTabControls);
       for (const wchar_t* value : {L"down", L"right", L"enter", L"tab", L"none", L"custom_sequence"}) {
         SendMessageW(postAction, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
       }
-      label(L"Custom sequence", top + 256, g_ui.outputTabControls);
+      label(L"Custom sequence", top + 284, g_ui.outputTabControls);
       AddControl(g_ui.outputTabControls,
-                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_READONLY, fieldLeft, top + 254, 645, 24, hwnd,
+                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_READONLY, fieldLeft, top + 282, 645, 24, hwnd,
                                  reinterpret_cast<HMENU>(kOutputCustomSequenceEdit), nullptr, nullptr));
       AddControl(g_ui.outputTabControls,
-                 CreateWindowW(L"BUTTON", L"Capture Key", WS_CHILD | WS_VISIBLE, fieldLeft, top + 286, 206, 24, hwnd,
+                 CreateWindowW(L"BUTTON", L"Capture Key", WS_CHILD | WS_VISIBLE, fieldLeft, top + 314, 206, 24, hwnd,
                                reinterpret_cast<HMENU>(kOutputCaptureKeyBtn), nullptr, nullptr));
       AddControl(g_ui.outputTabControls,
-                 CreateWindowW(L"BUTTON", L"Remove Last", WS_CHILD | WS_VISIBLE, fieldLeft + 218, top + 286, 206, 24, hwnd,
+                 CreateWindowW(L"BUTTON", L"Remove Last", WS_CHILD | WS_VISIBLE, fieldLeft + 218, top + 314, 206, 24, hwnd,
                                reinterpret_cast<HMENU>(kOutputRemoveLastBtn), nullptr, nullptr));
       AddControl(g_ui.outputTabControls,
-                 CreateWindowW(L"BUTTON", L"Clear", WS_CHILD | WS_VISIBLE, fieldLeft + 436, top + 286, 209, 24, hwnd,
+                 CreateWindowW(L"BUTTON", L"Clear", WS_CHILD | WS_VISIBLE, fieldLeft + 436, top + 314, 209, 24, hwnd,
                                reinterpret_cast<HMENU>(kOutputClearBtn), nullptr, nullptr));
 
       label(L"Presets folder", top + 2, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top, 645, 24, hwnd,
                                  reinterpret_cast<HMENU>(kAppPresetsFolderEdit), nullptr, nullptr));
+      AddControl(g_ui.applicationTabControls,
+                 CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top, 70, 24, hwnd,
+                               reinterpret_cast<HMENU>(kAppPresetsBrowseBtn), nullptr, nullptr));
       label(L"Logs folder", top + 38, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 36, 645, 24, hwnd,
                                  reinterpret_cast<HMENU>(kAppLogsFolderEdit), nullptr, nullptr));
+      AddControl(g_ui.applicationTabControls,
+                 CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top + 36, 70, 24, hwnd,
+                               reinterpret_cast<HMENU>(kAppLogsBrowseBtn), nullptr, nullptr));
       label(L"Log mode", top + 74, g_ui.applicationTabControls);
       HWND logMode = combo(kAppLogModeCombo, top + 72, 645, g_ui.applicationTabControls);
       for (const wchar_t* value : {L"New file per session", L"Single file"}) SendMessageW(logMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
@@ -644,6 +693,9 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         case kOutputActionCombo:
           if (HIWORD(wParam) == CBN_SELCHANGE) UpdateCustomSequenceUiState(hwnd);
           return 0;
+        case kOutputModeCombo:
+          if (HIWORD(wParam) == CBN_SELCHANGE) UpdateParseControlsUiState(hwnd);
+          return 0;
         case kOutputCaptureKeyBtn:
           g_ui.captureCustomSequenceKey = true;
           SetFocus(hwnd);
@@ -659,6 +711,16 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         case kOutputClearBtn:
           SetWindowTextW(GetDlgItem(hwnd, kOutputCustomSequenceEdit), L"");
           return 0;
+        case kAppPresetsBrowseBtn: {
+          std::wstring selected;
+          if (BrowseForFolder(hwnd, selected)) SetWindowTextW(GetDlgItem(hwnd, kAppPresetsFolderEdit), selected.c_str());
+          return 0;
+        }
+        case kAppLogsBrowseBtn: {
+          std::wstring selected;
+          if (BrowseForFolder(hwnd, selected)) SetWindowTextW(GetDlgItem(hwnd, kAppLogsFolderEdit), selected.c_str());
+          return 0;
+        }
         default:
           return 0;
       }

@@ -26,7 +26,8 @@ struct ParsingSettings {
   bool stripSuffix{true};
   std::string suffix{"g"};
   bool normalizeSign{true};
-  bool dropPlusSign{false};
+  bool preservePlusSign{true};
+  bool preserveMinusSign{true};
   bool numericValidation{true};
 };
 
