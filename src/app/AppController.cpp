@@ -1,7 +1,6 @@
 #include "app/AppController.hpp"
 
 #include <filesystem>
-#include <iostream>
 
 namespace scalelogger {
 namespace {
@@ -24,7 +23,6 @@ void AppController::Initialize() {
 
   config_ = LoadConfig(configPath_);
 
-  // Load startup settings before auto-connect so real user serial settings are applied.
   const auto presetsDir = dataRoot_ / config_.presetsFolder;
   std::filesystem::path startupPresetPath;
   if (config_.startupMode == "specific_preset") {
@@ -34,43 +32,73 @@ void AppController::Initialize() {
   }
   if (!startupPresetPath.empty() && std::filesystem::exists(startupPresetPath)) {
     settings_ = LoadPreset(startupPresetPath);
-    std::cout << "Loaded startup preset: " << startupPresetPath.filename().string() << std::endl;
+    EmitLog("Loaded startup preset: " + startupPresetPath.filename().string());
   }
 
-  std::cout << "Application start" << std::endl;
+  EmitLog("Application start");
   if (config_.connectOnStartup) {
-    std::cout << "Auto-connecting to " << settings_.serial.port << std::endl;
+    EmitLog("Auto-connecting to " + settings_.serial.port);
     Connect();
   }
 }
 
 void AppController::Connect() {
-  serial_.Connect(
+  if (connected_) return;
+
+  const bool connected = serial_.Connect(
       settings_.serial,
       [this](const std::string& rawLine) {
         const auto parsed = parser_.Process(rawLine, settings_.parsing);
         if (!parsed.ok) {
-          std::cerr << "Parse rejected: " << parsed.message << " raw='" << rawLine << "'" << std::endl;
+          EmitLog("Parse rejected: " + parsed.message + " raw='" + rawLine + "'", true);
           return;
         }
         if (!injector_.SendTextAndAction(Utf8ToWide(parsed.processed), settings_.output)) {
-          std::cerr << "Injection failed for value: " << parsed.processed << std::endl;
+          EmitLog("Injection failed for value: " + parsed.processed, true);
         }
       },
-      [](const std::string& m) { std::cout << m << std::endl; }, [](const std::string& m) { std::cerr << m << std::endl; });
+      [this](const std::string& m) { EmitLog(m); }, [this](const std::string& m) { EmitLog(m, true); });
+
+  connected_ = connected;
+  EmitConnectionState(connected_);
 }
 
-void AppController::Disconnect() { serial_.Disconnect(); }
+void AppController::Disconnect() {
+  if (!connected_ && !serial_.IsConnected()) return;
+  serial_.Disconnect();
+  connected_ = false;
+  EmitConnectionState(false);
+  EmitLog("Disconnected");
+}
 
 void AppController::ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig) {
   const bool reconnect = serial_.IsConnected() && SerialSettingsRequireReconnect(settings_.serial, nextSettings.serial);
   settings_ = nextSettings;
   config_ = nextConfig;
   SaveConfig(configPath_, config_);
+  EmitLog("Configuration saved");
   if (reconnect) {
-    std::cout << "Reconnecting with updated serial settings on " << settings_.serial.port << std::endl;
+    EmitLog("Reconnecting with updated serial settings on " + settings_.serial.port);
     Disconnect();
     Connect();
+  }
+}
+
+void AppController::SetLogSink(LogSink sink) { logSink_ = std::move(sink); }
+
+void AppController::SetConnectionStateSink(ConnectionStateSink sink) { connectionStateSink_ = std::move(sink); }
+
+bool AppController::IsConnected() const { return connected_ || serial_.IsConnected(); }
+
+void AppController::EmitLog(const std::string& message, bool isError) const {
+  if (logSink_) {
+    logSink_(message, isError);
+  }
+}
+
+void AppController::EmitConnectionState(bool connected) const {
+  if (connectionStateSink_) {
+    connectionStateSink_(connected);
   }
 }
 
