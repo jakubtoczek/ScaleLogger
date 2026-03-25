@@ -8,7 +8,7 @@ namespace scalelogger {
 
 AppConfig LoadConfig(const std::filesystem::path& path);
 void SaveConfig(const std::filesystem::path& path, const AppConfig& config);
-AppSettings LoadPreset(const std::filesystem::path& path);
+AppSettings LoadPreset(const std::filesystem::path& path, bool* usedLegacyCompatibilityMapping = nullptr);
 void SavePreset(const std::filesystem::path& path, const AppSettings& settings);
 
 bool SerialSettingsRequireReconnect(const SerialSettings& lhs, const SerialSettings& rhs);

@@ -148,27 +148,10 @@ void LayoutMainControls(HWND hwnd) {
   const int rowH = 28;
   const int gap = 8;
 
-  int left = margin;
-  MoveWindow(g_ui.presetsLabel, left, top + 3, 58, 22, TRUE);
-  left += 64;
-  MoveWindow(g_ui.presetsCombo, left, top, 250, 300, TRUE);
-  left += 250 + gap;
-  MoveWindow(g_ui.refreshButton, left, top, 72, rowH, TRUE);
-
-  int right = rc.right - margin;
-  right -= 64;
-  MoveWindow(g_ui.aboutButton, right, top, 64, rowH, TRUE);
-  right -= gap + 82;
-  MoveWindow(g_ui.settingsButton, right, top, 82, rowH, TRUE);
-  right -= gap + 102;
-  MoveWindow(g_ui.connectButton, right, top, 102, rowH, TRUE);
-  right -= gap + 130;
-  MoveWindow(g_ui.connectionStatus, right, top + 4, 130, 22, TRUE);
-
-  const bool hidePresets = rc.right < 760;
+  const bool hidePresets = rc.right < 780;
   const bool hideRefresh = rc.right < 700;
-  const bool hideActions = rc.right < 640;
-  const bool hideStatus = rc.right < 560;
+  const bool hideActions = rc.right < 620;
+  const bool hideStatus = rc.right < 760 || hideActions;
   ShowWindow(g_ui.presetsLabel, hidePresets ? SW_HIDE : SW_SHOW);
   ShowWindow(g_ui.presetsCombo, hidePresets ? SW_HIDE : SW_SHOW);
   ShowWindow(g_ui.refreshButton, hideRefresh ? SW_HIDE : SW_SHOW);
@@ -176,6 +159,36 @@ void LayoutMainControls(HWND hwnd) {
   ShowWindow(g_ui.settingsButton, hideActions ? SW_HIDE : SW_SHOW);
   ShowWindow(g_ui.aboutButton, hideActions ? SW_HIDE : SW_SHOW);
   ShowWindow(g_ui.connectionStatus, hideStatus ? SW_HIDE : SW_SHOW);
+
+  int left = margin;
+  if (!hidePresets) {
+    MoveWindow(g_ui.presetsLabel, left, top + 3, 58, 22, TRUE);
+    left += 64;
+    const int comboWidth = std::max(140, std::min(250, rc.right / 3));
+    MoveWindow(g_ui.presetsCombo, left, top, comboWidth, 300, TRUE);
+    left += comboWidth + gap;
+  }
+  if (!hideRefresh) {
+    MoveWindow(g_ui.refreshButton, left, top, 72, rowH, TRUE);
+    left += 72 + gap;
+  }
+
+  int right = rc.right - margin;
+  if (!hideActions) {
+    right -= 64;
+    MoveWindow(g_ui.aboutButton, right, top, 64, rowH, TRUE);
+    right -= gap + 82;
+    MoveWindow(g_ui.settingsButton, right, top, 82, rowH, TRUE);
+    right -= gap + 102;
+    MoveWindow(g_ui.connectButton, right, top, 102, rowH, TRUE);
+  }
+  if (!hideStatus) {
+    const int statusWidth = 130;
+    right -= gap + statusWidth;
+    const int minStatusLeft = left + gap;
+    if (right < minStatusLeft) right = minStatusLeft;
+    MoveWindow(g_ui.connectionStatus, right, top + 4, statusWidth, 22, TRUE);
+  }
 
   MoveWindow(g_ui.logEdit, margin, 52, rc.right - margin * 2, rc.bottom - 68, TRUE);
 }
@@ -215,6 +228,15 @@ std::wstring FormatTimeout(float value) {
   std::wstringstream ss;
   ss << std::fixed << std::setprecision(2) << value;
   return ss.str();
+}
+
+std::string ParseEolFromUiText(const std::wstring& eolText) {
+  const auto eolDisplay = ToUtf8(eolText);
+  if (eolDisplay == "\\r\\n") return "\r\n";
+  if (eolDisplay == "\\n") return "\n";
+  if (eolDisplay == "\\r") return "\r";
+  if (eolDisplay == "\r\n" || eolDisplay == "\n" || eolDisplay == "\r") return eolDisplay;
+  return "\r\n";
 }
 
 void UpdateCustomSequenceUiState(HWND settingsHwnd) {
@@ -303,7 +325,9 @@ void ApplySelectedPreset() {
   const auto presetPath = it->second;
   AppConfig nextConfig = g_ui.controller->Config();
   nextConfig.lastUsedPresetName = presetPath.stem().string();
-  g_ui.controller->ApplySettings(LoadPreset(presetPath), nextConfig);
+  bool usedLegacyCompatibilityMapping = false;
+  g_ui.controller->ApplySettings(LoadPreset(presetPath, &usedLegacyCompatibilityMapping), nextConfig);
+  if (usedLegacyCompatibilityMapping) AddLogLine("Loaded preset with legacy compatibility mapping");
   if (g_ui.settingsWindow) LoadSettingsIntoControls(g_ui.settingsWindow);
   AddLogLine("Loaded preset: " + selected);
 }
@@ -362,8 +386,8 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   UpdateCustomSequenceUiState(settingsHwnd);
   UpdateParseControlsUiState(settingsHwnd);
 
-  SetWindowTextW(GetDlgItem(settingsHwnd, kAppConfigFolderEdit), ToWide(config.configFolder).c_str());
-  SetWindowTextW(GetDlgItem(settingsHwnd, kAppConfigFileNameEdit), ToWide(config.configFileName).c_str());
+  const auto configPathText = (std::filesystem::path(config.configFolder) / config.configFileName).wstring();
+  SetWindowTextW(GetDlgItem(settingsHwnd, kAppConfigFolderEdit), configPathText.c_str());
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit), ToWide(config.presetsFolder).c_str());
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppLogsFolderEdit), ToWide(config.logsFolder).c_str());
   const std::wstring logMode = config.logMode == LogMode::None ? L"No file logging"
@@ -396,10 +420,7 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
   nextSettings.serial.timeoutSeconds =
       static_cast<float>(std::atof(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialTimeoutCombo))).c_str()));
 
-  const auto eolDisplay = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialEolCombo)));
-  if (eolDisplay == "\\r\\n") nextSettings.serial.eol = "\r\n";
-  else if (eolDisplay == "\\n") nextSettings.serial.eol = "\n";
-  else if (eolDisplay == "\\r") nextSettings.serial.eol = "\r";
+  nextSettings.serial.eol = ParseEolFromUiText(GetControlText(GetDlgItem(settingsHwnd, kSerialEolCombo)));
 
   nextSettings.parsing.mode = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputModeCombo))) == "raw" ? ParseMode::Raw : ParseMode::Parsed;
   nextSettings.parsing.trimWhitespace = SendMessageW(GetDlgItem(settingsHwnd, kOutputTrimCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -427,8 +448,11 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
     if (!token.empty()) nextSettings.output.customSequence.push_back(token);
   }
 
-  nextConfig.configFolder = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppConfigFolderEdit)));
-  nextConfig.configFileName = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppConfigFileNameEdit)));
+  const auto configPathInput = std::filesystem::path(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppConfigFolderEdit))));
+  nextConfig.configFolder = configPathInput.parent_path().string();
+  nextConfig.configFileName = configPathInput.filename().string();
+  if (nextConfig.configFileName.empty()) nextConfig.configFileName = "ScaleLogger.config.json";
+  if (nextConfig.configFolder.empty()) nextConfig.configFolder = g_ui.controller->DataRoot().string();
   nextConfig.presetsFolder = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit)));
   nextConfig.logsFolder = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppLogsFolderEdit)));
   const auto logModeText = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppLogModeCombo)));
@@ -536,10 +560,7 @@ void RunTestReceive(HWND settingsHwnd) {
   testSettings.serial.stopBits = stopBitsText == "1.5" ? 1.5F : (stopBitsText == "2" ? 2.0F : 1.0F);
   testSettings.serial.timeoutSeconds =
       static_cast<float>(std::atof(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialTimeoutCombo))).c_str()));
-  const auto eolDisplay = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialEolCombo)));
-  if (eolDisplay == "\\r\\n") testSettings.serial.eol = "\r\n";
-  else if (eolDisplay == "\\n") testSettings.serial.eol = "\n";
-  else if (eolDisplay == "\\r") testSettings.serial.eol = "\r";
+  testSettings.serial.eol = ParseEolFromUiText(GetControlText(GetDlgItem(settingsHwnd, kSerialEolCombo)));
 
   std::string line;
   std::string error;
@@ -548,6 +569,19 @@ void RunTestReceive(HWND settingsHwnd) {
   } else {
     AddLogLine("Test Receive failed: " + error);
   }
+}
+
+void LayoutSettingsWindow(HWND hwnd) {
+  RECT rc{};
+  GetClientRect(hwnd, &rc);
+  const int margin = 12;
+  const int buttonY = rc.bottom - 42;
+  const int tabBottom = buttonY - 12;
+  MoveWindow(g_ui.settingsTab, margin, margin, rc.right - (margin * 2), tabBottom - margin, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSettingsSaveConfig), 20, buttonY, 140, 32, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSettingsSavePreset), 170, buttonY, 120, 32, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSettingsApply), rc.right - 170, buttonY, 70, 32, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSettingsCancel), rc.right - 90, buttonY, 70, 32, TRUE);
 }
 
 LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -654,45 +688,40 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                  CreateWindowW(L"BUTTON", L"Clear", WS_CHILD | WS_VISIBLE, fieldLeft + 436, top + 314, 209, 24, hwnd,
                                reinterpret_cast<HMENU>(kOutputClearBtn), nullptr, nullptr));
 
-      label(L"Config folder", top + 2, g_ui.applicationTabControls);
+      label(L"Config path", top + 2, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top, 645, 24, hwnd,
                                  reinterpret_cast<HMENU>(kAppConfigFolderEdit), nullptr, nullptr));
       AddControl(g_ui.applicationTabControls,
                  CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top, 70, 24, hwnd,
                                reinterpret_cast<HMENU>(kAppConfigBrowseBtn), nullptr, nullptr));
-      label(L"Config file name", top + 38, g_ui.applicationTabControls);
+      label(L"Presets folder", top + 38, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 36, 645, 24, hwnd,
-                                 reinterpret_cast<HMENU>(kAppConfigFileNameEdit), nullptr, nullptr));
-
-      label(L"Presets folder", top + 74, g_ui.applicationTabControls);
-      AddControl(g_ui.applicationTabControls,
-                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 72, 645, 24, hwnd,
                                  reinterpret_cast<HMENU>(kAppPresetsFolderEdit), nullptr, nullptr));
       AddControl(g_ui.applicationTabControls,
-                 CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top + 72, 70, 24, hwnd,
+                 CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top + 36, 70, 24, hwnd,
                                reinterpret_cast<HMENU>(kAppPresetsBrowseBtn), nullptr, nullptr));
-      label(L"Logs folder", top + 110, g_ui.applicationTabControls);
+      label(L"Logs folder", top + 74, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
-                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 108, 645, 24, hwnd,
+                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 72, 645, 24, hwnd,
                                  reinterpret_cast<HMENU>(kAppLogsFolderEdit), nullptr, nullptr));
       AddControl(g_ui.applicationTabControls,
-                 CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top + 108, 70, 24, hwnd,
+                 CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top + 72, 70, 24, hwnd,
                                reinterpret_cast<HMENU>(kAppLogsBrowseBtn), nullptr, nullptr));
-      label(L"Log mode", top + 146, g_ui.applicationTabControls);
-      HWND logMode = combo(kAppLogModeCombo, top + 144, 645, g_ui.applicationTabControls);
+      label(L"Log mode", top + 110, g_ui.applicationTabControls);
+      HWND logMode = combo(kAppLogModeCombo, top + 108, 645, g_ui.applicationTabControls);
       for (const wchar_t* value : {L"No file logging", L"New file per session", L"Single file"}) SendMessageW(logMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
 
       AddControl(g_ui.applicationTabControls,
-                 CreateWindowW(L"BUTTON", L"Connect on startup", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 8, top + 178, 220, 24, hwnd,
+                 CreateWindowW(L"BUTTON", L"Connect on startup", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 8, top + 142, 220, 24, hwnd,
                                reinterpret_cast<HMENU>(kAppConnectStartupCheck), nullptr, nullptr));
-      label(L"Startup preset", top + 212, g_ui.applicationTabControls);
-      HWND startup = combo(kAppStartupPresetCombo, top + 210, 645, g_ui.applicationTabControls);
+      label(L"Startup preset", top + 176, g_ui.applicationTabControls);
+      HWND startup = combo(kAppStartupPresetCombo, top + 174, 645, g_ui.applicationTabControls);
       SendMessageW(startup, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
 
       AddControl(g_ui.applicationTabControls,
-                 CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE, left + 10, top + 246, 760, 90, hwnd,
+                 CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE, left + 10, top + 210, 760, 90, hwnd,
                                reinterpret_cast<HMENU>(kAppPathsLabel), nullptr, nullptr));
 
       CreateWindowW(L"BUTTON", L"Save Configuration", WS_CHILD | WS_VISIBLE, 20, 520, 140, 32, hwnd,
@@ -707,6 +736,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       ShowTab(0);
       LoadSettingsIntoControls(hwnd);
       RefreshPortList(hwnd);
+      LayoutSettingsWindow(hwnd);
       return 0;
     }
     case WM_NOTIFY: {
@@ -774,8 +804,15 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         case kAppConfigBrowseBtn: {
           std::wstring selected;
           auto current = GetControlText(GetDlgItem(hwnd, kAppConfigFolderEdit));
-          if (current.empty() || !std::filesystem::exists(current)) current = ToWide(g_ui.controller->Config().configFolder);
-          if (BrowseForFolder(hwnd, selected, current)) SetWindowTextW(GetDlgItem(hwnd, kAppConfigFolderEdit), selected.c_str());
+          auto currentPath = std::filesystem::path(current);
+          auto currentDir = currentPath.parent_path();
+          if (currentDir.empty() || !std::filesystem::exists(currentDir)) currentDir = std::filesystem::path(g_ui.controller->Config().configFolder);
+          if (BrowseForFolder(hwnd, selected, currentDir.wstring())) {
+            auto selectedPath = std::filesystem::path(selected);
+            const auto fileName = currentPath.filename().empty() ? g_ui.controller->Config().configFileName : currentPath.filename().wstring();
+            selectedPath /= fileName;
+            SetWindowTextW(GetDlgItem(hwnd, kAppConfigFolderEdit), selectedPath.wstring().c_str());
+          }
           return 0;
         }
         default:
@@ -795,10 +832,13 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         return 0;
       }
       break;
+    case WM_SIZE:
+      LayoutSettingsWindow(hwnd);
+      return 0;
     case WM_GETMINMAXINFO: {
       auto* mm = reinterpret_cast<MINMAXINFO*>(lParam);
-      mm->ptMinTrackSize.x = 760;
-      mm->ptMinTrackSize.y = 560;
+      mm->ptMinTrackSize.x = 700;
+      mm->ptMinTrackSize.y = 520;
       return 0;
     }
     case WM_CLOSE:
@@ -841,7 +881,7 @@ void OpenSettingsWindow(HINSTANCE hInstance) {
   }
 
   g_ui.settingsWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, kSettingsWindowClassName, L"ScaleLogger Settings",
-                                        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 890, 610,
+                                        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME, CW_USEDEFAULT, CW_USEDEFAULT, 780, 610,
                                         g_ui.mainWindow, nullptr, hInstance, nullptr);
   if (!g_ui.settingsWindow) {
     const DWORD createError = GetLastError();

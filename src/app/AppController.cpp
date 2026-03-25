@@ -47,8 +47,12 @@ void AppController::Initialize() {
     startupPresetPath = ResolvePresetPath(presetsDir, config_.lastUsedPresetName);
   }
   if (!startupPresetPath.empty() && std::filesystem::exists(startupPresetPath)) {
-    settings_ = LoadPreset(startupPresetPath);
+    bool usedLegacyCompatibilityMapping = false;
+    settings_ = LoadPreset(startupPresetPath, &usedLegacyCompatibilityMapping);
     EmitLog("Loaded startup preset: " + startupPresetPath.filename().string());
+    if (usedLegacyCompatibilityMapping) {
+      EmitLog("Loaded preset with legacy compatibility mapping");
+    }
   }
 
   EmitLog("Application start");
@@ -73,7 +77,18 @@ void AppController::Connect() {
         if (settings_.parsing.mode == ParseMode::Parsed) {
           EmitLog("Parsed value: '" + parsed.processed + "'");
         }
+        if (settings_.output.postAction == PostAction::CustomSequence) {
+          std::string seq;
+          for (std::size_t i = 0; i < settings_.output.customSequence.size(); ++i) {
+            if (i > 0) seq += " -> ";
+            seq += settings_.output.customSequence[i];
+          }
+          EmitLog("Executing custom sequence: " + seq);
+        }
         if (!injector_.SendTextAndAction(Utf8ToWide(parsed.processed), settings_.output)) {
+          if (settings_.output.postAction == PostAction::CustomSequence) {
+            EmitLog("Custom sequence execution failed", true);
+          }
           EmitLog("Injection failed for value: " + parsed.processed, true);
         }
       },
@@ -106,15 +121,19 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
       settings_.parsing.numericValidation != nextSettings.parsing.numericValidation ||
       settings_.output.postAction != nextSettings.output.postAction || settings_.output.customSequence != nextSettings.output.customSequence;
   const bool configChanged =
+      config_.configFolder != nextConfig.configFolder || config_.configFileName != nextConfig.configFileName ||
       config_.presetsFolder != nextConfig.presetsFolder || config_.logsFolder != nextConfig.logsFolder ||
+      config_.logFilePattern != nextConfig.logFilePattern ||
       config_.logMode != nextConfig.logMode || config_.lineLogMode != nextConfig.lineLogMode ||
       config_.connectOnStartup != nextConfig.connectOnStartup || config_.startupMode != nextConfig.startupMode ||
-      config_.startupPresetName != nextConfig.startupPresetName || config_.lastUsedPresetName != nextConfig.lastUsedPresetName;
+      config_.startupPresetName != nextConfig.startupPresetName || config_.lastUsedPresetName != nextConfig.lastUsedPresetName ||
+      config_.standaloneMode != nextConfig.standaloneMode;
   if (!settingsChanged && !configChanged) return;
 
   const bool reconnect = serial_.IsConnected() && SerialSettingsRequireReconnect(settings_.serial, nextSettings.serial);
   settings_ = nextSettings;
   config_ = nextConfig;
+  configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
   if (configChanged && !config_.standaloneMode) {
     SaveConfig(configPath_, config_);
     EmitLog("Configuration saved");
@@ -180,7 +199,7 @@ bool AppController::TestReceive(const SerialSettings& settings, std::string& rec
   probe.Disconnect();
 
   if (!done) {
-    errorMessage = "No line received within 3 seconds.";
+    errorMessage = "No data received — check device or COM port";
     return false;
   }
   return ok;
@@ -235,7 +254,8 @@ void AppController::WriteLogFileLine(const std::string& message, bool isError) c
 #endif
   char stamp[16];
   std::strftime(stamp, sizeof(stamp), "%H:%M:%S", &tmNow);
-  logFile_ << "[" << stamp << "] " << (isError ? "ERROR: " : "") << message << "\n";
+  (void)isError;
+  logFile_ << "[" << stamp << "] " << message << "\n";
   logFile_.flush();
   if (!logFile_ && !logWriteErrorNotified_ && logSink_) {
     logSink_("ERROR: Failed while flushing log file: " + path.string(), true);

@@ -61,6 +61,14 @@ if (Test-Path $ChecksumFile) {
   } catch {}
 }
 $defaultConfigSource = if (Test-Path "default_config.json") { "file: default_config.json" } else { "embedded defaults" }
+$defaultConfigSha256 = "n/a"
+$defaultConfigSummary = "n/a"
+if (Test-Path "default_config.json") {
+  try {
+    $defaultConfigSha256 = (Get-FileHash -Algorithm SHA256 "default_config.json").Hash.ToLowerInvariant()
+    $defaultConfigSummary = "keys: config_folder, presets_folder, logs_folder, log_mode, startup_mode, standalone_mode"
+  } catch {}
+}
 
 @"
 ScaleLogger Build Manifest
@@ -81,4 +89,6 @@ Build preset: $BuildPreset
 Output executable name: $OutputExe
 SHA256 checksum: $checksumValue
 Default config source: $defaultConfigSource
+Default config SHA256: $defaultConfigSha256
+Default config summary: $defaultConfigSummary
 "@ | Out-File -Encoding utf8 BUILD_MANIFEST.md

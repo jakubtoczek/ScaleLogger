@@ -31,6 +31,38 @@ cmake --build --preset windows-release
 ctest --preset windows-test
 ```
 
+## Configuration JSON format
+ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with fields such as:
+- `config_folder`, `config_file_name`
+- `presets_folder`, `logs_folder`
+- `log_file_pattern`
+- `log_mode` (`none`, `single_file`, `per_session`)
+- `connect_on_startup`
+- `startup_mode` and preset name fields
+- `standalone_mode`
+
+Preset JSON files store serial, parsing, and output behaviors, including `custom_sequence` arrays and `eol`.
+
+## Python compatibility notes
+Preset loading is backward compatible with legacy Python-era keys:
+- `drop_plus_sign` maps to `preserve_plus_sign` behavior
+- `normalize_sign` is still honored
+- `eol` values `\\r\\n`, `\\n`, and `\\r` are interpreted as CRLF/LF/CR
+- `custom_sequence` is read from JSON arrays (for example `["down","down","right"]`)
+
+When compatibility mapping is applied, a runtime log line indicates it.
+
+## Logging modes
+- **No file logging** (`log_mode: "none"`): UI log only.
+- **Single file** (`log_mode: "single_file"`): appends to one log file.
+- **Per session** (`log_mode: "per_session"`): creates a timestamped file using `log_file_pattern`.
+
+Runtime file logging flushes each line and emits a one-time visible error if file writes fail.
+
+## Standalone mode
+When `standalone_mode` is `true`, ScaleLogger avoids writing config, preset, and log files.  
+This mode is intended for restricted or temporary environments where no local file output is desired.
+
 ## Release outputs
 Use `ScaleLogger_build_release.bat` to create a native release folder with:
 - `ScaleLogger.exe`

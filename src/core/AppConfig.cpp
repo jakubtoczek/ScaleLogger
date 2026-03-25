@@ -25,6 +25,10 @@ std::string ExtractString(const std::string& text, const std::string& key, const
   return text.substr(q1 + 1, q2 - q1 - 1);
 }
 
+bool ContainsKey(const std::string& text, const std::string& key) {
+  return text.find("\"" + key + "\"") != std::string::npos;
+}
+
 bool ExtractBool(const std::string& text, const std::string& key, bool fallback) {
   const auto pos = text.find("\"" + key + "\"");
   if (pos == std::string::npos) return fallback;
@@ -64,12 +68,20 @@ std::vector<std::string> ExtractStringArray(const std::string& text, const std::
   std::stringstream ss(content);
   std::string token;
   while (std::getline(ss, token, ',')) {
-    token.erase(std::remove_if(token.begin(), token.end(), [](unsigned char c) {
-      return std::isspace(c) != 0 || c == '"';
-    }), token.end());
+    token.erase(std::remove(token.begin(), token.end(), '"'), token.end());
+    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.front())) != 0) token.erase(token.begin());
+    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.back())) != 0) token.pop_back();
     if (!token.empty()) out.push_back(token);
   }
   return out;
+}
+
+std::string DecodeEolString(const std::string& value) {
+  if (value == "\\r\\n") return "\r\n";
+  if (value == "\\n") return "\n";
+  if (value == "\\r") return "\r";
+  if (value == "\r\n" || value == "\n" || value == "\r") return value;
+  return "\r\n";
 }
 
 PostAction ParsePostAction(const std::string& action) {
@@ -108,7 +120,8 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   cfg.startupPresetName = ExtractString(text, "startup_preset_name", "");
   cfg.lastUsedPresetName = ExtractString(text, "last_used_preset_name", "");
   cfg.standaloneMode = ExtractBool(text, "standalone_mode", cfg.standaloneMode);
-  cfg.logMode = ExtractString(text, "log_mode", "per_session") == "single_file" ? LogMode::SingleFile : LogMode::PerSession;
+  const auto logMode = ExtractString(text, "log_mode", "per_session");
+  cfg.logMode = logMode == "single_file" ? LogMode::SingleFile : (logMode == "none" ? LogMode::None : LogMode::PerSession);
   cfg.lineLogMode = ExtractString(text, "line_log_mode", "compact") == "verbose" ? LineLogMode::Verbose : LineLogMode::Compact;
   return cfg;
 }
@@ -122,7 +135,8 @@ void SaveConfig(const std::filesystem::path& path, const AppConfig& config) {
       << "  \"config_folder\": \"" << config.configFolder << "\",\n"
       << "  \"config_file_name\": \"" << config.configFileName << "\",\n"
       << "  \"log_file_pattern\": \"" << config.logFilePattern << "\",\n"
-      << "  \"log_mode\": \"" << (config.logMode == LogMode::SingleFile ? "single_file" : "per_session") << "\",\n"
+      << "  \"log_mode\": \""
+      << (config.logMode == LogMode::SingleFile ? "single_file" : (config.logMode == LogMode::None ? "none" : "per_session")) << "\",\n"
       << "  \"line_log_mode\": \"" << (config.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
       << "  \"connect_on_startup\": " << (config.connectOnStartup ? "true" : "false") << ",\n"
       << "  \"startup_mode\": \"" << config.startupMode << "\",\n"
@@ -132,8 +146,9 @@ void SaveConfig(const std::filesystem::path& path, const AppConfig& config) {
       << "}\n";
 }
 
-AppSettings LoadPreset(const std::filesystem::path& path) {
+AppSettings LoadPreset(const std::filesystem::path& path, bool* usedLegacyCompatibilityMapping) {
   AppSettings s{};
+  if (usedLegacyCompatibilityMapping) *usedLegacyCompatibilityMapping = false;
   if (!std::filesystem::exists(path)) return s;
   const auto text = ReadAll(path);
   s.serial.port = ExtractString(text, "port", s.serial.port);
@@ -142,18 +157,21 @@ AppSettings LoadPreset(const std::filesystem::path& path) {
   s.serial.parity = ExtractString(text, "parity", "O")[0];
   s.serial.stopBits = ExtractFloat(text, "stopbits", s.serial.stopBits);
   s.serial.timeoutSeconds = ExtractFloat(text, "timeout", s.serial.timeoutSeconds);
-  s.serial.eol = ExtractString(text, "eol", "\\r\\n");
-  if (s.serial.eol == "\\r\\n") s.serial.eol = "\r\n";
-  else if (s.serial.eol == "\\n") s.serial.eol = "\n";
-  else if (s.serial.eol == "\\r") s.serial.eol = "\r";
+  s.serial.eol = DecodeEolString(ExtractString(text, "eol", "\\r\\n"));
   s.parsing.mode = ExtractString(text, "mode", "parsed") == "raw" ? ParseMode::Raw : ParseMode::Parsed;
   s.parsing.trimWhitespace = ExtractBool(text, "trim_whitespace", true);
   s.parsing.stripSuffix = ExtractBool(text, "strip_suffix", true);
   s.parsing.suffix = ExtractString(text, "suffix", "g");
+  const bool hasLegacyNormalizeSign = ContainsKey(text, "normalize_sign");
+  const bool hasLegacyDropPlusSign = ContainsKey(text, "drop_plus_sign");
   s.parsing.normalizeSign = ExtractBool(text, "normalize_sign", true);
   const bool dropPlusSign = ExtractBool(text, "drop_plus_sign", false);
   s.parsing.preservePlusSign = ExtractBool(text, "preserve_plus_sign", !dropPlusSign);
   s.parsing.preserveMinusSign = ExtractBool(text, "preserve_minus_sign", true);
+  if (usedLegacyCompatibilityMapping && ((hasLegacyDropPlusSign && !ContainsKey(text, "preserve_plus_sign")) ||
+                                         (hasLegacyNormalizeSign && !ContainsKey(text, "preserve_minus_sign")))) {
+    *usedLegacyCompatibilityMapping = true;
+  }
   s.parsing.numericValidation = ExtractBool(text, "numeric_validation", true);
   s.output.postAction = ParsePostAction(ExtractString(text, "post_action", "down"));
   s.output.customSequence = ExtractStringArray(text, "custom_sequence");
