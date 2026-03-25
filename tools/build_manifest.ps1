@@ -66,7 +66,10 @@ $defaultConfigSummary = "n/a"
 if (Test-Path "default_config.json") {
   try {
     $defaultConfigSha256 = (Get-FileHash -Algorithm SHA256 "default_config.json").Hash.ToLowerInvariant()
-    $defaultConfigSummary = "keys: config_folder, presets_folder, logs_folder, log_mode, startup_mode, standalone_mode"
+    $cfg = Get-Content -Raw -Path "default_config.json" | ConvertFrom-Json
+    $startupPresetState = if ([string]::IsNullOrWhiteSpace([string]$cfg.startup_preset_name)) { "empty" } else { "set" }
+    $lastUsedPresetState = if ([string]::IsNullOrWhiteSpace([string]$cfg.last_used_preset_name)) { "empty" } else { "set" }
+    $defaultConfigSummary = "connect_on_startup=$($cfg.connect_on_startup); startup_mode=$($cfg.startup_mode); standalone_mode=$($cfg.standalone_mode); log_mode=$($cfg.log_mode); line_log_mode=$($cfg.line_log_mode); config_file_name=$($cfg.config_file_name); startup_preset_name=$startupPresetState; last_used_preset_name=$lastUsedPresetState"
   } catch {}
 }
 

@@ -148,47 +148,101 @@ void LayoutMainControls(HWND hwnd) {
   const int rowH = 28;
   const int gap = 8;
 
-  const bool hidePresets = rc.right < 780;
-  const bool hideRefresh = rc.right < 700;
-  const bool hideActions = rc.right < 620;
-  const bool hideStatus = rc.right < 760 || hideActions;
-  ShowWindow(g_ui.presetsLabel, hidePresets ? SW_HIDE : SW_SHOW);
-  ShowWindow(g_ui.presetsCombo, hidePresets ? SW_HIDE : SW_SHOW);
-  ShowWindow(g_ui.refreshButton, hideRefresh ? SW_HIDE : SW_SHOW);
-  ShowWindow(g_ui.connectButton, hideActions ? SW_HIDE : SW_SHOW);
-  ShowWindow(g_ui.settingsButton, hideActions ? SW_HIDE : SW_SHOW);
-  ShowWindow(g_ui.aboutButton, hideActions ? SW_HIDE : SW_SHOW);
-  ShowWindow(g_ui.connectionStatus, hideStatus ? SW_HIDE : SW_SHOW);
+  bool showPresetsLabel = true;
+  bool showPresetsCombo = true;
+  bool showRefresh = true;
+  bool showAbout = true;
+  bool showSettings = true;
+  bool showConnect = true;
+  bool showStatus = true;
+
+  auto requiredWidth = [&]() {
+    int total = margin * 2;
+    if (showPresetsLabel) total += 58 + gap;
+    if (showPresetsCombo) total += 220 + gap;
+    if (showRefresh) total += 72 + gap;
+    if (showConnect) total += 102 + gap;
+    if (showSettings) total += 82 + gap;
+    if (showAbout) total += 64 + gap;
+    if (showStatus) total += 130 + gap;
+    return total;
+  };
+
+  while (requiredWidth() > rc.right) {
+    if (showPresetsLabel) {
+      showPresetsLabel = false;
+      continue;
+    }
+    if (showPresetsCombo) {
+      showPresetsCombo = false;
+      showRefresh = false;
+      continue;
+    }
+    if (showRefresh) {
+      showRefresh = false;
+      continue;
+    }
+    if (showAbout) {
+      showAbout = false;
+      continue;
+    }
+    if (showSettings) {
+      showSettings = false;
+      continue;
+    }
+    if (showConnect) {
+      showConnect = false;
+      continue;
+    }
+    if (showStatus) {
+      showStatus = false;
+      continue;
+    }
+    break;
+  }
+
+  ShowWindow(g_ui.presetsLabel, showPresetsLabel ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_ui.presetsCombo, showPresetsCombo ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_ui.refreshButton, showRefresh ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_ui.connectButton, showConnect ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_ui.settingsButton, showSettings ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_ui.aboutButton, showAbout ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_ui.connectionStatus, showStatus ? SW_SHOW : SW_HIDE);
 
   int left = margin;
-  if (!hidePresets) {
+  if (showPresetsLabel) {
     MoveWindow(g_ui.presetsLabel, left, top + 3, 58, 22, TRUE);
-    left += 64;
-    const int availableWidth = static_cast<int>(rc.right / 3);
-    const int comboWidth = (std::max)(140, (std::min)(250, availableWidth));
+    left += 58 + gap;
+  }
+  if (showPresetsCombo) {
+    const int availableWidth = (std::max)(140, static_cast<int>(rc.right / 3));
+    const int comboWidth = (std::min)(250, availableWidth);
     MoveWindow(g_ui.presetsCombo, left, top, comboWidth, 300, TRUE);
     left += comboWidth + gap;
   }
-  if (!hideRefresh) {
+  if (showRefresh) {
     MoveWindow(g_ui.refreshButton, left, top, 72, rowH, TRUE);
-    left += 72 + gap;
   }
 
   int right = rc.right - margin;
-  if (!hideActions) {
+  if (showAbout) {
     right -= 64;
     MoveWindow(g_ui.aboutButton, right, top, 64, rowH, TRUE);
-    right -= gap + 82;
-    MoveWindow(g_ui.settingsButton, right, top, 82, rowH, TRUE);
-    right -= gap + 102;
-    MoveWindow(g_ui.connectButton, right, top, 102, rowH, TRUE);
+    right -= gap;
   }
-  if (!hideStatus) {
-    const int statusWidth = 130;
-    right -= gap + statusWidth;
-    const int minStatusLeft = left + gap;
-    if (right < minStatusLeft) right = minStatusLeft;
-    MoveWindow(g_ui.connectionStatus, right, top + 4, statusWidth, 22, TRUE);
+  if (showSettings) {
+    right -= 82;
+    MoveWindow(g_ui.settingsButton, right, top, 82, rowH, TRUE);
+    right -= gap;
+  }
+  if (showConnect) {
+    right -= 102;
+    MoveWindow(g_ui.connectButton, right, top, 102, rowH, TRUE);
+    right -= gap;
+  }
+  if (showStatus) {
+    right -= 130;
+    MoveWindow(g_ui.connectionStatus, right, top + 4, 130, 22, TRUE);
   }
 
   MoveWindow(g_ui.logEdit, margin, 52, rc.right - margin * 2, rc.bottom - 68, TRUE);
@@ -576,11 +630,62 @@ void LayoutSettingsWindow(HWND hwnd) {
   RECT rc{};
   GetClientRect(hwnd, &rc);
   const int margin = 12;
+  const int left = 26;
+  const int top = 58;
+  const int labelWidth = 110;
+  const int fieldLeft = left + labelWidth;
+  const int browseWidth = 70;
+  const int rightPadding = 26;
   const int buttonY = rc.bottom - 42;
   const int tabBottom = buttonY - 12;
+
   MoveWindow(g_ui.settingsTab, margin, margin, rc.right - (margin * 2), tabBottom - margin, TRUE);
-  MoveWindow(GetDlgItem(hwnd, kSettingsSaveConfig), 20, buttonY, 140, 32, TRUE);
-  MoveWindow(GetDlgItem(hwnd, kSettingsSavePreset), 170, buttonY, 120, 32, TRUE);
+
+  const int contentRight = rc.right - rightPadding;
+  const int fullFieldWidth = (std::max)(260, contentRight - fieldLeft);
+  const int browsedFieldWidth = (std::max)(200, fullFieldWidth - browseWidth - 5);
+
+  auto moveField = [&](int id, int y, int width = -1) {
+    const int fieldWidth = width < 0 ? fullFieldWidth : width;
+    MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, 24, TRUE);
+  };
+  auto moveBrowse = [&](int id, int y) { MoveWindow(GetDlgItem(hwnd, id), fieldLeft + browsedFieldWidth + 5, y, browseWidth, 24, TRUE); };
+
+  const int serialButtonsWidth = 96 + 100 + 9;
+  const int serialFieldWidth = (std::max)(150, fullFieldWidth - serialButtonsWidth);
+  moveField(kSerialPortCombo, top, serialFieldWidth);
+  MoveWindow(GetDlgItem(hwnd, kSerialScanBtn), fieldLeft + serialFieldWidth + 5, top, 96, 24, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSerialTestBtn), fieldLeft + serialFieldWidth + 106, top, 100, 24, TRUE);
+  moveField(kSerialBaudCombo, top + 36);
+  moveField(kSerialDataBitsCombo, top + 72);
+  moveField(kSerialParityCombo, top + 108);
+  moveField(kSerialStopBitsCombo, top + 144);
+  moveField(kSerialTimeoutCombo, top + 180);
+  moveField(kSerialEolCombo, top + 216);
+
+  moveField(kOutputModeCombo, top + 8);
+  moveField(kOutputSuffixEdit, top + 100);
+  moveField(kOutputActionCombo, top + 246);
+  moveField(kOutputCustomSequenceEdit, top + 282);
+  const int actionGap = 12;
+  const int actionBtnWidth = (std::max)(120, (fullFieldWidth - actionGap * 2) / 3);
+  const int actionY = top + 314;
+  MoveWindow(GetDlgItem(hwnd, kOutputCaptureKeyBtn), fieldLeft, actionY, actionBtnWidth, 24, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kOutputRemoveLastBtn), fieldLeft + actionBtnWidth + actionGap, actionY, actionBtnWidth, 24, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kOutputClearBtn), fieldLeft + (actionBtnWidth + actionGap) * 2, actionY, actionBtnWidth, 24, TRUE);
+
+  moveField(kAppConfigFolderEdit, top, browsedFieldWidth);
+  moveBrowse(kAppConfigBrowseBtn, top);
+  moveField(kAppPresetsFolderEdit, top + 36, browsedFieldWidth);
+  moveBrowse(kAppPresetsBrowseBtn, top + 36);
+  moveField(kAppLogsFolderEdit, top + 72, browsedFieldWidth);
+  moveBrowse(kAppLogsBrowseBtn, top + 72);
+  moveField(kAppLogModeCombo, top + 108);
+  moveField(kAppStartupPresetCombo, top + 174);
+  MoveWindow(GetDlgItem(hwnd, kAppPathsLabel), left + 10, top + 210, (std::max)(280, rc.right - (left + rightPadding + 10)), 90, TRUE);
+
+  MoveWindow(GetDlgItem(hwnd, kSettingsSaveConfig), 20, buttonY, 160, 32, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSettingsSavePreset), 190, buttonY, 130, 32, TRUE);
   MoveWindow(GetDlgItem(hwnd, kSettingsApply), rc.right - 170, buttonY, 70, 32, TRUE);
   MoveWindow(GetDlgItem(hwnd, kSettingsCancel), rc.right - 90, buttonY, 70, 32, TRUE);
 }
