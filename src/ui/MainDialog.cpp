@@ -164,7 +164,7 @@ void LayoutMainControls(HWND hwnd) {
   if (!hidePresets) {
     MoveWindow(g_ui.presetsLabel, left, top + 3, 58, 22, TRUE);
     left += 64;
-    const int comboWidth = std::max(140, std::min(250, rc.right / 3));
+    const int comboWidth = (std::max)(140, (std::min)(250, rc.right / 3));
     MoveWindow(g_ui.presetsCombo, left, top, comboWidth, 300, TRUE);
     left += comboWidth + gap;
   }
@@ -809,8 +809,10 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
           if (currentDir.empty() || !std::filesystem::exists(currentDir)) currentDir = std::filesystem::path(g_ui.controller->Config().configFolder);
           if (BrowseForFolder(hwnd, selected, currentDir.wstring())) {
             auto selectedPath = std::filesystem::path(selected);
-            const auto fileName = currentPath.filename().empty() ? g_ui.controller->Config().configFileName : currentPath.filename().wstring();
-            selectedPath /= fileName;
+            const auto fileNamePath = currentPath.filename().empty()
+                                          ? std::filesystem::path(g_ui.controller->Config().configFileName)
+                                          : currentPath.filename();
+            selectedPath /= fileNamePath;
             SetWindowTextW(GetDlgItem(hwnd, kAppConfigFolderEdit), selectedPath.wstring().c_str());
           }
           return 0;

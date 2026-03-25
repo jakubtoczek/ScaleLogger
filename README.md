@@ -31,6 +31,22 @@ cmake --build --preset windows-release
 ctest --preset windows-test
 ```
 
+Prerequisites:
+- Visual Studio 2026 (MSVC x64 toolchain)
+- CMake available in `PATH`
+
+## Repo-local release wrapper
+For a fresh-clone reproducible release package, run:
+
+```bat
+ScaleLogger_build_release.bat
+```
+
+The wrapper always configures/builds/tests in Release first, then produces:
+- `release\ScaleLogger.exe`
+- `release\SHA256SUMS.txt`
+- `release\BUILD_MANIFEST_<version>.txt`
+
 ## Configuration JSON format
 ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with fields such as:
 - `config_folder`, `config_file_name`
