@@ -2,6 +2,7 @@
 
 #ifdef _WIN32
 #include "app/AppController.hpp"
+#include "ui/AboutDialog.hpp"
 
 #include <CommCtrl.h>
 #include <Windows.h>
@@ -66,6 +67,7 @@ struct UiState {
   HINSTANCE hInstance{nullptr};
   HWND mainWindow{nullptr};
   HWND presetsCombo{nullptr};
+  HWND settingsButton{nullptr};
   HWND connectButton{nullptr};
   HWND connectionStatus{nullptr};
   HWND logEdit{nullptr};
@@ -100,7 +102,7 @@ void AddLogLine(const std::string& text) {
 void UpdateConnectionUi(bool connected) {
   if (!g_ui.connectButton || !g_ui.connectionStatus) return;
   SetWindowTextW(g_ui.connectButton, connected ? L"Disconnect" : L"Connect");
-  SetWindowTextW(g_ui.connectionStatus, connected ? L"● Connected" : L"○ Disconnected");
+  SetWindowTextW(g_ui.connectionStatus, connected ? L"Status: Connected" : L"Status: Disconnected");
 }
 
 void PopulateComboWithValues(HWND combo, const std::vector<std::wstring>& values) {
@@ -244,22 +246,22 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
 }
 
 void CreateTopRow(HWND hwnd) {
-  CreateWindowW(L"STATIC", L"Presets", WS_CHILD | WS_VISIBLE, 16, 16, 55, 24, hwnd, nullptr, nullptr, nullptr);
+  CreateWindowW(L"STATIC", L"Presets", WS_CHILD | WS_VISIBLE, 16, 16, 58, 24, hwnd, nullptr, nullptr, nullptr);
   g_ui.presetsCombo = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWNLIST, 80, 14, 240, 300,
                                     hwnd, reinterpret_cast<HMENU>(kComboPresets), nullptr, nullptr);
   SendMessageW(g_ui.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
   SendMessageW(g_ui.presetsCombo, CB_SETCURSEL, 0, 0);
 
-  CreateWindowW(L"BUTTON", L"↻", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 328, 14, 38, 26, hwnd,
+  CreateWindowW(L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 328, 14, 70, 26, hwnd,
                 reinterpret_cast<HMENU>(kBtnRefreshPresets), nullptr, nullptr);
 
-  g_ui.connectionStatus = CreateWindowW(L"STATIC", L"○ Disconnected", WS_CHILD | WS_VISIBLE, 540, 17, 120, 22, hwnd,
+  g_ui.connectionStatus = CreateWindowW(L"STATIC", L"Status: Disconnected", WS_CHILD | WS_VISIBLE, 500, 17, 140, 22, hwnd,
                                         reinterpret_cast<HMENU>(kLblConnectionStatus), nullptr, nullptr);
-  g_ui.connectButton = CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 660, 14, 110, 28, hwnd,
+  g_ui.connectButton = CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 650, 14, 100, 28, hwnd,
                                      reinterpret_cast<HMENU>(kBtnConnect), nullptr, nullptr);
-  CreateWindowW(L"BUTTON", L"⚙", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 778, 14, 36, 28, hwnd,
-                reinterpret_cast<HMENU>(kBtnSettings), nullptr, nullptr);
-  CreateWindowW(L"BUTTON", L"?", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 820, 14, 36, 28, hwnd,
+  g_ui.settingsButton = CreateWindowW(L"BUTTON", L"Settings", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 758, 14, 82, 28, hwnd,
+                                      reinterpret_cast<HMENU>(kBtnSettings), nullptr, nullptr);
+  CreateWindowW(L"BUTTON", L"About", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 844, 14, 64, 28, hwnd,
                 reinterpret_cast<HMENU>(kBtnAbout), nullptr, nullptr);
 }
 
@@ -454,6 +456,10 @@ void OpenSettingsWindow(HINSTANCE hInstance) {
   g_ui.settingsWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, wc.lpszClassName, L"ScaleLogger Settings",
                                         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 890, 610,
                                         g_ui.mainWindow, nullptr, hInstance, nullptr);
+  if (!g_ui.settingsWindow) {
+    MessageBoxW(g_ui.mainWindow, L"Unable to open the settings window.", L"ScaleLogger", MB_OK | MB_ICONERROR);
+    return;
+  }
   ShowWindow(g_ui.settingsWindow, SW_SHOW);
 }
 
@@ -464,7 +470,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
       CreateTopRow(hwnd);
       CreateLogPane(hwnd);
 
-      AddLogLine("ScaleLogger native UI ready");
+      AddLogLine("ScaleLogger started.");
       return 0;
     }
     case WM_SIZE: {
@@ -481,10 +487,10 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
           else g_ui.controller->Connect();
           return 0;
         case kBtnSettings:
-          OpenSettingsWindow(g_ui.hInstance);
+          if (HIWORD(wParam) == BN_CLICKED) OpenSettingsWindow(g_ui.hInstance);
           return 0;
         case kBtnAbout:
-          MessageBoxW(hwnd, L"ScaleLogger native runtime clone pass\nC++20 + Win32", L"About ScaleLogger", MB_OK | MB_ICONINFORMATION);
+          if (HIWORD(wParam) == BN_CLICKED) ShowAbout(hwnd);
           return 0;
         case kBtnRefreshPresets:
           AddLogLine("Preset list refresh requested");
@@ -523,9 +529,9 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
   RegisterClassW(&wc);
 
-  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"ScaleLogger 0.95", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX |
+  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"ScaleLogger 0.96", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX |
                                                                        WS_SIZEBOX,
-                              CW_USEDEFAULT, CW_USEDEFAULT, 890, 660, nullptr, nullptr, hInstance, nullptr);
+                              CW_USEDEFAULT, CW_USEDEFAULT, 930, 660, nullptr, nullptr, hInstance, nullptr);
 
   if (!hwnd) return 1;
 

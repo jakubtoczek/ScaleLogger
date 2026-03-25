@@ -15,10 +15,7 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
-if exist "%RELEASE_DIR%" rmdir /s /q "%RELEASE_DIR%"
-mkdir "%RELEASE_DIR%"
-if %errorlevel% neq 0 exit /b %errorlevel%
-
+REM Always rebuild Release first so packaging never uses a stale executable.
 echo Configuring (windows-vs2026-x64)...
 cmake --preset windows-vs2026-x64
 if %errorlevel% neq 0 exit /b %errorlevel%
@@ -27,14 +24,18 @@ echo Building (windows-release)...
 cmake --build --preset windows-release
 if %errorlevel% neq 0 exit /b %errorlevel%
 
+if not exist "%SOURCE_EXE%" (
+  echo Build output not found after build: %SOURCE_EXE%
+  exit /b 1
+)
+
 echo Running tests (windows-test)...
 ctest --preset windows-test
 if %errorlevel% neq 0 exit /b %errorlevel%
 
-if not exist "%SOURCE_EXE%" (
-  echo Build output not found: %SOURCE_EXE%
-  exit /b 1
-)
+if exist "%RELEASE_DIR%" rmdir /s /q "%RELEASE_DIR%"
+mkdir "%RELEASE_DIR%"
+if %errorlevel% neq 0 exit /b %errorlevel%
 
 copy /y "%SOURCE_EXE%" "%OUTPUT_EXE%" >nul
 if %errorlevel% neq 0 (
