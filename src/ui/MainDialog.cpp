@@ -682,7 +682,9 @@ void LayoutSettingsWindow(HWND hwnd) {
   moveBrowse(kAppLogsBrowseBtn, top + 72);
   moveField(kAppLogModeCombo, top + 108);
   moveField(kAppStartupPresetCombo, top + 174);
-  MoveWindow(GetDlgItem(hwnd, kAppPathsLabel), left + 10, top + 210, (std::max)(280, rc.right - (left + rightPadding + 10)), 90, TRUE);
+  const int pathsLabelAvailableWidth = static_cast<int>(rc.right) - (left + rightPadding + 10);
+  const int pathsLabelWidth = (std::max)(280, pathsLabelAvailableWidth);
+  MoveWindow(GetDlgItem(hwnd, kAppPathsLabel), left + 10, top + 210, pathsLabelWidth, 90, TRUE);
 
   MoveWindow(GetDlgItem(hwnd, kSettingsSaveConfig), 20, buttonY, 160, 32, TRUE);
   MoveWindow(GetDlgItem(hwnd, kSettingsSavePreset), 190, buttonY, 130, 32, TRUE);
