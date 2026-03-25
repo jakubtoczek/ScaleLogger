@@ -504,7 +504,7 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
                                      std::wstring(1, static_cast<wchar_t>(settings.serial.parity)) + L"; StopBits=" + FormatStopBits(settings.serial.stopBits) +
                                      L"; Timeout=" + FormatTimeout(settings.serial.timeoutSeconds) + L"; EOL=" + ToWide(settings.serial.eol);
   SetWindowTextW(GetDlgItem(settingsHwnd, kSerialSummaryEdit), serialSummary.c_str());
-  const std::wstring outputSummary = L"Mode=" + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") +
+  const std::wstring outputSummary = std::wstring(L"Mode=") + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") +
                                      L"; Trim=" + std::wstring(settings.parsing.trimWhitespace ? L"true" : L"false") +
                                      L"; StripSuffix=" + std::wstring(settings.parsing.stripSuffix ? L"true" : L"false") +
                                      L"; NormalizeSign=" + std::wstring(settings.parsing.normalizeSign ? L"true" : L"false") +
