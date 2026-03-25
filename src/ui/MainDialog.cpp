@@ -164,7 +164,8 @@ void LayoutMainControls(HWND hwnd) {
   if (!hidePresets) {
     MoveWindow(g_ui.presetsLabel, left, top + 3, 58, 22, TRUE);
     left += 64;
-    const int comboWidth = (std::max)(140, (std::min)(250, rc.right / 3));
+    const int availableWidth = static_cast<int>(rc.right / 3);
+    const int comboWidth = (std::max)(140, (std::min)(250, availableWidth));
     MoveWindow(g_ui.presetsCombo, left, top, comboWidth, 300, TRUE);
     left += comboWidth + gap;
   }
