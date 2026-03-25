@@ -13,8 +13,12 @@ bool SendVirtualKey(WORD vk) {
   INPUT in[2]{};
   in[0].type = INPUT_KEYBOARD;
   in[0].ki.wVk = vk;
+  if (vk == VK_LEFT || vk == VK_RIGHT || vk == VK_UP || vk == VK_DOWN || vk == VK_HOME || vk == VK_END || vk == VK_PRIOR ||
+      vk == VK_NEXT || vk == VK_INSERT || vk == VK_DELETE) {
+    in[0].ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+  }
   in[1] = in[0];
-  in[1].ki.dwFlags = KEYEVENTF_KEYUP;
+  in[1].ki.dwFlags |= KEYEVENTF_KEYUP;
   return SendInput(2, in, sizeof(INPUT)) == 2;
 }
 

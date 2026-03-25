@@ -12,6 +12,7 @@
 #include <chrono>
 #include <algorithm>
 #include <cctype>
+#include <cwctype>
 #include <cstdlib>
 #include <filesystem>
 #include <iomanip>
@@ -75,6 +76,9 @@ constexpr int kAppLogsBrowseBtn = 507;
 constexpr int kAppConfigFolderEdit = 508;
 constexpr int kAppConfigBrowseBtn = 509;
 constexpr int kAppConfigFileNameEdit = 510;
+constexpr int kAppDarkModeCheck = 511;
+constexpr int kSerialSummaryEdit = 520;
+constexpr int kOutputSummaryEdit = 521;
 constexpr wchar_t kSettingsWindowClassName[] = L"ScaleLoggerSettingsWindow";
 
 struct UiState {
@@ -100,11 +104,23 @@ struct UiState {
 };
 
 UiState g_ui;
+HBRUSH g_darkBrush = CreateSolidBrush(RGB(32, 32, 32));
 void LoadSettingsIntoControls(HWND settingsHwnd);
 
 std::wstring ToWide(std::string_view text) { return std::wstring(text.begin(), text.end()); }
 
 std::string ToUtf8(const std::wstring& text) { return std::string(text.begin(), text.end()); }
+
+bool IsDarkModeEnabled() {
+  return g_ui.controller && g_ui.controller->Config().darkMode;
+}
+
+LRESULT HandleDarkCtlColor(HDC hdc) {
+  if (!IsDarkModeEnabled()) return 0;
+  SetTextColor(hdc, RGB(235, 235, 235));
+  SetBkColor(hdc, RGB(32, 32, 32));
+  return reinterpret_cast<LRESULT>(g_darkBrush);
+}
 
 void AddLogLine(const std::string& text) {
   if (!g_ui.logEdit) return;
@@ -294,6 +310,24 @@ std::string ParseEolFromUiText(const std::wstring& eolText) {
   return "\r\n";
 }
 
+bool TryParseInt(const std::wstring& text, int& out) {
+  if (text.empty()) return false;
+  wchar_t* end = nullptr;
+  const long value = std::wcstol(text.c_str(), &end, 10);
+  if (!end || *end != L'\0') return false;
+  out = static_cast<int>(value);
+  return true;
+}
+
+bool TryParseFloat(const std::wstring& text, float& out) {
+  if (text.empty()) return false;
+  wchar_t* end = nullptr;
+  const float value = std::wcstof(text.c_str(), &end);
+  if (!end || *end != L'\0') return false;
+  out = value;
+  return true;
+}
+
 void UpdateCustomSequenceUiState(HWND settingsHwnd) {
   const auto action = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputActionCombo)));
   const bool enabled = action == "custom_sequence";
@@ -456,26 +490,84 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   SetComboToText(startupCombo, config.startupMode == "specific_preset" ? ToWide(config.startupPresetName) : L"Last used / defaults");
 
   const std::wstring pathSummary = L"Config: " + (std::filesystem::path(config.configFolder) / ToWide(config.configFileName)).wstring() +
-                                   L"\r\nPresets: " + std::filesystem::path(config.presetsFolder).wstring() +
-                                   L"\r\nLogs: " + std::filesystem::path(config.logsFolder).wstring();
+                                   L"\r\nPresets folder: " + std::filesystem::path(config.presetsFolder).wstring() +
+                                   L"\r\nCurrent preset: " + ToWide(config.lastUsedPresetName.empty() ? std::string("(none)") : config.lastUsedPresetName) +
+                                   L"\r\nLogs folder: " + std::filesystem::path(config.logsFolder).wstring() +
+                                   L"\r\nLog mode: " + (config.logMode == LogMode::None ? L"none" : (config.logMode == LogMode::SingleFile ? L"single_file" : L"per_session")) +
+                                   L"\r\nLine log mode: " + (config.lineLogMode == LineLogMode::Verbose ? L"verbose" : L"compact") +
+                                   L"\r\nStandalone: " + std::wstring(config.standaloneMode ? L"true" : L"false") +
+                                   L"\r\nConnect on startup: " + std::wstring(config.connectOnStartup ? L"true" : L"false") +
+                                   L"\r\nStartup mode: " + ToWide(config.startupMode);
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppPathsLabel), pathSummary.c_str());
+  const std::wstring serialSummary = L"Port=" + ToWide(settings.serial.port) + L"; Baud=" + ToWide(std::to_string(settings.serial.baudRate)) +
+                                     L"; DataBits=" + ToWide(std::to_string(settings.serial.dataBits)) + L"; Parity=" +
+                                     std::wstring(1, static_cast<wchar_t>(settings.serial.parity)) + L"; StopBits=" + FormatStopBits(settings.serial.stopBits) +
+                                     L"; Timeout=" + FormatTimeout(settings.serial.timeoutSeconds) + L"; EOL=" + ToWide(settings.serial.eol);
+  SetWindowTextW(GetDlgItem(settingsHwnd, kSerialSummaryEdit), serialSummary.c_str());
+  const std::wstring outputSummary = L"Mode=" + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") +
+                                     L"; Trim=" + std::wstring(settings.parsing.trimWhitespace ? L"true" : L"false") +
+                                     L"; StripSuffix=" + std::wstring(settings.parsing.stripSuffix ? L"true" : L"false") +
+                                     L"; NormalizeSign=" + std::wstring(settings.parsing.normalizeSign ? L"true" : L"false") +
+                                     L"; PreservePlus=" + std::wstring(settings.parsing.preservePlusSign ? L"true" : L"false") +
+                                     L"; PreserveMinus=" + std::wstring(settings.parsing.preserveMinusSign ? L"true" : L"false") +
+                                     L"; PostAction=" + action + L"; Sequence=" + sequence;
+  SetWindowTextW(GetDlgItem(settingsHwnd, kOutputSummaryEdit), outputSummary.c_str());
+  SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_SETCHECK, config.darkMode ? BST_CHECKED : BST_UNCHECKED, 0);
+}
+
+bool ReadSerialSettingsFromControls(HWND settingsHwnd, AppSettings& settingsOut, std::string& error) {
+  settingsOut.serial.port = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialPortCombo)));
+  if (settingsOut.serial.port.empty()) {
+    error = "Invalid serial port: value is empty.";
+    return false;
+  }
+  if (!TryParseInt(GetControlText(GetDlgItem(settingsHwnd, kSerialBaudCombo)), settingsOut.serial.baudRate) || settingsOut.serial.baudRate <= 0) {
+    error = "Invalid baud rate. Enter a positive integer.";
+    return false;
+  }
+  if (!TryParseInt(GetControlText(GetDlgItem(settingsHwnd, kSerialDataBitsCombo)), settingsOut.serial.dataBits) ||
+      (settingsOut.serial.dataBits != 5 && settingsOut.serial.dataBits != 6 && settingsOut.serial.dataBits != 7 &&
+       settingsOut.serial.dataBits != 8)) {
+    error = "Invalid data bits. Use 5, 6, 7, or 8.";
+    return false;
+  }
+  const auto parityText = GetControlText(GetDlgItem(settingsHwnd, kSerialParityCombo));
+  if (parityText.empty()) {
+    error = "Invalid parity. Use N, E, or O.";
+    return false;
+  }
+  const wchar_t parity = static_cast<wchar_t>(std::towupper(parityText[0]));
+  if (parity != L'N' && parity != L'E' && parity != L'O') {
+    error = "Invalid parity. Use N, E, or O.";
+    return false;
+  }
+  settingsOut.serial.parity = static_cast<char>(parity);
+  std::wstring stopBitsText = GetControlText(GetDlgItem(settingsHwnd, kSerialStopBitsCombo));
+  if (stopBitsText == L"1.5") settingsOut.serial.stopBits = 1.5F;
+  else if (stopBitsText == L"2" || stopBitsText == L"2.0") settingsOut.serial.stopBits = 2.0F;
+  else if (stopBitsText == L"1" || stopBitsText == L"1.0") settingsOut.serial.stopBits = 1.0F;
+  else {
+    error = "Invalid stop bits. Use 1, 1.5, or 2.";
+    return false;
+  }
+  if (!TryParseFloat(GetControlText(GetDlgItem(settingsHwnd, kSerialTimeoutCombo)), settingsOut.serial.timeoutSeconds) ||
+      settingsOut.serial.timeoutSeconds <= 0.0F) {
+    error = "Invalid timeout. Enter a positive number (seconds).";
+    return false;
+  }
+  settingsOut.serial.eol = ParseEolFromUiText(GetControlText(GetDlgItem(settingsHwnd, kSerialEolCombo)));
+  return true;
 }
 
 void ApplySettingsFromControls(HWND settingsHwnd) {
   AppSettings nextSettings = g_ui.controller->Settings();
   AppConfig nextConfig = g_ui.controller->Config();
-
-  nextSettings.serial.port = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialPortCombo)));
-  nextSettings.serial.baudRate = std::atoi(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialBaudCombo))).c_str());
-  nextSettings.serial.dataBits = std::atoi(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialDataBitsCombo))).c_str());
-  const auto parityText = GetControlText(GetDlgItem(settingsHwnd, kSerialParityCombo));
-  nextSettings.serial.parity = parityText.empty() ? 'O' : static_cast<char>(parityText[0]);
-  const auto stopBitsText = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialStopBitsCombo)));
-  nextSettings.serial.stopBits = stopBitsText == "1.5" ? 1.5F : (stopBitsText == "2" ? 2.0F : 1.0F);
-  nextSettings.serial.timeoutSeconds =
-      static_cast<float>(std::atof(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialTimeoutCombo))).c_str()));
-
-  nextSettings.serial.eol = ParseEolFromUiText(GetControlText(GetDlgItem(settingsHwnd, kSerialEolCombo)));
+  std::string serialError;
+  if (!ReadSerialSettingsFromControls(settingsHwnd, nextSettings, serialError)) {
+    AddLogLine("ERROR: " + serialError);
+    MessageBoxW(settingsHwnd, ToWide(serialError).c_str(), L"ScaleLogger", MB_OK | MB_ICONERROR);
+    return;
+  }
 
   nextSettings.parsing.mode = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputModeCombo))) == "raw" ? ParseMode::Raw : ParseMode::Parsed;
   nextSettings.parsing.trimWhitespace = SendMessageW(GetDlgItem(settingsHwnd, kOutputTrimCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -513,6 +605,7 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
   const auto logModeText = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppLogModeCombo)));
   nextConfig.logMode = logModeText == "Single file" ? LogMode::SingleFile : (logModeText == "No file logging" ? LogMode::None : LogMode::PerSession);
   nextConfig.connectOnStartup = SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
+  nextConfig.darkMode = SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
 
   const auto startupPreset = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppStartupPresetCombo)));
   if (startupPreset == "Last used / defaults") {
@@ -524,6 +617,8 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
   }
 
   g_ui.controller->ApplySettings(nextSettings, nextConfig);
+  InvalidateRect(g_ui.mainWindow, nullptr, TRUE);
+  if (g_ui.settingsWindow) InvalidateRect(g_ui.settingsWindow, nullptr, TRUE);
 }
 
 void CreateTopRow(HWND hwnd) {
@@ -598,7 +693,7 @@ void SaveAsPresetFromControls(HWND settingsHwnd) {
   if (presetPath.parent_path() == presetsFolder) {
     g_ui.controller->SaveCurrentSettingsAsPreset(presetName);
   } else {
-    SavePreset(presetPath, g_ui.controller->Settings());
+    SavePreset(presetPath, g_ui.controller->Settings(), &g_ui.controller->Config());
     AddLogLine("Preset saved: " + presetName);
   }
   RefreshPresetDropdown();
@@ -606,16 +701,12 @@ void SaveAsPresetFromControls(HWND settingsHwnd) {
 
 void RunTestReceive(HWND settingsHwnd) {
   AppSettings testSettings = g_ui.controller->Settings();
-  testSettings.serial.port = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialPortCombo)));
-  testSettings.serial.baudRate = std::atoi(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialBaudCombo))).c_str());
-  testSettings.serial.dataBits = std::atoi(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialDataBitsCombo))).c_str());
-  const auto parityText = GetControlText(GetDlgItem(settingsHwnd, kSerialParityCombo));
-  testSettings.serial.parity = parityText.empty() ? 'O' : static_cast<char>(parityText[0]);
-  const auto stopBitsText = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialStopBitsCombo)));
-  testSettings.serial.stopBits = stopBitsText == "1.5" ? 1.5F : (stopBitsText == "2" ? 2.0F : 1.0F);
-  testSettings.serial.timeoutSeconds =
-      static_cast<float>(std::atof(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialTimeoutCombo))).c_str()));
-  testSettings.serial.eol = ParseEolFromUiText(GetControlText(GetDlgItem(settingsHwnd, kSerialEolCombo)));
+  std::string serialError;
+  if (!ReadSerialSettingsFromControls(settingsHwnd, testSettings, serialError)) {
+    AddLogLine("ERROR: " + serialError);
+    MessageBoxW(settingsHwnd, ToWide(serialError).c_str(), L"ScaleLogger", MB_OK | MB_ICONERROR);
+    return;
+  }
 
   std::string line;
   std::string error;
@@ -649,23 +740,28 @@ void LayoutSettingsWindow(HWND hwnd) {
     const int fieldWidth = width < 0 ? fullFieldWidth : width;
     MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, 24, TRUE);
   };
+  auto moveCombo = [&](int id, int y, int width = -1) {
+    const int fieldWidth = width < 0 ? fullFieldWidth : width;
+    MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, 260, TRUE);
+  };
   auto moveBrowse = [&](int id, int y) { MoveWindow(GetDlgItem(hwnd, id), fieldLeft + browsedFieldWidth + 5, y, browseWidth, 24, TRUE); };
 
   const int serialButtonsWidth = 96 + 100 + 9;
   const int serialFieldWidth = (std::max)(150, fullFieldWidth - serialButtonsWidth);
-  moveField(kSerialPortCombo, top, serialFieldWidth);
+  moveCombo(kSerialPortCombo, top, serialFieldWidth);
   MoveWindow(GetDlgItem(hwnd, kSerialScanBtn), fieldLeft + serialFieldWidth + 5, top, 96, 24, TRUE);
   MoveWindow(GetDlgItem(hwnd, kSerialTestBtn), fieldLeft + serialFieldWidth + 106, top, 100, 24, TRUE);
-  moveField(kSerialBaudCombo, top + 36);
-  moveField(kSerialDataBitsCombo, top + 72);
-  moveField(kSerialParityCombo, top + 108);
-  moveField(kSerialStopBitsCombo, top + 144);
-  moveField(kSerialTimeoutCombo, top + 180);
-  moveField(kSerialEolCombo, top + 216);
+  moveCombo(kSerialBaudCombo, top + 36);
+  moveCombo(kSerialDataBitsCombo, top + 72);
+  moveCombo(kSerialParityCombo, top + 108);
+  moveCombo(kSerialStopBitsCombo, top + 144);
+  moveCombo(kSerialTimeoutCombo, top + 180);
+  moveCombo(kSerialEolCombo, top + 216);
+  MoveWindow(GetDlgItem(hwnd, kSerialSummaryEdit), fieldLeft, top + 252, fullFieldWidth, 56, TRUE);
 
-  moveField(kOutputModeCombo, top + 8);
+  moveCombo(kOutputModeCombo, top + 8);
   moveField(kOutputSuffixEdit, top + 100);
-  moveField(kOutputActionCombo, top + 246);
+  moveCombo(kOutputActionCombo, top + 246);
   moveField(kOutputCustomSequenceEdit, top + 282);
   const int actionGap = 12;
   const int actionBtnWidth = (std::max)(120, (fullFieldWidth - actionGap * 2) / 3);
@@ -673,6 +769,7 @@ void LayoutSettingsWindow(HWND hwnd) {
   MoveWindow(GetDlgItem(hwnd, kOutputCaptureKeyBtn), fieldLeft, actionY, actionBtnWidth, 24, TRUE);
   MoveWindow(GetDlgItem(hwnd, kOutputRemoveLastBtn), fieldLeft + actionBtnWidth + actionGap, actionY, actionBtnWidth, 24, TRUE);
   MoveWindow(GetDlgItem(hwnd, kOutputClearBtn), fieldLeft + (actionBtnWidth + actionGap) * 2, actionY, actionBtnWidth, 24, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kOutputSummaryEdit), fieldLeft, top + 346, fullFieldWidth, 56, TRUE);
 
   moveField(kAppConfigFolderEdit, top, browsedFieldWidth);
   moveBrowse(kAppConfigBrowseBtn, top);
@@ -680,8 +777,8 @@ void LayoutSettingsWindow(HWND hwnd) {
   moveBrowse(kAppPresetsBrowseBtn, top + 36);
   moveField(kAppLogsFolderEdit, top + 72, browsedFieldWidth);
   moveBrowse(kAppLogsBrowseBtn, top + 72);
-  moveField(kAppLogModeCombo, top + 108);
-  moveField(kAppStartupPresetCombo, top + 174);
+  moveCombo(kAppLogModeCombo, top + 108);
+  moveCombo(kAppStartupPresetCombo, top + 174);
   const int pathsLabelAvailableWidth = static_cast<int>(rc.right) - (left + rightPadding + 10);
   const int pathsLabelWidth = (std::max)(280, pathsLabelAvailableWidth);
   MoveWindow(GetDlgItem(hwnd, kAppPathsLabel), left + 10, top + 210, pathsLabelWidth, 90, TRUE);
@@ -728,7 +825,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       };
 
       label(L"Port", top, g_ui.serialTabControls);
-      HWND port = combo(kSerialPortCombo, top, 430, g_ui.serialTabControls);
+      HWND port = editableCombo(kSerialPortCombo, top, 430, g_ui.serialTabControls);
       SendMessageW(port, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"COM6"));
       AddControl(g_ui.serialTabControls, CreateWindowW(L"BUTTON", L"Scan Ports", WS_CHILD | WS_VISIBLE, fieldLeft + 440, top, 96, 24, hwnd,
                                                        reinterpret_cast<HMENU>(kSerialScanBtn), nullptr, nullptr));
@@ -740,15 +837,15 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       for (const wchar_t* value : {L"1200", L"2400", L"4800", L"9600"}) SendMessageW(baud, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
 
       label(L"Data bits", top + 72, g_ui.serialTabControls);
-      HWND bits = combo(kSerialDataBitsCombo, top + 72, 645, g_ui.serialTabControls);
+      HWND bits = editableCombo(kSerialDataBitsCombo, top + 72, 645, g_ui.serialTabControls);
       for (const wchar_t* value : {L"7", L"8"}) SendMessageW(bits, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
 
       label(L"Parity", top + 108, g_ui.serialTabControls);
-      HWND parity = combo(kSerialParityCombo, top + 108, 645, g_ui.serialTabControls);
+      HWND parity = editableCombo(kSerialParityCombo, top + 108, 645, g_ui.serialTabControls);
       for (const wchar_t* value : {L"O", L"N", L"E"}) SendMessageW(parity, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
 
       label(L"Stop bits", top + 144, g_ui.serialTabControls);
-      HWND stopBits = combo(kSerialStopBitsCombo, top + 144, 645, g_ui.serialTabControls);
+      HWND stopBits = editableCombo(kSerialStopBitsCombo, top + 144, 645, g_ui.serialTabControls);
       for (const wchar_t* value : {L"1", L"1.5", L"2"}) SendMessageW(stopBits, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
 
       label(L"Timeout", top + 180, g_ui.serialTabControls);
@@ -756,8 +853,11 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       for (const wchar_t* value : {L"0.50", L"1.00", L"2.00"}) SendMessageW(timeout, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
 
       label(L"Line ending", top + 216, g_ui.serialTabControls);
-      HWND eol = combo(kSerialEolCombo, top + 216, 645, g_ui.serialTabControls);
+      HWND eol = editableCombo(kSerialEolCombo, top + 216, 645, g_ui.serialTabControls);
       for (const wchar_t* value : {L"\\r\\n", L"\\n", L"\\r"}) SendMessageW(eol, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
+      AddControl(g_ui.serialTabControls,
+                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
+                                 fieldLeft, top + 252, 645, 56, hwnd, reinterpret_cast<HMENU>(kSerialSummaryEdit), nullptr, nullptr));
 
       label(L"Mode", top + 10, g_ui.outputTabControls);
       HWND mode = combo(kOutputModeCombo, top + 8, 645, g_ui.outputTabControls);
@@ -795,6 +895,9 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       AddControl(g_ui.outputTabControls,
                  CreateWindowW(L"BUTTON", L"Clear", WS_CHILD | WS_VISIBLE, fieldLeft + 436, top + 314, 209, 24, hwnd,
                                reinterpret_cast<HMENU>(kOutputClearBtn), nullptr, nullptr));
+      AddControl(g_ui.outputTabControls,
+                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
+                                 fieldLeft, top + 346, 645, 56, hwnd, reinterpret_cast<HMENU>(kOutputSummaryEdit), nullptr, nullptr));
 
       label(L"Config path", top + 2, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
@@ -824,13 +927,16 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       AddControl(g_ui.applicationTabControls,
                  CreateWindowW(L"BUTTON", L"Connect on startup", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 8, top + 142, 220, 24, hwnd,
                                reinterpret_cast<HMENU>(kAppConnectStartupCheck), nullptr, nullptr));
+      AddControl(g_ui.applicationTabControls,
+                 CreateWindowW(L"BUTTON", L"Dark mode", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 250, top + 142, 120, 24, hwnd,
+                               reinterpret_cast<HMENU>(kAppDarkModeCheck), nullptr, nullptr));
       label(L"Startup preset", top + 176, g_ui.applicationTabControls);
       HWND startup = combo(kAppStartupPresetCombo, top + 174, 645, g_ui.applicationTabControls);
       SendMessageW(startup, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
 
       AddControl(g_ui.applicationTabControls,
-                 CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE, left + 10, top + 210, 760, 90, hwnd,
-                               reinterpret_cast<HMENU>(kAppPathsLabel), nullptr, nullptr));
+                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
+                                 left + 10, top + 210, 760, 90, hwnd, reinterpret_cast<HMENU>(kAppPathsLabel), nullptr, nullptr));
 
       CreateWindowW(L"BUTTON", L"Save Configuration", WS_CHILD | WS_VISIBLE, 20, 520, 140, 32, hwnd,
                     reinterpret_cast<HMENU>(kSettingsSaveConfig), nullptr, nullptr);
@@ -945,6 +1051,22 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_SIZE:
       LayoutSettingsWindow(hwnd);
       return 0;
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+    case WM_CTLCOLORBTN: {
+      const auto brush = HandleDarkCtlColor(reinterpret_cast<HDC>(wParam));
+      if (brush != 0) return brush;
+      break;
+    }
+    case WM_ERASEBKGND:
+      if (IsDarkModeEnabled()) {
+        RECT rcBk{};
+        GetClientRect(hwnd, &rcBk);
+        FillRect(reinterpret_cast<HDC>(wParam), &rcBk, g_darkBrush);
+        return 1;
+      }
+      break;
     case WM_GETMINMAXINFO: {
       auto* mm = reinterpret_cast<MINMAXINFO*>(lParam);
       mm->ptMinTrackSize.x = 700;
@@ -1022,8 +1144,16 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_ERASEBKGND: {
       RECT rc{};
       GetClientRect(hwnd, &rc);
-      FillRect(reinterpret_cast<HDC>(wParam), &rc, reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1));
+      FillRect(reinterpret_cast<HDC>(wParam), &rc, IsDarkModeEnabled() ? g_darkBrush : reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1));
       return 1;
+    }
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+    case WM_CTLCOLORBTN: {
+      const auto brush = HandleDarkCtlColor(reinterpret_cast<HDC>(wParam));
+      if (brush != 0) return brush;
+      break;
     }
     case WM_GETMINMAXINFO: {
       auto* mm = reinterpret_cast<MINMAXINFO*>(lParam);

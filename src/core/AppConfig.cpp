@@ -116,6 +116,7 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   cfg.configFileName = ExtractString(text, "config_file_name", cfg.configFileName);
   cfg.logFilePattern = ExtractString(text, "log_file_pattern", cfg.logFilePattern);
   cfg.connectOnStartup = ExtractBool(text, "connect_on_startup", cfg.connectOnStartup);
+  cfg.darkMode = ExtractBool(text, "dark_mode", cfg.darkMode);
   cfg.startupMode = ExtractString(text, "startup_mode", cfg.startupMode);
   cfg.startupPresetName = ExtractString(text, "startup_preset_name", "");
   cfg.lastUsedPresetName = ExtractString(text, "last_used_preset_name", "");
@@ -126,9 +127,12 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   return cfg;
 }
 
-void SaveConfig(const std::filesystem::path& path, const AppConfig& config) {
-  std::filesystem::create_directories(path.parent_path());
+bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, const AppSettings* settings) {
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+  if (ec) return false;
   std::ofstream ofs(path);
+  if (!ofs) return false;
   ofs << "{\n"
       << "  \"presets_folder\": \"" << config.presetsFolder << "\",\n"
       << "  \"logs_folder\": \"" << config.logsFolder << "\",\n"
@@ -139,11 +143,53 @@ void SaveConfig(const std::filesystem::path& path, const AppConfig& config) {
       << (config.logMode == LogMode::SingleFile ? "single_file" : (config.logMode == LogMode::None ? "none" : "per_session")) << "\",\n"
       << "  \"line_log_mode\": \"" << (config.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
       << "  \"connect_on_startup\": " << (config.connectOnStartup ? "true" : "false") << ",\n"
+      << "  \"dark_mode\": " << (config.darkMode ? "true" : "false") << ",\n"
       << "  \"startup_mode\": \"" << config.startupMode << "\",\n"
       << "  \"startup_preset_name\": \"" << config.startupPresetName << "\",\n"
       << "  \"last_used_preset_name\": \"" << config.lastUsedPresetName << "\",\n"
-      << "  \"standalone_mode\": " << (config.standaloneMode ? "true" : "false") << "\n"
-      << "}\n";
+      << "  \"standalone_mode\": " << (config.standaloneMode ? "true" : "false");
+  if (settings) {
+    const auto mode = settings->parsing.mode == ParseMode::Raw ? "raw" : "parsed";
+    const auto parity = std::string(1, settings->serial.parity);
+    std::string eol = "\\r\\n";
+    if (settings->serial.eol == "\n") eol = "\\n";
+    else if (settings->serial.eol == "\r") eol = "\\r";
+    std::string postAction = "down";
+    switch (settings->output.postAction) {
+      case PostAction::Right: postAction = "right"; break;
+      case PostAction::Enter: postAction = "enter"; break;
+      case PostAction::Tab: postAction = "tab"; break;
+      case PostAction::None: postAction = "none"; break;
+      case PostAction::CustomSequence: postAction = "custom_sequence"; break;
+      case PostAction::Down:
+      default: break;
+    }
+    ofs << ",\n"
+        << "  \"port\": \"" << settings->serial.port << "\",\n"
+        << "  \"baudrate\": " << settings->serial.baudRate << ",\n"
+        << "  \"databits\": " << settings->serial.dataBits << ",\n"
+        << "  \"parity\": \"" << parity << "\",\n"
+        << "  \"stopbits\": " << settings->serial.stopBits << ",\n"
+        << "  \"timeout\": " << settings->serial.timeoutSeconds << ",\n"
+        << "  \"eol\": \"" << eol << "\",\n"
+        << "  \"mode\": \"" << mode << "\",\n"
+        << "  \"trim_whitespace\": " << (settings->parsing.trimWhitespace ? "true" : "false") << ",\n"
+        << "  \"strip_suffix\": " << (settings->parsing.stripSuffix ? "true" : "false") << ",\n"
+        << "  \"suffix\": \"" << settings->parsing.suffix << "\",\n"
+        << "  \"normalize_sign\": " << (settings->parsing.normalizeSign ? "true" : "false") << ",\n"
+        << "  \"preserve_plus_sign\": " << (settings->parsing.preservePlusSign ? "true" : "false") << ",\n"
+        << "  \"preserve_minus_sign\": " << (settings->parsing.preserveMinusSign ? "true" : "false") << ",\n"
+        << "  \"numeric_validation\": " << (settings->parsing.numericValidation ? "true" : "false") << ",\n"
+        << "  \"post_action\": \"" << postAction << "\",\n"
+        << "  \"custom_sequence\": [";
+    for (std::size_t i = 0; i < settings->output.customSequence.size(); ++i) {
+      if (i) ofs << ", ";
+      ofs << '"' << settings->output.customSequence[i] << '"';
+    }
+    ofs << "]";
+  }
+  ofs << "\n}\n";
+  return static_cast<bool>(ofs);
 }
 
 AppSettings LoadPreset(const std::filesystem::path& path, bool* usedLegacyCompatibilityMapping) {
@@ -178,7 +224,7 @@ AppSettings LoadPreset(const std::filesystem::path& path, bool* usedLegacyCompat
   return s;
 }
 
-void SavePreset(const std::filesystem::path& path, const AppSettings& settings) {
+void SavePreset(const std::filesystem::path& path, const AppSettings& settings, const AppConfig* config) {
   std::filesystem::create_directories(path.parent_path());
   std::ofstream ofs(path);
   if (!ofs) return;
@@ -222,7 +268,25 @@ void SavePreset(const std::filesystem::path& path, const AppSettings& settings) 
     if (i) ofs << ", ";
     ofs << '"' << settings.output.customSequence[i] << '"';
   }
-  ofs << "]\n}\n";
+  ofs << "]";
+  if (config) {
+    ofs << ",\n"
+        << "  \"config_folder\": \"" << config->configFolder << "\",\n"
+        << "  \"config_file_name\": \"" << config->configFileName << "\",\n"
+        << "  \"presets_folder\": \"" << config->presetsFolder << "\",\n"
+        << "  \"logs_folder\": \"" << config->logsFolder << "\",\n"
+        << "  \"log_file_pattern\": \"" << config->logFilePattern << "\",\n"
+        << "  \"log_mode\": \""
+        << (config->logMode == LogMode::SingleFile ? "single_file" : (config->logMode == LogMode::None ? "none" : "per_session")) << "\",\n"
+        << "  \"line_log_mode\": \"" << (config->lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
+        << "  \"connect_on_startup\": " << (config->connectOnStartup ? "true" : "false") << ",\n"
+        << "  \"dark_mode\": " << (config->darkMode ? "true" : "false") << ",\n"
+        << "  \"startup_mode\": \"" << config->startupMode << "\",\n"
+        << "  \"startup_preset_name\": \"" << config->startupPresetName << "\",\n"
+        << "  \"last_used_preset_name\": \"" << config->lastUsedPresetName << "\",\n"
+        << "  \"standalone_mode\": " << (config->standaloneMode ? "true" : "false");
+  }
+  ofs << "\n}\n";
 }
 
 bool SerialSettingsRequireReconnect(const SerialSettings& lhs, const SerialSettings& rhs) {

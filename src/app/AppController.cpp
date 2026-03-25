@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <ctime>
 #include <filesystem>
+#include <cstdlib>
 #include <mutex>
 
 namespace scalelogger {
@@ -16,6 +17,20 @@ std::filesystem::path ResolvePresetPath(const std::filesystem::path& presetsDir,
 std::wstring Utf8ToWide(const std::string& text) {
   return std::wstring(text.begin(), text.end());
 }
+
+std::string ExpandPathPlaceholders(std::string value) {
+  auto expandOne = [&](const char* token, const char* envName) {
+    const std::string placeholder = token;
+    const auto pos = value.find(placeholder);
+    if (pos == std::string::npos) return;
+    const char* env = std::getenv(envName);
+    if (!env || !*env) return;
+    value.replace(pos, placeholder.size(), env);
+  };
+  expandOne("%LOCALAPPDATA%", "LOCALAPPDATA");
+  expandOne("%APPDATA%", "APPDATA");
+  return value;
+}
 } // namespace
 
 AppController::AppController(std::filesystem::path dataRoot)
@@ -23,15 +38,20 @@ AppController::AppController(std::filesystem::path dataRoot)
 
 void AppController::Initialize() {
   config_ = LoadConfig(configPath_);
+  settings_ = LoadPreset(configPath_);
   if (!std::filesystem::exists(configPath_)) {
     const auto defaultConfigPath = std::filesystem::current_path() / "default_config.json";
     if (std::filesystem::exists(defaultConfigPath)) {
       config_ = LoadConfig(defaultConfigPath);
+      settings_ = LoadPreset(defaultConfigPath);
       EmitLog("Loaded defaults from default_config.json");
     }
   }
 
   if (config_.configFolder.empty()) config_.configFolder = dataRoot_.string();
+  config_.configFolder = ExpandPathPlaceholders(config_.configFolder);
+  config_.presetsFolder = ExpandPathPlaceholders(config_.presetsFolder);
+  config_.logsFolder = ExpandPathPlaceholders(config_.logsFolder);
   configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
 
   if (!config_.standaloneMode) {
@@ -125,7 +145,8 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
       config_.presetsFolder != nextConfig.presetsFolder || config_.logsFolder != nextConfig.logsFolder ||
       config_.logFilePattern != nextConfig.logFilePattern ||
       config_.logMode != nextConfig.logMode || config_.lineLogMode != nextConfig.lineLogMode ||
-      config_.connectOnStartup != nextConfig.connectOnStartup || config_.startupMode != nextConfig.startupMode ||
+      config_.connectOnStartup != nextConfig.connectOnStartup || config_.darkMode != nextConfig.darkMode ||
+      config_.startupMode != nextConfig.startupMode ||
       config_.startupPresetName != nextConfig.startupPresetName || config_.lastUsedPresetName != nextConfig.lastUsedPresetName ||
       config_.standaloneMode != nextConfig.standaloneMode;
   if (!settingsChanged && !configChanged) return;
@@ -135,8 +156,8 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
   config_ = nextConfig;
   configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
   if (configChanged && !config_.standaloneMode) {
-    SaveConfig(configPath_, config_);
-    EmitLog("Configuration saved");
+    if (SaveConfig(configPath_, config_, &settings_)) EmitLog("Configuration saved");
+    else EmitLog("ERROR: Failed to save configuration: " + configPath_.string(), true);
   }
   if (settingsChanged) EmitLog("Settings applied");
   if (reconnect) {
@@ -150,9 +171,9 @@ bool AppController::SaveCurrentSettingsAsPreset(const std::string& presetName) {
   if (presetName.empty()) return false;
   const auto presetPath = dataRoot_ / config_.presetsFolder / (presetName + ".json");
   if (config_.standaloneMode) return false;
-  SavePreset(presetPath, settings_);
+  SavePreset(presetPath, settings_, &config_);
   config_.lastUsedPresetName = presetName;
-  SaveConfig(configPath_, config_);
+  if (!SaveConfig(configPath_, config_, &settings_)) EmitLog("ERROR: Failed to save configuration: " + configPath_.string(), true);
   EmitLog("Preset saved: " + presetName);
   return true;
 }

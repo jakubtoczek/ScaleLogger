@@ -51,6 +51,7 @@ struct AppConfig {
   LogMode logMode{LogMode::PerSession};
   LineLogMode lineLogMode{LineLogMode::Compact};
   bool connectOnStartup{true};
+  bool darkMode{false};
   std::string startupMode{"last_used_preset"};
   std::string startupPresetName{};
   std::string lastUsedPresetName{};

@@ -54,10 +54,16 @@ ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with
 - `log_file_pattern`
 - `log_mode` (`none`, `single_file`, `per_session`)
 - `connect_on_startup`
+- `dark_mode`
 - `startup_mode` and preset name fields
 - `standalone_mode`
 
-Preset JSON files store serial, parsing, and output behaviors, including `custom_sequence` arrays and `eol`.
+To keep schema consistency, config files also carry serial/parsing/output fields (same structure used by presets), including `custom_sequence` and `eol`.
+Presets may also include app-level fields (`config_folder`, `logs_folder`, `log_mode`, etc.); unknown/extra fields remain backward-compatible.
+
+Precedence rule:
+1. Config provides app-level defaults and serial/output defaults.
+2. When a startup/selected preset is loaded, preset values override runtime serial/output behavior.
 
 ## Python compatibility notes
 Preset loading is backward compatible with legacy Python-era keys:
@@ -78,6 +84,10 @@ Runtime file logging flushes each line and emits a one-time visible error if fil
 ## Standalone mode
 When `standalone_mode` is `true`, ScaleLogger avoids writing config, preset, and log files.  
 This mode is intended for restricted or temporary environments where no local file output is desired.
+
+## Portable default paths
+`default_config.json` uses `%LOCALAPPDATA%` placeholders for folder defaults.  
+At runtime these placeholders are expanded to the active user profile location so builds are portable across different Windows accounts.
 
 ## Release outputs
 Use `ScaleLogger_build_release.bat` to create a native release folder with:
