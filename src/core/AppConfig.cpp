@@ -126,6 +126,7 @@ void SaveConfig(const std::filesystem::path& path, const AppConfig& config) {
 
 AppSettings LoadPreset(const std::filesystem::path& path) {
   AppSettings s{};
+  if (!std::filesystem::exists(path)) return s;
   const auto text = ReadAll(path);
   s.serial.port = ExtractString(text, "port", s.serial.port);
   s.serial.baudRate = ExtractInt(text, "baudrate", s.serial.baudRate);
@@ -147,6 +148,52 @@ AppSettings LoadPreset(const std::filesystem::path& path) {
   s.output.postAction = ParsePostAction(ExtractString(text, "post_action", "down"));
   s.output.customSequence = ExtractStringArray(text, "custom_sequence");
   return s;
+}
+
+void SavePreset(const std::filesystem::path& path, const AppSettings& settings) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream ofs(path);
+  if (!ofs) return;
+
+  const auto mode = settings.parsing.mode == ParseMode::Raw ? "raw" : "parsed";
+  const auto parity = std::string(1, settings.serial.parity);
+  std::string eol = "\\r\\n";
+  if (settings.serial.eol == "\n") eol = "\\n";
+  else if (settings.serial.eol == "\r") eol = "\\r";
+
+  std::string postAction = "down";
+  switch (settings.output.postAction) {
+    case PostAction::Right: postAction = "right"; break;
+    case PostAction::Enter: postAction = "enter"; break;
+    case PostAction::Tab: postAction = "tab"; break;
+    case PostAction::None: postAction = "none"; break;
+    case PostAction::CustomSequence: postAction = "custom_sequence"; break;
+    case PostAction::Down:
+    default: break;
+  }
+
+  ofs << "{\n"
+      << "  \"port\": \"" << settings.serial.port << "\",\n"
+      << "  \"baudrate\": " << settings.serial.baudRate << ",\n"
+      << "  \"databits\": " << settings.serial.dataBits << ",\n"
+      << "  \"parity\": \"" << parity << "\",\n"
+      << "  \"stopbits\": " << settings.serial.stopBits << ",\n"
+      << "  \"timeout\": " << settings.serial.timeoutSeconds << ",\n"
+      << "  \"eol\": \"" << eol << "\",\n"
+      << "  \"mode\": \"" << mode << "\",\n"
+      << "  \"trim_whitespace\": " << (settings.parsing.trimWhitespace ? "true" : "false") << ",\n"
+      << "  \"strip_suffix\": " << (settings.parsing.stripSuffix ? "true" : "false") << ",\n"
+      << "  \"suffix\": \"" << settings.parsing.suffix << "\",\n"
+      << "  \"normalize_sign\": " << (settings.parsing.normalizeSign ? "true" : "false") << ",\n"
+      << "  \"drop_plus_sign\": " << (settings.parsing.dropPlusSign ? "true" : "false") << ",\n"
+      << "  \"numeric_validation\": " << (settings.parsing.numericValidation ? "true" : "false") << ",\n"
+      << "  \"post_action\": \"" << postAction << "\",\n"
+      << "  \"custom_sequence\": [";
+  for (std::size_t i = 0; i < settings.output.customSequence.size(); ++i) {
+    if (i) ofs << ", ";
+    ofs << '"' << settings.output.customSequence[i] << '"';
+  }
+  ofs << "]\n}\n";
 }
 
 bool SerialSettingsRequireReconnect(const SerialSettings& lhs, const SerialSettings& rhs) {

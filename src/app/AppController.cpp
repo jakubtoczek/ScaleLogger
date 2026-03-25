@@ -1,6 +1,10 @@
 #include "app/AppController.hpp"
 
+#include <chrono>
+#include <condition_variable>
+#include <ctime>
 #include <filesystem>
+#include <mutex>
 
 namespace scalelogger {
 namespace {
@@ -84,6 +88,64 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
   }
 }
 
+bool AppController::SaveCurrentSettingsAsPreset(const std::string& presetName) {
+  if (presetName.empty()) return false;
+  const auto presetPath = dataRoot_ / config_.presetsFolder / (presetName + ".json");
+  SavePreset(presetPath, settings_);
+  config_.lastUsedPresetName = presetName;
+  SaveConfig(configPath_, config_);
+  EmitLog("Preset saved: " + presetName);
+  return true;
+}
+
+std::vector<std::string> AppController::ScanPorts() const { return ScanComPorts(); }
+
+bool AppController::TestReceive(const SerialSettings& settings, std::string& receivedLine, std::string& errorMessage) {
+  SerialPort probe;
+  std::mutex mutex;
+  std::condition_variable cv;
+  bool done = false;
+  bool ok = false;
+
+  const bool connected = probe.Connect(
+      settings,
+      [&](const std::string& line) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!done) {
+          receivedLine = line;
+          ok = true;
+          done = true;
+          cv.notify_all();
+        }
+      },
+      [](const std::string&) {},
+      [&](const std::string& err) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!done) {
+          errorMessage = err;
+          done = true;
+          cv.notify_all();
+        }
+      });
+
+  if (!connected) {
+    if (errorMessage.empty()) errorMessage = "Unable to open serial port for test receive.";
+    return false;
+  }
+
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait_for(lock, std::chrono::seconds(3), [&]() { return done; });
+  }
+  probe.Disconnect();
+
+  if (!done) {
+    errorMessage = "No line received within 3 seconds.";
+    return false;
+  }
+  return ok;
+}
+
 void AppController::SetLogSink(LogSink sink) { logSink_ = std::move(sink); }
 
 void AppController::SetConnectionStateSink(ConnectionStateSink sink) { connectionStateSink_ = std::move(sink); }
@@ -91,6 +153,7 @@ void AppController::SetConnectionStateSink(ConnectionStateSink sink) { connectio
 bool AppController::IsConnected() const { return connected_ || serial_.IsConnected(); }
 
 void AppController::EmitLog(const std::string& message, bool isError) const {
+  WriteLogFileLine(message, isError);
   if (logSink_) {
     logSink_(message, isError);
   }
@@ -100,6 +163,54 @@ void AppController::EmitConnectionState(bool connected) const {
   if (connectionStateSink_) {
     connectionStateSink_(connected);
   }
+}
+
+void AppController::WriteLogFileLine(const std::string& message, bool isError) const {
+  if (config_.logMode == LogMode::None) return;
+
+  const auto path = ResolveLogPath();
+  if (path.empty()) return;
+
+  if (activeLogPath_ != path) {
+    if (logFile_.is_open()) logFile_.close();
+    std::filesystem::create_directories(path.parent_path());
+    logFile_.open(path, std::ios::out | std::ios::app);
+    activeLogPath_ = path;
+  }
+  if (!logFile_.is_open()) return;
+
+  const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+  std::tm tmNow{};
+#ifdef _WIN32
+  localtime_s(&tmNow, &now);
+#else
+  localtime_r(&now, &tmNow);
+#endif
+  char stamp[16];
+  std::strftime(stamp, sizeof(stamp), "%H:%M:%S", &tmNow);
+  logFile_ << "[" << stamp << "] " << (isError ? "ERROR: " : "") << message << "\n";
+  logFile_.flush();
+}
+
+std::filesystem::path AppController::ResolveLogPath() const {
+  const auto logsDir = dataRoot_ / config_.logsFolder;
+  if (config_.logMode == LogMode::SingleFile) return logsDir / "ScaleLogger.log";
+  if (config_.logMode == LogMode::PerSession) {
+    if (sessionLogName_.empty()) {
+      const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+      std::tm tmNow{};
+#ifdef _WIN32
+      localtime_s(&tmNow, &now);
+#else
+      localtime_r(&now, &tmNow);
+#endif
+      char buffer[64];
+      std::strftime(buffer, sizeof(buffer), "ScaleLogger_%Y%m%d_%H%M%S.log", &tmNow);
+      sessionLogName_ = buffer;
+    }
+    return logsDir / sessionLogName_;
+  }
+  return {};
 }
 
 } // namespace scalelogger

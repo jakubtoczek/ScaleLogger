@@ -18,6 +18,7 @@ $utcNow = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
 
 $gitBranch = "unknown"
 $gitCommit = "unknown"
+$gitUpstream = "unknown"
 try {
   $gitBranch = Get-FirstLine (& git rev-parse --abbrev-ref HEAD)
   if ($LASTEXITCODE -ne 0) { $gitBranch = "unknown" }
@@ -25,6 +26,10 @@ try {
 try {
   $gitCommit = Get-FirstLine (& git rev-parse HEAD)
   if ($LASTEXITCODE -ne 0) { $gitCommit = "unknown" }
+} catch {}
+try {
+  $gitUpstream = Get-FirstLine (& git rev-parse --abbrev-ref --symbolic-full-name "@{u}")
+  if ($LASTEXITCODE -ne 0) { $gitUpstream = "unknown" }
 } catch {}
 
 $cmakeVersion = "unknown"
@@ -48,9 +53,9 @@ $windowsSdkVersion = if ($env:WindowsSDKVersion) { $env:WindowsSDKVersion.TrimEn
 $checksumValue = "unknown"
 if (Test-Path $ChecksumFile) {
   try {
-    $matched = Select-String -Path $ChecksumFile -Pattern [regex]::Escape($OutputExe) | Select-Object -First 1
-    if ($matched) {
-      $parts = $matched.Line.Trim() -split '\s+'
+    $line = Get-FirstLine (Get-Content -Path $ChecksumFile)
+    if ($line -ne "unknown") {
+      $parts = $line.Trim() -split '\s+'
       if ($parts.Count -gt 0 -and $parts[0]) { $checksumValue = $parts[0] }
     }
   } catch {}
@@ -61,6 +66,7 @@ ScaleLogger Build Manifest
 App name: ScaleLogger
 Version: $Version
 Git branch: $gitBranch
+Git upstream branch: $gitUpstream
 Git commit SHA: $gitCommit
 Build date/time (UTC): $utcNow
 Build type: $BuildType

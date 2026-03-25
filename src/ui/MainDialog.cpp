@@ -5,9 +5,12 @@
 #include "ui/AboutDialog.hpp"
 
 #include <CommCtrl.h>
+#include <CommDlg.h>
 #include <Windows.h>
 
 #include <chrono>
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <iomanip>
@@ -164,7 +167,8 @@ void SetComboToText(HWND combo, const std::wstring& text) {
   if (idx != CB_ERR) {
     SendMessageW(combo, CB_SETCURSEL, idx, 0);
   } else {
-    SetWindowTextW(combo, text.c_str());
+    const LRESULT count = SendMessageW(combo, CB_GETCOUNT, 0, 0);
+    if (count > 0) SendMessageW(combo, CB_SETCURSEL, 0, 0);
   }
 }
 
@@ -173,6 +177,24 @@ std::wstring GetControlText(HWND control) {
   std::wstring text(length, L'\0');
   GetWindowTextW(control, text.data(), length + 1);
   return text;
+}
+
+std::wstring FormatStopBits(float value) {
+  if (value == 1.5F) return L"1.5";
+  if (value >= 1.9F) return L"2";
+  return L"1";
+}
+
+std::wstring FormatTimeout(float value) {
+  std::wstringstream ss;
+  ss << std::fixed << std::setprecision(2) << value;
+  return ss.str();
+}
+
+void UpdateCustomSequenceUiState(HWND settingsHwnd) {
+  const auto action = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputActionCombo)));
+  const bool enabled = action == "custom_sequence";
+  EnableWindow(GetDlgItem(settingsHwnd, kOutputCustomSequenceEdit), enabled ? TRUE : FALSE);
 }
 
 void ShowTab(std::size_t index) {
@@ -192,8 +214,8 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   SetComboToText(GetDlgItem(settingsHwnd, kSerialBaudCombo), ToWide(std::to_string(settings.serial.baudRate)));
   SetComboToText(GetDlgItem(settingsHwnd, kSerialDataBitsCombo), ToWide(std::to_string(settings.serial.dataBits)));
   SetComboToText(GetDlgItem(settingsHwnd, kSerialParityCombo), std::wstring(1, static_cast<wchar_t>(settings.serial.parity)));
-  SetComboToText(GetDlgItem(settingsHwnd, kSerialStopBitsCombo), ToWide(std::to_string(settings.serial.stopBits)));
-  SetComboToText(GetDlgItem(settingsHwnd, kSerialTimeoutCombo), ToWide(std::to_string(settings.serial.timeoutSeconds)));
+  SetComboToText(GetDlgItem(settingsHwnd, kSerialStopBitsCombo), FormatStopBits(settings.serial.stopBits));
+  SetComboToText(GetDlgItem(settingsHwnd, kSerialTimeoutCombo), FormatTimeout(settings.serial.timeoutSeconds));
 
   if (settings.serial.eol == "\r\n") SetComboToText(GetDlgItem(settingsHwnd, kSerialEolCombo), L"\\r\\n");
   else if (settings.serial.eol == "\n") SetComboToText(GetDlgItem(settingsHwnd, kSerialEolCombo), L"\\n");
@@ -225,6 +247,7 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
     sequence += ToWide(settings.output.customSequence[i]);
   }
   SetWindowTextW(GetDlgItem(settingsHwnd, kOutputCustomSequenceEdit), sequence.c_str());
+  UpdateCustomSequenceUiState(settingsHwnd);
 
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit), ToWide(config.presetsFolder).c_str());
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppLogsFolderEdit), ToWide(config.logsFolder).c_str());
@@ -233,7 +256,7 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   SetComboToText(GetDlgItem(settingsHwnd, kAppStartupPresetCombo), config.startupMode == "specific_preset" ? ToWide(config.startupPresetName) : L"Last used / defaults");
 
   const auto dataRoot = g_ui.controller->DataRoot();
-  const std::wstring pathSummary = L"Data: " + dataRoot.wstring() + L"\r\nConfig: " + (dataRoot / L"ScaleLogger.config.json").wstring() +
+  const std::wstring pathSummary = L"Config: " + (dataRoot / L"ScaleLogger.config.json").wstring() +
                                    L"\r\nPresets: " + (dataRoot / ToWide(config.presetsFolder)).wstring() +
                                    L"\r\nLogs: " + (dataRoot / ToWide(config.logsFolder)).wstring();
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppPathsLabel), pathSummary.c_str());
@@ -248,7 +271,8 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
   nextSettings.serial.dataBits = std::atoi(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialDataBitsCombo))).c_str());
   const auto parityText = GetControlText(GetDlgItem(settingsHwnd, kSerialParityCombo));
   nextSettings.serial.parity = parityText.empty() ? 'O' : static_cast<char>(parityText[0]);
-  nextSettings.serial.stopBits = static_cast<float>(std::atof(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialStopBitsCombo))).c_str()));
+  const auto stopBitsText = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialStopBitsCombo)));
+  nextSettings.serial.stopBits = stopBitsText == "1.5" ? 1.5F : (stopBitsText == "2" ? 2.0F : 1.0F);
   nextSettings.serial.timeoutSeconds =
       static_cast<float>(std::atof(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialTimeoutCombo))).c_str()));
 
@@ -272,6 +296,15 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
   else if (action == "none") nextSettings.output.postAction = PostAction::None;
   else if (action == "custom_sequence") nextSettings.output.postAction = PostAction::CustomSequence;
   else nextSettings.output.postAction = PostAction::Down;
+
+  nextSettings.output.customSequence.clear();
+  const auto customSequenceText = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputCustomSequenceEdit)));
+  std::stringstream sequenceStream(customSequenceText);
+  std::string token;
+  while (std::getline(sequenceStream, token, ',')) {
+    token.erase(std::remove_if(token.begin(), token.end(), [](unsigned char c) { return std::isspace(c) != 0; }), token.end());
+    if (!token.empty()) nextSettings.output.customSequence.push_back(token);
+  }
 
   nextConfig.presetsFolder = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit)));
   nextConfig.logsFolder = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppLogsFolderEdit)));
@@ -318,6 +351,70 @@ void CreateLogPane(HWND hwnd) {
 }
 
 void AddControl(std::vector<HWND>& tabControls, HWND control) { tabControls.push_back(control); }
+
+void RefreshPortList(HWND settingsHwnd) {
+  auto ports = g_ui.controller->ScanPorts();
+  if (ports.empty()) ports.push_back(g_ui.controller->Settings().serial.port);
+  std::sort(ports.begin(), ports.end());
+  ports.erase(std::unique(ports.begin(), ports.end()), ports.end());
+
+  std::vector<std::wstring> values;
+  values.reserve(ports.size());
+  for (const auto& port : ports) values.push_back(ToWide(port));
+  PopulateComboWithValues(GetDlgItem(settingsHwnd, kSerialPortCombo), values);
+  SetComboToText(GetDlgItem(settingsHwnd, kSerialPortCombo), ToWide(g_ui.controller->Settings().serial.port));
+  AddLogLine("Port list refreshed.");
+}
+
+void SaveAsPresetFromControls(HWND settingsHwnd) {
+  ApplySettingsFromControls(settingsHwnd);
+
+  const auto presetsFolder = g_ui.controller->DataRoot() / g_ui.controller->Config().presetsFolder;
+  std::filesystem::create_directories(presetsFolder);
+  std::wstring initialPath = (presetsFolder / L"new_preset.json").wstring();
+  std::vector<wchar_t> pathBuffer(initialPath.begin(), initialPath.end());
+  pathBuffer.resize(MAX_PATH, L'\0');
+
+  OPENFILENAMEW ofn{};
+  ofn.lStructSize = sizeof(ofn);
+  ofn.hwndOwner = settingsHwnd;
+  ofn.lpstrFilter = L"Preset JSON (*.json)\0*.json\0\0";
+  ofn.lpstrFile = pathBuffer.data();
+  ofn.nMaxFile = static_cast<DWORD>(pathBuffer.size());
+  ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+  ofn.lpstrDefExt = L"json";
+
+  if (!GetSaveFileNameW(&ofn)) return;
+
+  std::filesystem::path presetPath(ofn.lpstrFile);
+  SavePreset(presetPath, g_ui.controller->Settings());
+  AddLogLine("Preset saved to " + ToUtf8(presetPath.filename().wstring()));
+}
+
+void RunTestReceive(HWND settingsHwnd) {
+  AppSettings testSettings = g_ui.controller->Settings();
+  testSettings.serial.port = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialPortCombo)));
+  testSettings.serial.baudRate = std::atoi(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialBaudCombo))).c_str());
+  testSettings.serial.dataBits = std::atoi(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialDataBitsCombo))).c_str());
+  const auto parityText = GetControlText(GetDlgItem(settingsHwnd, kSerialParityCombo));
+  testSettings.serial.parity = parityText.empty() ? 'O' : static_cast<char>(parityText[0]);
+  const auto stopBitsText = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialStopBitsCombo)));
+  testSettings.serial.stopBits = stopBitsText == "1.5" ? 1.5F : (stopBitsText == "2" ? 2.0F : 1.0F);
+  testSettings.serial.timeoutSeconds =
+      static_cast<float>(std::atof(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialTimeoutCombo))).c_str()));
+  const auto eolDisplay = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialEolCombo)));
+  if (eolDisplay == "\\r\\n") testSettings.serial.eol = "\r\n";
+  else if (eolDisplay == "\\n") testSettings.serial.eol = "\n";
+  else if (eolDisplay == "\\r") testSettings.serial.eol = "\r";
+
+  std::string line;
+  std::string error;
+  if (g_ui.controller->TestReceive(testSettings.serial, line, error)) {
+    AddLogLine("Test Receive line: " + line);
+  } else {
+    AddLogLine("Test Receive failed: " + error);
+  }
+}
 
 LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   switch (msg) {
@@ -441,6 +538,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
       ShowTab(0);
       LoadSettingsIntoControls(hwnd);
+      RefreshPortList(hwnd);
       return 0;
     }
     case WM_NOTIFY: {
@@ -453,19 +551,27 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_COMMAND: {
       switch (LOWORD(wParam)) {
         case kSettingsApply:
-        case kSettingsSaveConfig:
-        case kSettingsSavePreset:
           ApplySettingsFromControls(hwnd);
-          if (LOWORD(wParam) != kSettingsApply) AddLogLine("Preset/config action routed through Apply in this native pass");
+          AddLogLine("Settings applied.");
+          return 0;
+        case kSettingsSaveConfig:
+          ApplySettingsFromControls(hwnd);
+          AddLogLine("Configuration saved.");
+          return 0;
+        case kSettingsSavePreset:
+          SaveAsPresetFromControls(hwnd);
           return 0;
         case kSettingsCancel:
           DestroyWindow(hwnd);
           return 0;
         case kSerialScanBtn:
-          AddLogLine("Port scan requested (using current native serial backend)");
+          RefreshPortList(hwnd);
           return 0;
         case kSerialTestBtn:
-          AddLogLine("Test Receive requested");
+          RunTestReceive(hwnd);
+          return 0;
+        case kOutputActionCombo:
+          if (HIWORD(wParam) == CBN_SELCHANGE) UpdateCustomSequenceUiState(hwnd);
           return 0;
         default:
           return 0;
@@ -580,8 +686,10 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   INITCOMMONCONTROLSEX icc{sizeof(INITCOMMONCONTROLSEX), ICC_TAB_CLASSES};
   InitCommonControlsEx(&icc);
 
-  g_ui.controller = std::make_unique<AppController>(
-      std::filesystem::path(std::getenv("LOCALAPPDATA") ? std::getenv("LOCALAPPDATA") : ".") / "ScaleLogger");
+  const char* userProfile = std::getenv("USERPROFILE");
+  std::filesystem::path dataRoot = userProfile ? std::filesystem::path(userProfile) / "ScaleLogger"
+                                               : std::filesystem::path("C:\\Users\\toczekj\\ScaleLogger");
+  g_ui.controller = std::make_unique<AppController>(dataRoot);
 
   g_ui.controller->SetLogSink([](const std::string& message, bool isError) {
     AddLogLine((isError ? "ERROR: " : "") + message);

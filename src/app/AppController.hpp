@@ -3,10 +3,12 @@
 #include "core/AppConfig.hpp"
 #include "core/ValueParser.hpp"
 #include "input/InputInjector.hpp"
+#include "serial/PortScanner.hpp"
 #include "serial/SerialPort.hpp"
 
 #include <filesystem>
 #include <functional>
+#include <fstream>
 #include <memory>
 #include <string>
 
@@ -22,6 +24,9 @@ class AppController {
   void Connect();
   void Disconnect();
   void ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig);
+  bool SaveCurrentSettingsAsPreset(const std::string& presetName);
+  std::vector<std::string> ScanPorts() const;
+  bool TestReceive(const SerialSettings& settings, std::string& receivedLine, std::string& errorMessage);
 
   void SetLogSink(LogSink sink);
   void SetConnectionStateSink(ConnectionStateSink sink);
@@ -34,6 +39,8 @@ class AppController {
  private:
   void EmitLog(const std::string& message, bool isError = false) const;
   void EmitConnectionState(bool connected) const;
+  void WriteLogFileLine(const std::string& message, bool isError) const;
+  std::filesystem::path ResolveLogPath() const;
 
   std::filesystem::path dataRoot_;
   std::filesystem::path configPath_;
@@ -45,6 +52,9 @@ class AppController {
   LogSink logSink_{};
   ConnectionStateSink connectionStateSink_{};
   bool connected_{false};
+  mutable std::string sessionLogName_{};
+  mutable std::ofstream logFile_{};
+  mutable std::filesystem::path activeLogPath_{};
 };
 
 } // namespace scalelogger
