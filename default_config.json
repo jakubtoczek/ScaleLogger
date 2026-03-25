@@ -1,0 +1,14 @@
+{
+  "config_folder": "C:\\Users\\toczekj\\ScaleLogger",
+  "config_file_name": "ScaleLogger.config.json",
+  "presets_folder": "C:\\Users\\toczekj\\ScaleLogger\\presets",
+  "logs_folder": "C:\\Users\\toczekj\\ScaleLogger\\logs",
+  "log_file_pattern": "ScaleLogger_%Y%m%d_%H%M%S.log",
+  "log_mode": "per_session",
+  "line_log_mode": "compact",
+  "connect_on_startup": true,
+  "startup_mode": "last_used_preset",
+  "startup_preset_name": "",
+  "last_used_preset_name": "",
+  "standalone_mode": false
+}

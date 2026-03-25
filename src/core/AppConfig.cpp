@@ -100,10 +100,14 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   const auto text = ReadAll(path);
   cfg.presetsFolder = ExtractString(text, "presets_folder", cfg.presetsFolder);
   cfg.logsFolder = ExtractString(text, "logs_folder", cfg.logsFolder);
+  cfg.configFolder = ExtractString(text, "config_folder", cfg.configFolder);
+  cfg.configFileName = ExtractString(text, "config_file_name", cfg.configFileName);
+  cfg.logFilePattern = ExtractString(text, "log_file_pattern", cfg.logFilePattern);
   cfg.connectOnStartup = ExtractBool(text, "connect_on_startup", cfg.connectOnStartup);
   cfg.startupMode = ExtractString(text, "startup_mode", cfg.startupMode);
   cfg.startupPresetName = ExtractString(text, "startup_preset_name", "");
   cfg.lastUsedPresetName = ExtractString(text, "last_used_preset_name", "");
+  cfg.standaloneMode = ExtractBool(text, "standalone_mode", cfg.standaloneMode);
   cfg.logMode = ExtractString(text, "log_mode", "per_session") == "single_file" ? LogMode::SingleFile : LogMode::PerSession;
   cfg.lineLogMode = ExtractString(text, "line_log_mode", "compact") == "verbose" ? LineLogMode::Verbose : LineLogMode::Compact;
   return cfg;
@@ -115,12 +119,16 @@ void SaveConfig(const std::filesystem::path& path, const AppConfig& config) {
   ofs << "{\n"
       << "  \"presets_folder\": \"" << config.presetsFolder << "\",\n"
       << "  \"logs_folder\": \"" << config.logsFolder << "\",\n"
+      << "  \"config_folder\": \"" << config.configFolder << "\",\n"
+      << "  \"config_file_name\": \"" << config.configFileName << "\",\n"
+      << "  \"log_file_pattern\": \"" << config.logFilePattern << "\",\n"
       << "  \"log_mode\": \"" << (config.logMode == LogMode::SingleFile ? "single_file" : "per_session") << "\",\n"
       << "  \"line_log_mode\": \"" << (config.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
       << "  \"connect_on_startup\": " << (config.connectOnStartup ? "true" : "false") << ",\n"
       << "  \"startup_mode\": \"" << config.startupMode << "\",\n"
       << "  \"startup_preset_name\": \"" << config.startupPresetName << "\",\n"
-      << "  \"last_used_preset_name\": \"" << config.lastUsedPresetName << "\"\n"
+      << "  \"last_used_preset_name\": \"" << config.lastUsedPresetName << "\",\n"
+      << "  \"standalone_mode\": " << (config.standaloneMode ? "true" : "false") << "\n"
       << "}\n";
 }
 

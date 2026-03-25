@@ -19,6 +19,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #pragma comment(lib, "Comctl32.lib")
@@ -71,6 +72,9 @@ constexpr int kAppStartupPresetCombo = 504;
 constexpr int kAppPathsLabel = 505;
 constexpr int kAppPresetsBrowseBtn = 506;
 constexpr int kAppLogsBrowseBtn = 507;
+constexpr int kAppConfigFolderEdit = 508;
+constexpr int kAppConfigBrowseBtn = 509;
+constexpr int kAppConfigFileNameEdit = 510;
 constexpr wchar_t kSettingsWindowClassName[] = L"ScaleLoggerSettingsWindow";
 
 struct UiState {
@@ -89,6 +93,7 @@ struct UiState {
   HWND settingsTab{nullptr};
   bool settingsClassRegistered{false};
   bool captureCustomSequenceKey{false};
+  std::unordered_map<std::string, std::filesystem::path> presetMap{};
   std::vector<HWND> serialTabControls{};
   std::vector<HWND> outputTabControls{};
   std::vector<HWND> applicationTabControls{};
@@ -164,6 +169,7 @@ void LayoutMainControls(HWND hwnd) {
   const bool hideRefresh = rc.right < 700;
   const bool hideActions = rc.right < 640;
   const bool hideStatus = rc.right < 560;
+  ShowWindow(g_ui.presetsLabel, hidePresets ? SW_HIDE : SW_SHOW);
   ShowWindow(g_ui.presetsCombo, hidePresets ? SW_HIDE : SW_SHOW);
   ShowWindow(g_ui.refreshButton, hideRefresh ? SW_HIDE : SW_SHOW);
   ShowWindow(g_ui.connectButton, hideActions ? SW_HIDE : SW_SHOW);
@@ -230,11 +236,21 @@ void UpdateParseControlsUiState(HWND settingsHwnd) {
   }
 }
 
-bool BrowseForFolder(HWND owner, std::wstring& output) {
+int CALLBACK BrowseCallbackProc(HWND hwnd, UINT msg, LPARAM, LPARAM lpData) {
+  if (msg == BFFM_INITIALIZED && lpData != 0) {
+    const auto* initial = reinterpret_cast<const wchar_t*>(lpData);
+    SendMessageW(hwnd, BFFM_SETSELECTIONW, TRUE, reinterpret_cast<LPARAM>(initial));
+  }
+  return 0;
+}
+
+bool BrowseForFolder(HWND owner, std::wstring& output, const std::wstring& initialPath) {
   BROWSEINFOW bi{};
   bi.hwndOwner = owner;
   bi.lpszTitle = L"Select folder";
   bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+  bi.lpfn = BrowseCallbackProc;
+  bi.lParam = reinterpret_cast<LPARAM>(initialPath.c_str());
   PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
   if (!pidl) return false;
   wchar_t path[MAX_PATH]{};
@@ -245,36 +261,48 @@ bool BrowseForFolder(HWND owner, std::wstring& output) {
   return true;
 }
 
-std::vector<std::string> ScanPresetNames() {
-  std::vector<std::string> names;
-  const auto presetDir = g_ui.controller->DataRoot() / g_ui.controller->Config().presetsFolder;
-  if (!std::filesystem::exists(presetDir)) return names;
-  for (const auto& entry : std::filesystem::directory_iterator(presetDir)) {
-    if (!entry.is_regular_file()) continue;
-    if (entry.path().extension() != ".json") continue;
-    names.push_back(entry.path().stem().string());
-  }
-  std::sort(names.begin(), names.end());
-  return names;
-}
-
 void RefreshPresetDropdown(bool keepSelection = true) {
   std::wstring previous = keepSelection ? GetControlText(g_ui.presetsCombo) : L"";
   SendMessageW(g_ui.presetsCombo, CB_RESETCONTENT, 0, 0);
   SendMessageW(g_ui.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
-  auto names = ScanPresetNames();
-  for (const auto& name : names) SendMessageW(g_ui.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ToWide(name).c_str()));
+  g_ui.presetMap.clear();
+
+  std::size_t count = 0;
+  const auto presetDir = std::filesystem::path(g_ui.controller->Config().presetsFolder);
+  if (std::filesystem::exists(presetDir)) {
+    for (const auto& entry : std::filesystem::directory_iterator(presetDir)) {
+      if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
+      const auto name = entry.path().stem().string();
+      g_ui.presetMap[name] = entry.path();
+      SendMessageW(g_ui.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ToWide(name).c_str()));
+      ++count;
+    }
+  }
+  if (count == 0) {
+    const auto builtInDir = std::filesystem::current_path() / "presets_default";
+    if (std::filesystem::exists(builtInDir)) {
+      for (const auto& entry : std::filesystem::directory_iterator(builtInDir)) {
+        if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
+        const auto name = entry.path().stem().string() + " (built-in)";
+        g_ui.presetMap[name] = entry.path();
+        SendMessageW(g_ui.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ToWide(name).c_str()));
+        ++count;
+      }
+    }
+  }
   if (!previous.empty()) SetComboToText(g_ui.presetsCombo, previous);
   else SendMessageW(g_ui.presetsCombo, CB_SETCURSEL, 0, 0);
-  AddLogLine("Preset list refreshed (" + std::to_string(names.size()) + " presets).");
+  AddLogLine("Preset list refreshed (" + std::to_string(count) + " presets).");
 }
 
 void ApplySelectedPreset() {
   const auto selected = ToUtf8(GetControlText(g_ui.presetsCombo));
   if (selected.empty() || selected == "Last used / defaults") return;
-  const auto presetPath = g_ui.controller->DataRoot() / g_ui.controller->Config().presetsFolder / (selected + ".json");
+  const auto it = g_ui.presetMap.find(selected);
+  if (it == g_ui.presetMap.end()) return;
+  const auto presetPath = it->second;
   AppConfig nextConfig = g_ui.controller->Config();
-  nextConfig.lastUsedPresetName = selected;
+  nextConfig.lastUsedPresetName = presetPath.stem().string();
   g_ui.controller->ApplySettings(LoadPreset(presetPath), nextConfig);
   if (g_ui.settingsWindow) LoadSettingsIntoControls(g_ui.settingsWindow);
   AddLogLine("Loaded preset: " + selected);
@@ -334,20 +362,23 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   UpdateCustomSequenceUiState(settingsHwnd);
   UpdateParseControlsUiState(settingsHwnd);
 
-  SetWindowTextW(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit), (g_ui.controller->DataRoot() / ToWide(config.presetsFolder)).wstring().c_str());
-  SetWindowTextW(GetDlgItem(settingsHwnd, kAppLogsFolderEdit), (g_ui.controller->DataRoot() / ToWide(config.logsFolder)).wstring().c_str());
-  SetComboToText(GetDlgItem(settingsHwnd, kAppLogModeCombo), config.logMode == LogMode::SingleFile ? L"Single file" : L"New file per session");
+  SetWindowTextW(GetDlgItem(settingsHwnd, kAppConfigFolderEdit), ToWide(config.configFolder).c_str());
+  SetWindowTextW(GetDlgItem(settingsHwnd, kAppConfigFileNameEdit), ToWide(config.configFileName).c_str());
+  SetWindowTextW(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit), ToWide(config.presetsFolder).c_str());
+  SetWindowTextW(GetDlgItem(settingsHwnd, kAppLogsFolderEdit), ToWide(config.logsFolder).c_str());
+  const std::wstring logMode = config.logMode == LogMode::None ? L"No file logging"
+                                : (config.logMode == LogMode::SingleFile ? L"Single file" : L"New file per session");
+  SetComboToText(GetDlgItem(settingsHwnd, kAppLogModeCombo), logMode);
   SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_SETCHECK, config.connectOnStartup ? BST_CHECKED : BST_UNCHECKED, 0);
   auto startupCombo = GetDlgItem(settingsHwnd, kAppStartupPresetCombo);
   SendMessageW(startupCombo, CB_RESETCONTENT, 0, 0);
   SendMessageW(startupCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
-  for (const auto& name : ScanPresetNames()) SendMessageW(startupCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ToWide(name).c_str()));
+  for (const auto& entry : g_ui.presetMap) SendMessageW(startupCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ToWide(entry.first).c_str()));
   SetComboToText(startupCombo, config.startupMode == "specific_preset" ? ToWide(config.startupPresetName) : L"Last used / defaults");
 
-  const auto dataRoot = g_ui.controller->DataRoot();
-  const std::wstring pathSummary = L"Config: " + (dataRoot / L"ScaleLogger.config.json").wstring() +
-                                   L"\r\nPresets: " + (dataRoot / ToWide(config.presetsFolder)).wstring() +
-                                   L"\r\nLogs: " + (dataRoot / ToWide(config.logsFolder)).wstring();
+  const std::wstring pathSummary = L"Config: " + (std::filesystem::path(config.configFolder) / ToWide(config.configFileName)).wstring() +
+                                   L"\r\nPresets: " + std::filesystem::path(config.presetsFolder).wstring() +
+                                   L"\r\nLogs: " + std::filesystem::path(config.logsFolder).wstring();
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppPathsLabel), pathSummary.c_str());
 }
 
@@ -396,9 +427,12 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
     if (!token.empty()) nextSettings.output.customSequence.push_back(token);
   }
 
+  nextConfig.configFolder = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppConfigFolderEdit)));
+  nextConfig.configFileName = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppConfigFileNameEdit)));
   nextConfig.presetsFolder = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit)));
   nextConfig.logsFolder = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppLogsFolderEdit)));
-  nextConfig.logMode = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppLogModeCombo))) == "Single file" ? LogMode::SingleFile : LogMode::PerSession;
+  const auto logModeText = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppLogModeCombo)));
+  nextConfig.logMode = logModeText == "Single file" ? LogMode::SingleFile : (logModeText == "No file logging" ? LogMode::None : LogMode::PerSession);
   nextConfig.connectOnStartup = SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
 
   const auto startupPreset = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppStartupPresetCombo)));
@@ -620,33 +654,45 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                  CreateWindowW(L"BUTTON", L"Clear", WS_CHILD | WS_VISIBLE, fieldLeft + 436, top + 314, 209, 24, hwnd,
                                reinterpret_cast<HMENU>(kOutputClearBtn), nullptr, nullptr));
 
-      label(L"Presets folder", top + 2, g_ui.applicationTabControls);
+      label(L"Config folder", top + 2, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top, 645, 24, hwnd,
-                                 reinterpret_cast<HMENU>(kAppPresetsFolderEdit), nullptr, nullptr));
+                                 reinterpret_cast<HMENU>(kAppConfigFolderEdit), nullptr, nullptr));
       AddControl(g_ui.applicationTabControls,
                  CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top, 70, 24, hwnd,
-                               reinterpret_cast<HMENU>(kAppPresetsBrowseBtn), nullptr, nullptr));
-      label(L"Logs folder", top + 38, g_ui.applicationTabControls);
+                               reinterpret_cast<HMENU>(kAppConfigBrowseBtn), nullptr, nullptr));
+      label(L"Config file name", top + 38, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 36, 645, 24, hwnd,
+                                 reinterpret_cast<HMENU>(kAppConfigFileNameEdit), nullptr, nullptr));
+
+      label(L"Presets folder", top + 74, g_ui.applicationTabControls);
+      AddControl(g_ui.applicationTabControls,
+                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 72, 645, 24, hwnd,
+                                 reinterpret_cast<HMENU>(kAppPresetsFolderEdit), nullptr, nullptr));
+      AddControl(g_ui.applicationTabControls,
+                 CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top + 72, 70, 24, hwnd,
+                               reinterpret_cast<HMENU>(kAppPresetsBrowseBtn), nullptr, nullptr));
+      label(L"Logs folder", top + 110, g_ui.applicationTabControls);
+      AddControl(g_ui.applicationTabControls,
+                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 108, 645, 24, hwnd,
                                  reinterpret_cast<HMENU>(kAppLogsFolderEdit), nullptr, nullptr));
       AddControl(g_ui.applicationTabControls,
-                 CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top + 36, 70, 24, hwnd,
+                 CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top + 108, 70, 24, hwnd,
                                reinterpret_cast<HMENU>(kAppLogsBrowseBtn), nullptr, nullptr));
-      label(L"Log mode", top + 74, g_ui.applicationTabControls);
-      HWND logMode = combo(kAppLogModeCombo, top + 72, 645, g_ui.applicationTabControls);
-      for (const wchar_t* value : {L"New file per session", L"Single file"}) SendMessageW(logMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
+      label(L"Log mode", top + 146, g_ui.applicationTabControls);
+      HWND logMode = combo(kAppLogModeCombo, top + 144, 645, g_ui.applicationTabControls);
+      for (const wchar_t* value : {L"No file logging", L"New file per session", L"Single file"}) SendMessageW(logMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
 
       AddControl(g_ui.applicationTabControls,
-                 CreateWindowW(L"BUTTON", L"Connect on startup", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 8, top + 106, 220, 24, hwnd,
+                 CreateWindowW(L"BUTTON", L"Connect on startup", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 8, top + 178, 220, 24, hwnd,
                                reinterpret_cast<HMENU>(kAppConnectStartupCheck), nullptr, nullptr));
-      label(L"Startup preset", top + 140, g_ui.applicationTabControls);
-      HWND startup = combo(kAppStartupPresetCombo, top + 138, 645, g_ui.applicationTabControls);
+      label(L"Startup preset", top + 212, g_ui.applicationTabControls);
+      HWND startup = combo(kAppStartupPresetCombo, top + 210, 645, g_ui.applicationTabControls);
       SendMessageW(startup, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
 
       AddControl(g_ui.applicationTabControls,
-                 CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE, left + 10, top + 176, 760, 90, hwnd,
+                 CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE, left + 10, top + 246, 760, 90, hwnd,
                                reinterpret_cast<HMENU>(kAppPathsLabel), nullptr, nullptr));
 
       CreateWindowW(L"BUTTON", L"Save Configuration", WS_CHILD | WS_VISIBLE, 20, 520, 140, 32, hwnd,
@@ -713,12 +759,23 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
           return 0;
         case kAppPresetsBrowseBtn: {
           std::wstring selected;
-          if (BrowseForFolder(hwnd, selected)) SetWindowTextW(GetDlgItem(hwnd, kAppPresetsFolderEdit), selected.c_str());
+          auto current = GetControlText(GetDlgItem(hwnd, kAppPresetsFolderEdit));
+          if (current.empty() || !std::filesystem::exists(current)) current = ToWide(g_ui.controller->Config().presetsFolder);
+          if (BrowseForFolder(hwnd, selected, current)) SetWindowTextW(GetDlgItem(hwnd, kAppPresetsFolderEdit), selected.c_str());
           return 0;
         }
         case kAppLogsBrowseBtn: {
           std::wstring selected;
-          if (BrowseForFolder(hwnd, selected)) SetWindowTextW(GetDlgItem(hwnd, kAppLogsFolderEdit), selected.c_str());
+          auto current = GetControlText(GetDlgItem(hwnd, kAppLogsFolderEdit));
+          if (current.empty() || !std::filesystem::exists(current)) current = ToWide(g_ui.controller->Config().logsFolder);
+          if (BrowseForFolder(hwnd, selected, current)) SetWindowTextW(GetDlgItem(hwnd, kAppLogsFolderEdit), selected.c_str());
+          return 0;
+        }
+        case kAppConfigBrowseBtn: {
+          std::wstring selected;
+          auto current = GetControlText(GetDlgItem(hwnd, kAppConfigFolderEdit));
+          if (current.empty() || !std::filesystem::exists(current)) current = ToWide(g_ui.controller->Config().configFolder);
+          if (BrowseForFolder(hwnd, selected, current)) SetWindowTextW(GetDlgItem(hwnd, kAppConfigFolderEdit), selected.c_str());
           return 0;
         }
         default:

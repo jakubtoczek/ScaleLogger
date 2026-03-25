@@ -55,6 +55,7 @@ class AppController {
   mutable std::string sessionLogName_{};
   mutable std::ofstream logFile_{};
   mutable std::filesystem::path activeLogPath_{};
+  mutable bool logWriteErrorNotified_{false};
 };
 
 } // namespace scalelogger

@@ -60,6 +60,7 @@ if (Test-Path $ChecksumFile) {
     }
   } catch {}
 }
+$defaultConfigSource = if (Test-Path "default_config.json") { "file: default_config.json" } else { "embedded defaults" }
 
 @"
 ScaleLogger Build Manifest
@@ -79,4 +80,5 @@ Configure preset: $ConfigurePreset
 Build preset: $BuildPreset
 Output executable name: $OutputExe
 SHA256 checksum: $checksumValue
+Default config source: $defaultConfigSource
 "@ | Out-File -Encoding utf8 BUILD_MANIFEST.md

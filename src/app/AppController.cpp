@@ -22,10 +22,22 @@ AppController::AppController(std::filesystem::path dataRoot)
     : dataRoot_(std::move(dataRoot)), configPath_(dataRoot_ / "ScaleLogger.config.json") {}
 
 void AppController::Initialize() {
-  std::filesystem::create_directories(dataRoot_ / "logs");
-  std::filesystem::create_directories(dataRoot_ / "presets");
-
   config_ = LoadConfig(configPath_);
+  if (!std::filesystem::exists(configPath_)) {
+    const auto defaultConfigPath = std::filesystem::current_path() / "default_config.json";
+    if (std::filesystem::exists(defaultConfigPath)) {
+      config_ = LoadConfig(defaultConfigPath);
+      EmitLog("Loaded defaults from default_config.json");
+    }
+  }
+
+  if (config_.configFolder.empty()) config_.configFolder = dataRoot_.string();
+  configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
+
+  if (!config_.standaloneMode) {
+    std::filesystem::create_directories(std::filesystem::path(config_.logsFolder));
+    std::filesystem::create_directories(std::filesystem::path(config_.presetsFolder));
+  }
 
   const auto presetsDir = dataRoot_ / config_.presetsFolder;
   std::filesystem::path startupPresetPath;
@@ -103,7 +115,7 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
   const bool reconnect = serial_.IsConnected() && SerialSettingsRequireReconnect(settings_.serial, nextSettings.serial);
   settings_ = nextSettings;
   config_ = nextConfig;
-  if (configChanged) {
+  if (configChanged && !config_.standaloneMode) {
     SaveConfig(configPath_, config_);
     EmitLog("Configuration saved");
   }
@@ -118,6 +130,7 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
 bool AppController::SaveCurrentSettingsAsPreset(const std::string& presetName) {
   if (presetName.empty()) return false;
   const auto presetPath = dataRoot_ / config_.presetsFolder / (presetName + ".json");
+  if (config_.standaloneMode) return false;
   SavePreset(presetPath, settings_);
   config_.lastUsedPresetName = presetName;
   SaveConfig(configPath_, config_);
@@ -193,7 +206,7 @@ void AppController::EmitConnectionState(bool connected) const {
 }
 
 void AppController::WriteLogFileLine(const std::string& message, bool isError) const {
-  if (config_.logMode == LogMode::None) return;
+  if (config_.logMode == LogMode::None || config_.standaloneMode) return;
 
   const auto path = ResolveLogPath();
   if (path.empty()) return;
@@ -203,8 +216,15 @@ void AppController::WriteLogFileLine(const std::string& message, bool isError) c
     std::filesystem::create_directories(path.parent_path());
     logFile_.open(path, std::ios::out | std::ios::app);
     activeLogPath_ = path;
+    logWriteErrorNotified_ = false;
   }
-  if (!logFile_.is_open()) return;
+  if (!logFile_.is_open()) {
+    if (!logWriteErrorNotified_ && logSink_) {
+      logSink_("ERROR: Unable to write to log file: " + path.string(), true);
+      logWriteErrorNotified_ = true;
+    }
+    return;
+  }
 
   const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
   std::tm tmNow{};
@@ -217,10 +237,14 @@ void AppController::WriteLogFileLine(const std::string& message, bool isError) c
   std::strftime(stamp, sizeof(stamp), "%H:%M:%S", &tmNow);
   logFile_ << "[" << stamp << "] " << (isError ? "ERROR: " : "") << message << "\n";
   logFile_.flush();
+  if (!logFile_ && !logWriteErrorNotified_ && logSink_) {
+    logSink_("ERROR: Failed while flushing log file: " + path.string(), true);
+    logWriteErrorNotified_ = true;
+  }
 }
 
 std::filesystem::path AppController::ResolveLogPath() const {
-  const auto logsDir = dataRoot_ / config_.logsFolder;
+  const auto logsDir = std::filesystem::path(config_.logsFolder);
   if (config_.logMode == LogMode::SingleFile) return logsDir / "ScaleLogger.log";
   if (config_.logMode == LogMode::PerSession) {
     if (sessionLogName_.empty()) {
@@ -231,8 +255,9 @@ std::filesystem::path AppController::ResolveLogPath() const {
 #else
       localtime_r(&now, &tmNow);
 #endif
-      char buffer[64];
-      std::strftime(buffer, sizeof(buffer), "ScaleLogger_%Y%m%d_%H%M%S.log", &tmNow);
+      char buffer[128];
+      const auto pattern = config_.logFilePattern.empty() ? std::string("ScaleLogger_%Y%m%d_%H%M%S.log") : config_.logFilePattern;
+      std::strftime(buffer, sizeof(buffer), pattern.c_str(), &tmNow);
       sessionLogName_ = buffer;
     }
     return logsDir / sessionLogName_;

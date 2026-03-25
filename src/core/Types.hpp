@@ -43,14 +43,18 @@ struct AppSettings {
 };
 
 struct AppConfig {
+  std::string configFolder{};
+  std::string configFileName{"ScaleLogger.config.json"};
   std::string presetsFolder{"presets"};
   std::string logsFolder{"logs"};
+  std::string logFilePattern{"ScaleLogger_%Y%m%d_%H%M%S.log"};
   LogMode logMode{LogMode::PerSession};
   LineLogMode lineLogMode{LineLogMode::Compact};
   bool connectOnStartup{true};
   std::string startupMode{"last_used_preset"};
   std::string startupPresetName{};
   std::string lastUsedPresetName{};
+  bool standaloneMode{false};
 };
 
 } // namespace scalelogger
