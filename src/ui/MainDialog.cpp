@@ -57,6 +57,9 @@ constexpr int kOutputPreservePlusCheck = 405;
 constexpr int kOutputRequireNumericCheck = 406;
 constexpr int kOutputActionCombo = 407;
 constexpr int kOutputCustomSequenceEdit = 408;
+constexpr int kOutputCaptureKeyBtn = 409;
+constexpr int kOutputRemoveLastBtn = 410;
+constexpr int kOutputClearBtn = 411;
 
 constexpr int kAppPresetsFolderEdit = 500;
 constexpr int kAppLogsFolderEdit = 501;
@@ -81,12 +84,14 @@ struct UiState {
   HWND settingsWindow{nullptr};
   HWND settingsTab{nullptr};
   bool settingsClassRegistered{false};
+  bool captureCustomSequenceKey{false};
   std::vector<HWND> serialTabControls{};
   std::vector<HWND> outputTabControls{};
   std::vector<HWND> applicationTabControls{};
 };
 
 UiState g_ui;
+void LoadSettingsIntoControls(HWND settingsHwnd);
 
 std::wstring ToWide(std::string_view text) { return std::wstring(text.begin(), text.end()); }
 
@@ -151,6 +156,17 @@ void LayoutMainControls(HWND hwnd) {
   right -= gap + 130;
   MoveWindow(g_ui.connectionStatus, right, top + 4, 130, 22, TRUE);
 
+  const bool hidePresets = rc.right < 760;
+  const bool hideRefresh = rc.right < 700;
+  const bool hideActions = rc.right < 640;
+  const bool hideStatus = rc.right < 560;
+  ShowWindow(g_ui.presetsCombo, hidePresets ? SW_HIDE : SW_SHOW);
+  ShowWindow(g_ui.refreshButton, hideRefresh ? SW_HIDE : SW_SHOW);
+  ShowWindow(g_ui.connectButton, hideActions ? SW_HIDE : SW_SHOW);
+  ShowWindow(g_ui.settingsButton, hideActions ? SW_HIDE : SW_SHOW);
+  ShowWindow(g_ui.aboutButton, hideActions ? SW_HIDE : SW_SHOW);
+  ShowWindow(g_ui.connectionStatus, hideStatus ? SW_HIDE : SW_SHOW);
+
   MoveWindow(g_ui.logEdit, margin, 52, rc.right - margin * 2, rc.bottom - 68, TRUE);
 }
 
@@ -195,6 +211,44 @@ void UpdateCustomSequenceUiState(HWND settingsHwnd) {
   const auto action = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputActionCombo)));
   const bool enabled = action == "custom_sequence";
   EnableWindow(GetDlgItem(settingsHwnd, kOutputCustomSequenceEdit), enabled ? TRUE : FALSE);
+  EnableWindow(GetDlgItem(settingsHwnd, kOutputCaptureKeyBtn), enabled ? TRUE : FALSE);
+  EnableWindow(GetDlgItem(settingsHwnd, kOutputRemoveLastBtn), enabled ? TRUE : FALSE);
+  EnableWindow(GetDlgItem(settingsHwnd, kOutputClearBtn), enabled ? TRUE : FALSE);
+}
+
+std::vector<std::string> ScanPresetNames() {
+  std::vector<std::string> names;
+  const auto presetDir = g_ui.controller->DataRoot() / g_ui.controller->Config().presetsFolder;
+  if (!std::filesystem::exists(presetDir)) return names;
+  for (const auto& entry : std::filesystem::directory_iterator(presetDir)) {
+    if (!entry.is_regular_file()) continue;
+    if (entry.path().extension() != ".json") continue;
+    names.push_back(entry.path().stem().string());
+  }
+  std::sort(names.begin(), names.end());
+  return names;
+}
+
+void RefreshPresetDropdown(bool keepSelection = true) {
+  std::wstring previous = keepSelection ? GetControlText(g_ui.presetsCombo) : L"";
+  SendMessageW(g_ui.presetsCombo, CB_RESETCONTENT, 0, 0);
+  SendMessageW(g_ui.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
+  auto names = ScanPresetNames();
+  for (const auto& name : names) SendMessageW(g_ui.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ToWide(name).c_str()));
+  if (!previous.empty()) SetComboToText(g_ui.presetsCombo, previous);
+  else SendMessageW(g_ui.presetsCombo, CB_SETCURSEL, 0, 0);
+  AddLogLine("Preset list refreshed (" + std::to_string(names.size()) + " presets).");
+}
+
+void ApplySelectedPreset() {
+  const auto selected = ToUtf8(GetControlText(g_ui.presetsCombo));
+  if (selected.empty() || selected == "Last used / defaults") return;
+  const auto presetPath = g_ui.controller->DataRoot() / g_ui.controller->Config().presetsFolder / (selected + ".json");
+  AppConfig nextConfig = g_ui.controller->Config();
+  nextConfig.lastUsedPresetName = selected;
+  g_ui.controller->ApplySettings(LoadPreset(presetPath), nextConfig);
+  if (g_ui.settingsWindow) LoadSettingsIntoControls(g_ui.settingsWindow);
+  AddLogLine("Loaded preset: " + selected);
 }
 
 void ShowTab(std::size_t index) {
@@ -321,7 +375,6 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
   }
 
   g_ui.controller->ApplySettings(nextSettings, nextConfig);
-  AddLogLine("Settings applied");
 }
 
 void CreateTopRow(HWND hwnd) {
@@ -363,7 +416,12 @@ void RefreshPortList(HWND settingsHwnd) {
   for (const auto& port : ports) values.push_back(ToWide(port));
   PopulateComboWithValues(GetDlgItem(settingsHwnd, kSerialPortCombo), values);
   SetComboToText(GetDlgItem(settingsHwnd, kSerialPortCombo), ToWide(g_ui.controller->Settings().serial.port));
-  AddLogLine("Port list refreshed.");
+  std::string joined;
+  for (std::size_t i = 0; i < ports.size(); ++i) {
+    if (i) joined += ", ";
+    joined += ports[i];
+  }
+  AddLogLine("Detected " + std::to_string(ports.size()) + " ports" + (joined.empty() ? "." : (": " + joined)));
 }
 
 void SaveAsPresetFromControls(HWND settingsHwnd) {
@@ -387,8 +445,14 @@ void SaveAsPresetFromControls(HWND settingsHwnd) {
   if (!GetSaveFileNameW(&ofn)) return;
 
   std::filesystem::path presetPath(ofn.lpstrFile);
-  SavePreset(presetPath, g_ui.controller->Settings());
-  AddLogLine("Preset saved to " + ToUtf8(presetPath.filename().wstring()));
+  const auto presetName = presetPath.stem().string();
+  if (presetPath.parent_path() == presetsFolder) {
+    g_ui.controller->SaveCurrentSettingsAsPreset(presetName);
+  } else {
+    SavePreset(presetPath, g_ui.controller->Settings());
+    AddLogLine("Preset saved: " + presetName);
+  }
+  RefreshPresetDropdown();
 }
 
 void RunTestReceive(HWND settingsHwnd) {
@@ -492,7 +556,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 100, 645, 24, hwnd,
                                  reinterpret_cast<HMENU>(kOutputSuffixEdit), nullptr, nullptr));
       checkbox(L"Normalize sign spacing", kOutputNormalizeCheck, top + 132);
-      checkbox(L"Preserve leading +", kOutputPreservePlusCheck, top + 160);
+      checkbox(L"Preserve leading sign", kOutputPreservePlusCheck, top + 160);
       checkbox(L"Require numeric result", kOutputRequireNumericCheck, top + 188);
       label(L"After-send action", top + 220, g_ui.outputTabControls);
       HWND postAction = combo(kOutputActionCombo, top + 218, 645, g_ui.outputTabControls);
@@ -501,8 +565,17 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       }
       label(L"Custom sequence", top + 256, g_ui.outputTabControls);
       AddControl(g_ui.outputTabControls,
-                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 254, 645, 24, hwnd,
+                 CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_READONLY, fieldLeft, top + 254, 645, 24, hwnd,
                                  reinterpret_cast<HMENU>(kOutputCustomSequenceEdit), nullptr, nullptr));
+      AddControl(g_ui.outputTabControls,
+                 CreateWindowW(L"BUTTON", L"Capture Key", WS_CHILD | WS_VISIBLE, fieldLeft, top + 286, 206, 24, hwnd,
+                               reinterpret_cast<HMENU>(kOutputCaptureKeyBtn), nullptr, nullptr));
+      AddControl(g_ui.outputTabControls,
+                 CreateWindowW(L"BUTTON", L"Remove Last", WS_CHILD | WS_VISIBLE, fieldLeft + 218, top + 286, 206, 24, hwnd,
+                               reinterpret_cast<HMENU>(kOutputRemoveLastBtn), nullptr, nullptr));
+      AddControl(g_ui.outputTabControls,
+                 CreateWindowW(L"BUTTON", L"Clear", WS_CHILD | WS_VISIBLE, fieldLeft + 436, top + 286, 209, 24, hwnd,
+                               reinterpret_cast<HMENU>(kOutputClearBtn), nullptr, nullptr));
 
       label(L"Presets folder", top + 2, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
@@ -552,11 +625,9 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       switch (LOWORD(wParam)) {
         case kSettingsApply:
           ApplySettingsFromControls(hwnd);
-          AddLogLine("Settings applied.");
           return 0;
         case kSettingsSaveConfig:
           ApplySettingsFromControls(hwnd);
-          AddLogLine("Configuration saved.");
           return 0;
         case kSettingsSavePreset:
           SaveAsPresetFromControls(hwnd);
@@ -573,9 +644,43 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         case kOutputActionCombo:
           if (HIWORD(wParam) == CBN_SELCHANGE) UpdateCustomSequenceUiState(hwnd);
           return 0;
+        case kOutputCaptureKeyBtn:
+          g_ui.captureCustomSequenceKey = true;
+          SetFocus(hwnd);
+          AddLogLine("Press a key to append to custom sequence.");
+          return 0;
+        case kOutputRemoveLastBtn: {
+          const auto text = ToUtf8(GetControlText(GetDlgItem(hwnd, kOutputCustomSequenceEdit)));
+          auto pos = text.find_last_of(',');
+          const auto trimmed = pos == std::string::npos ? std::string() : text.substr(0, pos);
+          SetWindowTextW(GetDlgItem(hwnd, kOutputCustomSequenceEdit), ToWide(trimmed).c_str());
+          return 0;
+        }
+        case kOutputClearBtn:
+          SetWindowTextW(GetDlgItem(hwnd, kOutputCustomSequenceEdit), L"");
+          return 0;
         default:
           return 0;
       }
+    }
+    case WM_KEYDOWN:
+      if (g_ui.captureCustomSequenceKey) {
+        g_ui.captureCustomSequenceKey = false;
+        char keyName[32]{};
+        const LONG scan = static_cast<LONG>(MapVirtualKeyA(static_cast<UINT>(wParam), MAPVK_VK_TO_VSC) << 16);
+        GetKeyNameTextA(scan, keyName, sizeof(keyName));
+        if (keyName[0] == '\0') wsprintfA(keyName, "VK_%u", static_cast<unsigned>(wParam));
+        const auto existing = ToUtf8(GetControlText(GetDlgItem(hwnd, kOutputCustomSequenceEdit)));
+        const auto updated = existing.empty() ? std::string(keyName) : (existing + "," + keyName);
+        SetWindowTextW(GetDlgItem(hwnd, kOutputCustomSequenceEdit), ToWide(updated).c_str());
+        return 0;
+      }
+      break;
+    case WM_GETMINMAXINFO: {
+      auto* mm = reinterpret_cast<MINMAXINFO*>(lParam);
+      mm->ptMinTrackSize.x = 760;
+      mm->ptMinTrackSize.y = 560;
+      return 0;
     }
     case WM_CLOSE:
       DestroyWindow(hwnd);
@@ -651,6 +756,12 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
       FillRect(reinterpret_cast<HDC>(wParam), &rc, reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1));
       return 1;
     }
+    case WM_GETMINMAXINFO: {
+      auto* mm = reinterpret_cast<MINMAXINFO*>(lParam);
+      mm->ptMinTrackSize.x = 540;
+      mm->ptMinTrackSize.y = 420;
+      return 0;
+    }
     case WM_COMMAND: {
       const int id = LOWORD(wParam);
       switch (id) {
@@ -665,7 +776,10 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
           if (HIWORD(wParam) == BN_CLICKED) ShowAbout(hwnd);
           return 0;
         case kBtnRefreshPresets:
-          AddLogLine("Preset list refresh requested");
+          RefreshPresetDropdown();
+          return 0;
+        case kComboPresets:
+          if (HIWORD(wParam) == CBN_SELCHANGE) ApplySelectedPreset();
           return 0;
         default:
           return 0;
@@ -715,6 +829,22 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
 
   g_ui.controller->Initialize();
   UpdateConnectionUi(g_ui.controller->IsConnected());
+  RefreshPresetDropdown(false);
+  const auto& cfg = g_ui.controller->Config();
+  if (cfg.startupMode == "specific_preset" && !cfg.startupPresetName.empty()) {
+    SetComboToText(g_ui.presetsCombo, ToWide(cfg.startupPresetName));
+  } else if (!cfg.lastUsedPresetName.empty()) {
+    SetComboToText(g_ui.presetsCombo, ToWide(cfg.lastUsedPresetName));
+  }
+
+  AddLogLine("Scanning serial ports...");
+  const auto ports = g_ui.controller->ScanPorts();
+  std::string joined;
+  for (std::size_t i = 0; i < ports.size(); ++i) {
+    if (i) joined += ", ";
+    joined += ports[i];
+  }
+  AddLogLine("Detected " + std::to_string(ports.size()) + " ports" + (joined.empty() ? "." : (": " + joined)));
 
   MSG msg;
   while (GetMessageW(&msg, nullptr, 0, 0) > 0) {

@@ -76,11 +76,32 @@ void AppController::Disconnect() {
 }
 
 void AppController::ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig) {
+  const bool settingsChanged =
+      settings_.serial.port != nextSettings.serial.port || settings_.serial.baudRate != nextSettings.serial.baudRate ||
+      settings_.serial.dataBits != nextSettings.serial.dataBits || settings_.serial.parity != nextSettings.serial.parity ||
+      settings_.serial.stopBits != nextSettings.serial.stopBits || settings_.serial.timeoutSeconds != nextSettings.serial.timeoutSeconds ||
+      settings_.serial.eol != nextSettings.serial.eol || settings_.parsing.mode != nextSettings.parsing.mode ||
+      settings_.parsing.trimWhitespace != nextSettings.parsing.trimWhitespace ||
+      settings_.parsing.stripSuffix != nextSettings.parsing.stripSuffix || settings_.parsing.suffix != nextSettings.parsing.suffix ||
+      settings_.parsing.normalizeSign != nextSettings.parsing.normalizeSign ||
+      settings_.parsing.dropPlusSign != nextSettings.parsing.dropPlusSign ||
+      settings_.parsing.numericValidation != nextSettings.parsing.numericValidation ||
+      settings_.output.postAction != nextSettings.output.postAction || settings_.output.customSequence != nextSettings.output.customSequence;
+  const bool configChanged =
+      config_.presetsFolder != nextConfig.presetsFolder || config_.logsFolder != nextConfig.logsFolder ||
+      config_.logMode != nextConfig.logMode || config_.lineLogMode != nextConfig.lineLogMode ||
+      config_.connectOnStartup != nextConfig.connectOnStartup || config_.startupMode != nextConfig.startupMode ||
+      config_.startupPresetName != nextConfig.startupPresetName || config_.lastUsedPresetName != nextConfig.lastUsedPresetName;
+  if (!settingsChanged && !configChanged) return;
+
   const bool reconnect = serial_.IsConnected() && SerialSettingsRequireReconnect(settings_.serial, nextSettings.serial);
   settings_ = nextSettings;
   config_ = nextConfig;
-  SaveConfig(configPath_, config_);
-  EmitLog("Configuration saved");
+  if (configChanged) {
+    SaveConfig(configPath_, config_);
+    EmitLog("Configuration saved");
+  }
+  if (settingsChanged) EmitLog("Settings applied");
   if (reconnect) {
     EmitLog("Reconnecting with updated serial settings on " + settings_.serial.port);
     Disconnect();
