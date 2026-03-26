@@ -282,7 +282,6 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
     if (SaveConfig(configPath_, config_, &settings_)) EmitLog("Configuration saved");
     else EmitLog("ERROR: Failed to save configuration: " + configPath_.string(), true);
   }
-  if (settingsChanged) EmitLog("Settings applied");
   if (reconnect) {
     EmitLog("Reconnecting with updated serial settings on " + settings_.serial.port);
     Disconnect();

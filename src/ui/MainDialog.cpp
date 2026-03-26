@@ -392,6 +392,20 @@ std::wstring FormatTimeout(float value) {
   return ss.str();
 }
 
+std::wstring FormatEolForSummary(const std::string& eol) {
+  if (eol == "\r\n") return L"\\r\\n";
+  if (eol == "\n") return L"\\n";
+  if (eol == "\r") return L"\\r";
+  return ToWide(eol);
+}
+
+void ClearComboEditSelection(HWND combo) {
+  const LONG_PTR style = GetWindowLongPtrW(combo, GWL_STYLE);
+  if ((style & CBS_DROPDOWNLIST) != 0) return;
+  const int length = GetWindowTextLengthW(combo);
+  SendMessageW(combo, CB_SETEDITSEL, 0, MAKELPARAM(length, length));
+}
+
 std::string ParseEolFromUiText(const std::wstring& eolText) {
   const auto eolDisplay = ToUtf8(eolText);
   if (eolDisplay == "\\r\\n") return "\r\n";
@@ -592,7 +606,7 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   const std::wstring serialSummary = L"Port=" + ToWide(settings.serial.port) + L"; Baud=" + ToWide(std::to_string(settings.serial.baudRate)) +
                                      L"; DataBits=" + ToWide(std::to_string(settings.serial.dataBits)) + L"; Parity=" +
                                      std::wstring(1, static_cast<wchar_t>(settings.serial.parity)) + L"; StopBits=" + FormatStopBits(settings.serial.stopBits) +
-                                     L"; Timeout=" + FormatTimeout(settings.serial.timeoutSeconds) + L"; EOL=" + ToWide(settings.serial.eol);
+                                     L"; Timeout=" + FormatTimeout(settings.serial.timeoutSeconds) + L"; EOL=" + FormatEolForSummary(settings.serial.eol);
   SetWindowTextW(GetDlgItem(settingsHwnd, kSerialSummaryEdit), serialSummary.c_str());
   const std::wstring outputSummary = std::wstring(L"Mode=") + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") +
                                      L"; Trim=" + std::wstring(settings.parsing.trimWhitespace ? L"true" : L"false") +
@@ -1208,6 +1222,11 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       ShowTab(0);
       LoadSettingsIntoControls(hwnd);
       LayoutSettingsWindow(hwnd);
+      for (int comboId : {kSerialPortCombo, kSerialBaudCombo, kSerialDataBitsCombo, kSerialParityCombo, kSerialStopBitsCombo, kSerialTimeoutCombo,
+                          kSerialEolCombo}) {
+        ClearComboEditSelection(GetDlgItem(hwnd, comboId));
+      }
+      RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
       return 0;
     }
     case WM_NOTIFY: {
