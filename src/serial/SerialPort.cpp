@@ -112,7 +112,13 @@ void SerialPort::Disconnect() {
     handle_ = INVALID_HANDLE_VALUE;
   }
 
-  if (receiveThread_.joinable()) receiveThread_.join();
+  if (receiveThread_.joinable()) {
+    if (receiveThread_.get_id() == std::this_thread::get_id()) {
+      receiveThread_.detach();
+    } else {
+      receiveThread_.join();
+    }
+  }
 }
 
 bool SerialPort::IsConnected() const { return connected_; }

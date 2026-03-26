@@ -1,6 +1,7 @@
 #include "app/AppController.hpp"
 
 #include <chrono>
+#include <cctype>
 #include <condition_variable>
 #include <ctime>
 #include <filesystem>
@@ -70,50 +71,84 @@ AppController::AppController(std::filesystem::path dataRoot)
     : dataRoot_(std::move(dataRoot)), configPath_(dataRoot_ / "ScaleLogger.config.json") {}
 
 void AppController::Initialize() {
-  config_ = LoadConfig(configPath_);
-  settings_ = LoadPreset(configPath_);
-  if (!std::filesystem::exists(configPath_)) {
-    const auto defaultConfigPath = std::filesystem::current_path() / "default_config.json";
-    if (std::filesystem::exists(defaultConfigPath)) {
-      config_ = LoadConfig(defaultConfigPath);
-      settings_ = LoadPreset(defaultConfigPath);
-      EmitLog("Loaded defaults from default_config.json");
+  EmitLog("Initialize begin");
+  try {
+    const bool hasUserConfig = std::filesystem::exists(configPath_);
+    EmitLog(hasUserConfig ? ("Startup config found: " + configPath_.string()) : ("Startup config not found: " + configPath_.string()));
+
+    config_ = LoadConfig(configPath_);
+    settings_ = LoadPreset(configPath_);
+    if (!hasUserConfig) {
+      const auto defaultConfigPath = std::filesystem::current_path() / "default_config.json";
+      if (std::filesystem::exists(defaultConfigPath)) {
+        config_ = LoadConfig(defaultConfigPath);
+        settings_ = LoadPreset(defaultConfigPath);
+        EmitLog("Loaded defaults from default_config.json");
+      }
     }
-  }
 
-  config_.configFolder = ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
-  config_.presetsFolder = ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
-  config_.logsFolder = ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
-  configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
+    if (settings_.serial.port.empty()) settings_.serial.port = "COM6";
+    if (settings_.serial.baudRate <= 0) settings_.serial.baudRate = 1200;
+    if (settings_.serial.dataBits < 5 || settings_.serial.dataBits > 8) settings_.serial.dataBits = 7;
+    const char parity = static_cast<char>(std::toupper(static_cast<unsigned char>(settings_.serial.parity)));
+    settings_.serial.parity = (parity == 'N' || parity == 'E' || parity == 'O') ? parity : 'O';
+    if (!(settings_.serial.stopBits == 1.0F || settings_.serial.stopBits == 1.5F || settings_.serial.stopBits == 2.0F)) settings_.serial.stopBits = 1.0F;
+    if (settings_.serial.timeoutSeconds <= 0.0F) settings_.serial.timeoutSeconds = 1.0F;
+    if (settings_.serial.eol.empty()) settings_.serial.eol = "\r\n";
 
-  std::filesystem::create_directories(std::filesystem::path(config_.logsFolder));
-  std::filesystem::create_directories(std::filesystem::path(config_.presetsFolder));
+    config_.configFolder = ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
+    config_.presetsFolder = ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
+    config_.logsFolder = ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
+    if (config_.configFileName.empty()) config_.configFileName = "ScaleLogger.config.json";
+    configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
 
-  const auto presetsDir = std::filesystem::path(config_.presetsFolder);
-  std::filesystem::path startupPresetPath;
-  if (config_.startupMode == "specific_preset") {
-    startupPresetPath = ResolvePresetPath(presetsDir, config_.startupPresetName);
-  } else if (config_.startupMode == "last_used_preset") {
-    startupPresetPath = ResolvePresetPath(presetsDir, config_.lastUsedPresetName);
-  }
-  if (!startupPresetPath.empty() && std::filesystem::exists(startupPresetPath)) {
-    bool usedLegacyCompatibilityMapping = false;
-    settings_ = LoadPreset(startupPresetPath, &usedLegacyCompatibilityMapping);
-    EmitLog("Loaded startup preset: " + startupPresetPath.filename().string());
-    if (usedLegacyCompatibilityMapping) {
-      EmitLog("Loaded preset with legacy compatibility mapping");
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::path(config_.logsFolder), ec);
+    if (ec) EmitLog("WARN: Failed to create logs directory: " + std::filesystem::path(config_.logsFolder).string(), true);
+    ec.clear();
+    std::filesystem::create_directories(std::filesystem::path(config_.presetsFolder), ec);
+    if (ec) EmitLog("WARN: Failed to create presets directory: " + std::filesystem::path(config_.presetsFolder).string(), true);
+
+    const auto presetsDir = std::filesystem::path(config_.presetsFolder);
+    std::filesystem::path startupPresetPath;
+    if (config_.startupMode == "specific_preset") {
+      startupPresetPath = ResolvePresetPath(presetsDir, config_.startupPresetName);
+    } else if (config_.startupMode == "last_used_preset") {
+      startupPresetPath = ResolvePresetPath(presetsDir, config_.lastUsedPresetName);
     }
-  }
+    std::error_code presetEc;
+    if (!startupPresetPath.empty() && std::filesystem::exists(startupPresetPath, presetEc)) {
+      bool usedLegacyCompatibilityMapping = false;
+      settings_ = LoadPreset(startupPresetPath, &usedLegacyCompatibilityMapping);
+      EmitLog("Loaded startup preset: " + startupPresetPath.filename().string());
+      if (usedLegacyCompatibilityMapping) {
+        EmitLog("Loaded preset with legacy compatibility mapping");
+      }
+    } else if (!startupPresetPath.empty()) {
+      EmitLog("WARN: Startup preset missing or invalid: " + startupPresetPath.string(), true);
+    }
 
+    EmitLog(config_.connectOnStartup ? "Startup auto-connect enabled" : "Startup auto-connect disabled");
+    EmitLog("Startup load completed");
+  } catch (const std::exception& ex) {
+    config_ = AppConfig{};
+    settings_ = AppSettings{};
+    config_.configFolder = ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
+    config_.presetsFolder = ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
+    config_.logsFolder = ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
+    configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
+    EmitLog(std::string("ERROR: Startup config/preset load failed. Using defaults. ") + ex.what(), true);
+  }
+  EmitLog("Initialize end");
   EmitLog("Application start");
-  if (config_.connectOnStartup) {
-    EmitLog("Auto-connecting to " + settings_.serial.port);
-    Connect();
-  }
 }
 
 void AppController::Connect() {
-  if (connected_) return;
+  EmitLog("Connect begin");
+  if (connected_) {
+    EmitLog("Connect end: already connected");
+    return;
+  }
 
   const bool connected = serial_.Connect(
       settings_.serial,
@@ -154,6 +189,7 @@ void AppController::Connect() {
   connected_ = connected;
   EmitConnectionState(connected_);
   if (connected_) EmitLog("Connected to " + settings_.serial.port + ". No valid scale data received yet.");
+  EmitLog(std::string("Connect end: ") + (connected_ ? "success" : "failed"));
 }
 
 void AppController::Disconnect() {

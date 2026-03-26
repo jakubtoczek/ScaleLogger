@@ -37,6 +37,7 @@ constexpr int kBtnAbout = 105;
 constexpr int kEditLog = 106;
 constexpr UINT kMsgUiLogLine = WM_APP + 1;
 constexpr UINT kMsgUiConnectionState = WM_APP + 2;
+constexpr UINT kMsgStartupAutoConnect = WM_APP + 3;
 
 constexpr int kSettingsTab = 200;
 constexpr int kSettingsApply = 201;
@@ -1405,6 +1406,16 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case kMsgUiConnectionState:
       UpdateConnectionUi(wParam != 0);
       return 0;
+    case kMsgStartupAutoConnect:
+      AddLogLine("Handling deferred startup auto-connect.");
+      if (g_ui.controller) {
+        try {
+          g_ui.controller->Connect();
+        } catch (...) {
+          AddLogLine("ERROR: Unhandled exception during startup connect.");
+        }
+      }
+      return 0;
     case WM_ERASEBKGND: {
       RECT rc{};
       GetClientRect(hwnd, &rc);
@@ -1499,6 +1510,10 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
     SetComboToText(g_ui.presetsCombo, ToWide(cfg.lastUsedPresetName));
   }
   if (cfg.darkMode) AddLogLine("Dark mode is experimental in 0.96 and is disabled by default.");
+  if (cfg.connectOnStartup) {
+    AddLogLine("Posting deferred startup auto-connect.");
+    PostMessageW(hwnd, kMsgStartupAutoConnect, 0, 0);
+  }
 
   AddLogLine("Scanning serial ports...");
   const auto ports = g_ui.controller->ScanPorts();
