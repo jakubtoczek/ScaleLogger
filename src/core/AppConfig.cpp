@@ -83,9 +83,10 @@ bool ExtractBool(const std::string& text, const std::string& key, bool fallback)
   if (pos == std::string::npos) return fallback;
   const auto colon = text.find(':', pos);
   if (colon == std::string::npos) return fallback;
-  const auto val = text.substr(colon + 1, 8);
-  if (val.find("true") != std::string::npos) return true;
-  if (val.find("false") != std::string::npos) return false;
+  std::size_t i = colon + 1;
+  while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i])) != 0) ++i;
+  if (text.compare(i, 4, "true") == 0) return true;
+  if (text.compare(i, 5, "false") == 0) return false;
   return fallback;
 }
 
@@ -94,7 +95,17 @@ int ExtractInt(const std::string& text, const std::string& key, int fallback) {
   if (pos == std::string::npos) return fallback;
   const auto colon = text.find(':', pos);
   if (colon == std::string::npos) return fallback;
-  return std::atoi(text.c_str() + colon + 1);
+  std::size_t i = colon + 1;
+  while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i])) != 0) ++i;
+  std::size_t end = i;
+  if (end < text.size() && (text[end] == '+' || text[end] == '-')) ++end;
+  while (end < text.size() && std::isdigit(static_cast<unsigned char>(text[end])) != 0) ++end;
+  if (end == i || (end == i + 1 && (text[i] == '+' || text[i] == '-'))) return fallback;
+  try {
+    return std::stoi(text.substr(i, end - i));
+  } catch (...) {
+    return fallback;
+  }
 }
 
 float ExtractFloat(const std::string& text, const std::string& key, float fallback) {
@@ -102,7 +113,21 @@ float ExtractFloat(const std::string& text, const std::string& key, float fallba
   if (pos == std::string::npos) return fallback;
   const auto colon = text.find(':', pos);
   if (colon == std::string::npos) return fallback;
-  return std::atof(text.c_str() + colon + 1);
+  std::size_t i = colon + 1;
+  while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i])) != 0) ++i;
+  std::size_t end = i;
+  if (end < text.size() && (text[end] == '+' || text[end] == '-')) ++end;
+  bool sawDigit = false;
+  while (end < text.size() && (std::isdigit(static_cast<unsigned char>(text[end])) != 0 || text[end] == '.')) {
+    sawDigit = true;
+    ++end;
+  }
+  if (!sawDigit) return fallback;
+  try {
+    return std::stof(text.substr(i, end - i));
+  } catch (...) {
+    return fallback;
+  }
 }
 
 std::vector<std::string> ExtractStringArray(const std::string& text, const std::string& key) {
@@ -184,6 +209,7 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   AppConfig cfg{};
   if (!std::filesystem::exists(path)) return cfg;
   const auto text = ReadAll(path);
+  if (text.empty() || text.find('{') == std::string::npos) return cfg;
   cfg.presetsFolder = ExtractString(text, "presets_folder", cfg.presetsFolder);
   cfg.logsFolder = ExtractString(text, "logs_folder", cfg.logsFolder);
   cfg.configFolder = ExtractString(text, "config_folder", cfg.configFolder);
@@ -302,6 +328,7 @@ AppSettings LoadPreset(const std::filesystem::path& path, bool* usedLegacyCompat
   if (usedLegacyCompatibilityMapping) *usedLegacyCompatibilityMapping = false;
   if (!std::filesystem::exists(path)) return s;
   const auto text = ReadAll(path);
+  if (text.empty() || text.find('{') == std::string::npos) return s;
   s.serial.port = ExtractString(text, "port", s.serial.port);
   s.serial.baudRate = ExtractInt(text, "baudrate", s.serial.baudRate);
   s.serial.dataBits = ExtractInt(text, "databits", s.serial.dataBits);

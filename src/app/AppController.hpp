@@ -34,6 +34,7 @@ class AppController {
   const AppSettings& Settings() const { return settings_; }
   const AppConfig& Config() const { return config_; }
   const std::filesystem::path& DataRoot() const { return dataRoot_; }
+  const std::filesystem::path& ResolvedConfigPath() const { return configPath_; }
   bool IsConnected() const;
 
  private:

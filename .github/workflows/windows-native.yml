@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Configure
-        run: cmake --preset windows-vs2022-x64
+        run: cmake --preset windows-vs2026-x64
       - name: Build
         run: cmake --build --preset windows-release
       - name: Test

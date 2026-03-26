@@ -1,5 +1,6 @@
 #include "app/AppController.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <condition_variable>
@@ -65,6 +66,48 @@ std::filesystem::path ResolveConfiguredPath(const std::filesystem::path& root, c
   if (path.is_absolute()) return path.lexically_normal();
   return (root / path).lexically_normal();
 }
+
+template <typename T>
+void Dedup(std::vector<T>& values) {
+  std::sort(values.begin(), values.end());
+  values.erase(std::unique(values.begin(), values.end()), values.end());
+}
+
+void SanitizeConfig(AppConfig& config) {
+  if (config.configFileName.empty()) config.configFileName = "ScaleLogger.config.json";
+  if (config.startupMode != "specific_preset" && config.startupMode != "last_used_preset") config.startupMode = "last_used_preset";
+  if (config.startupMode == "specific_preset" && config.startupPresetName.empty()) config.startupMode = "last_used_preset";
+
+  config.baudRates.erase(std::remove_if(config.baudRates.begin(), config.baudRates.end(), [](int v) { return v <= 0; }), config.baudRates.end());
+  if (config.baudRates.empty()) config.baudRates = {1200, 2400, 4800, 9600};
+  Dedup(config.baudRates);
+
+  config.dataBitsOptions.erase(std::remove_if(config.dataBitsOptions.begin(), config.dataBitsOptions.end(), [](int v) { return v < 5 || v > 8; }),
+                               config.dataBitsOptions.end());
+  if (config.dataBitsOptions.empty()) config.dataBitsOptions = {7, 8};
+  Dedup(config.dataBitsOptions);
+
+  for (auto& parity : config.parityOptions) {
+    if (!parity.empty()) parity = std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(parity[0]))));
+  }
+  config.parityOptions.erase(std::remove_if(config.parityOptions.begin(), config.parityOptions.end(), [](const std::string& p) {
+                             return !(p == "N" || p == "E" || p == "O");
+                           }),
+                           config.parityOptions.end());
+  if (config.parityOptions.empty()) config.parityOptions = {"O", "N", "E"};
+  Dedup(config.parityOptions);
+
+  config.stopBitsOptions.erase(std::remove_if(config.stopBitsOptions.begin(), config.stopBitsOptions.end(), [](const std::string& value) {
+                              return !(value == "1" || value == "1.0" || value == "1.5" || value == "2" || value == "2.0");
+                            }),
+                            config.stopBitsOptions.end());
+  for (auto& stopBits : config.stopBitsOptions) {
+    if (stopBits == "1.0") stopBits = "1";
+    if (stopBits == "2.0") stopBits = "2";
+  }
+  if (config.stopBitsOptions.empty()) config.stopBitsOptions = {"1", "1.5", "2"};
+  Dedup(config.stopBitsOptions);
+}
 } // namespace
 
 AppController::AppController(std::filesystem::path dataRoot)
@@ -77,11 +120,13 @@ void AppController::Initialize() {
     EmitLog(hasUserConfig ? ("Startup config found: " + configPath_.string()) : ("Startup config not found: " + configPath_.string()));
 
     config_ = LoadConfig(configPath_);
+    SanitizeConfig(config_);
     settings_ = LoadPreset(configPath_);
     if (!hasUserConfig) {
       const auto defaultConfigPath = std::filesystem::current_path() / "default_config.json";
       if (std::filesystem::exists(defaultConfigPath)) {
         config_ = LoadConfig(defaultConfigPath);
+        SanitizeConfig(config_);
         settings_ = LoadPreset(defaultConfigPath);
         EmitLog("Loaded defaults from default_config.json");
       }
@@ -202,6 +247,7 @@ void AppController::Disconnect() {
 
 void AppController::ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig, bool persistToDisk) {
   AppConfig resolvedConfig = nextConfig;
+  SanitizeConfig(resolvedConfig);
   resolvedConfig.configFolder = ResolveConfiguredPath(dataRoot_, resolvedConfig.configFolder).string();
   resolvedConfig.presetsFolder = ResolveConfiguredPath(dataRoot_, resolvedConfig.presetsFolder).string();
   resolvedConfig.logsFolder = ResolveConfiguredPath(dataRoot_, resolvedConfig.logsFolder).string();
@@ -332,7 +378,16 @@ void AppController::WriteLogFileLine(const std::string& message, bool isError) c
 
   if (activeLogPath_ != path) {
     if (logFile_.is_open()) logFile_.close();
-    std::filesystem::create_directories(path.parent_path());
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    if (ec) {
+      activeLogPath_ = path;
+      if (!logWriteErrorNotified_ && logSink_) {
+        logSink_("ERROR: Unable to prepare log directory: " + path.parent_path().string(), true);
+        logWriteErrorNotified_ = true;
+      }
+      return;
+    }
     logFile_.open(path, std::ios::out | std::ios::app);
     activeLogPath_ = path;
     logWriteErrorNotified_ = false;

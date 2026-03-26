@@ -787,7 +787,9 @@ void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested = false) {
     AddLogLine("Settings apply requested: no changes detected.");
   }
   if (saveRequested) {
-    const auto configPath = std::filesystem::path(nextConfig.configFolder) / nextConfig.configFileName;
+    const auto configPath = g_ui.controller->ResolvedConfigPath();
+    const auto& resolvedConfig = g_ui.controller->Config();
+    const auto& resolvedSettings = g_ui.controller->Settings();
     const bool existed = std::filesystem::exists(configPath);
     AppConfig diskConfig{};
     AppSettings diskSettings{};
@@ -795,13 +797,13 @@ void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested = false) {
       diskConfig = LoadConfig(configPath);
       diskSettings = LoadPreset(configPath);
     }
-    const int configChanges = CountConfigDifferences(diskConfig, nextConfig);
-    const int settingsChanges = CountSettingsDifferences(diskSettings, nextSettings);
+    const int configChanges = CountConfigDifferences(diskConfig, resolvedConfig);
+    const int settingsChanges = CountSettingsDifferences(diskSettings, resolvedSettings);
     const int totalChanges = configChanges + settingsChanges;
     if (existed && totalChanges == 0) {
       AddLogLine("Configuration already up to date.");
     } else {
-      if (SaveConfig(configPath, nextConfig, &nextSettings)) {
+      if (SaveConfig(configPath, resolvedConfig, &resolvedSettings)) {
         if (!existed) AddLogLine("Configuration file created at: " + configPath.string());
         AddLogLine("Configuration saved (" + std::to_string(totalChanges) + " fields changed).");
       } else {
@@ -1475,9 +1477,11 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   INITCOMMONCONTROLSEX icc{sizeof(INITCOMMONCONTROLSEX), ICC_TAB_CLASSES};
   InitCommonControlsEx(&icc);
 
+  const char* localAppData = std::getenv("LOCALAPPDATA");
   const char* userProfile = std::getenv("USERPROFILE");
-  std::filesystem::path dataRoot = userProfile ? std::filesystem::path(userProfile) / "ScaleLogger"
-                                               : (std::filesystem::temp_directory_path() / "ScaleLogger");
+  std::filesystem::path dataRoot = localAppData   ? std::filesystem::path(localAppData) / "ScaleLogger"
+                                   : userProfile ? std::filesystem::path(userProfile) / "ScaleLogger"
+                                                 : (std::filesystem::temp_directory_path() / "ScaleLogger");
   g_ui.controller = std::make_unique<AppController>(dataRoot);
 
   g_ui.controller->SetLogSink([](const std::string& message, bool isError) { PostLogLineToUiThread((isError ? "ERROR: " : "") + message); });

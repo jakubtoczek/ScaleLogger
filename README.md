@@ -68,7 +68,7 @@ Precedence rule:
 Path rule:
 - `config_folder`, `presets_folder`, and `logs_folder` are treated as runtime-resolved filesystem paths.
 - Absolute paths are used as-is.
-- Relative paths are resolved against the app data root (`%USERPROFILE%\ScaleLogger` on Windows).
+- Relative paths are resolved against the app data root (prefer `%LOCALAPPDATA%\ScaleLogger` on Windows).
 
 ## Python compatibility notes
 Preset loading is backward compatible with legacy Python-era keys:
