@@ -137,6 +137,44 @@ LRESULT HandleDarkCtlColor(HDC hdc) {
   return reinterpret_cast<LRESULT>(g_darkBrush);
 }
 
+LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
+  auto* draw = reinterpret_cast<LPNMCUSTOMDRAW>(lParam);
+  if (!draw || !IsDarkModeEnabled()) return CDRF_DODEFAULT;
+
+  switch (draw->dwDrawStage) {
+    case CDDS_PREPAINT: {
+      FillRect(draw->hdc, &draw->rc, g_darkBrush);
+      return CDRF_NOTIFYITEMDRAW;
+    }
+    case CDDS_ITEMPREPAINT: {
+      const int tabIndex = static_cast<int>(draw->dwItemSpec);
+      const int selectedIndex = TabCtrl_GetCurSel(draw->hdr.hwndFrom);
+      const COLORREF tabColor = (tabIndex == selectedIndex) ? RGB(58, 58, 58) : RGB(40, 40, 40);
+
+      HBRUSH tabBrush = CreateSolidBrush(tabColor);
+      FillRect(draw->hdc, &draw->rc, tabBrush);
+      DeleteObject(tabBrush);
+
+      RECT textRect = draw->rc;
+      textRect.left += 8;
+      textRect.right -= 8;
+
+      wchar_t text[128] = {};
+      TCITEMW item{};
+      item.mask = TCIF_TEXT;
+      item.pszText = text;
+      item.cchTextMax = static_cast<int>(std::size(text));
+      if (TabCtrl_GetItem(draw->hdr.hwndFrom, tabIndex, &item)) {
+        SetBkMode(draw->hdc, TRANSPARENT);
+        SetTextColor(draw->hdc, RGB(235, 235, 235));
+        DrawTextW(draw->hdc, text, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+      }
+      return CDRF_SKIPDEFAULT;
+    }
+    default: return CDRF_DODEFAULT;
+  }
+}
+
 void AddLogLine(const std::string& text) {
   if (!g_ui.logEdit) return;
 
@@ -530,9 +568,6 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
                                      L"; PostAction=" + action + L"; Sequence=" + sequence;
   SetWindowTextW(GetDlgItem(settingsHwnd, kOutputSummaryEdit), outputSummary.c_str());
   SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_SETCHECK, config.darkMode ? BST_CHECKED : BST_UNCHECKED, 0);
-  if (g_ui.settingsTab) {
-    SendMessageW(g_ui.settingsTab, TCM_SETBKCOLOR, 0, static_cast<LPARAM>(config.darkMode ? RGB(32, 32, 32) : GetSysColor(COLOR_BTNFACE)));
-  }
 }
 
 bool ReadSerialSettingsFromControls(HWND settingsHwnd, AppSettings& settingsOut, std::string& error) {
@@ -1105,8 +1140,9 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     }
     case WM_NOTIFY: {
       auto* header = reinterpret_cast<LPNMHDR>(lParam);
-      if (header && header->idFrom == kSettingsTab && header->code == TCN_SELCHANGE) {
-        ShowTab(static_cast<std::size_t>(TabCtrl_GetCurSel(g_ui.settingsTab)));
+      if (header && header->idFrom == kSettingsTab) {
+        if (header->code == NM_CUSTOMDRAW) return HandleSettingsTabCustomDraw(lParam);
+        if (header->code == TCN_SELCHANGE) ShowTab(static_cast<std::size_t>(TabCtrl_GetCurSel(g_ui.settingsTab)));
       }
       return 0;
     }
