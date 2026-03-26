@@ -2,6 +2,7 @@
 
 #ifdef _WIN32
 #include "app/AppController.hpp"
+#include "core/ValueParser.hpp"
 #include "ui/AboutDialog.hpp"
 
 #include <CommCtrl.h>
@@ -98,6 +99,7 @@ struct UiState {
   bool settingsClassRegistered{false};
   bool captureCustomSequenceKey{false};
   std::unordered_map<std::string, std::filesystem::path> presetMap{};
+  std::unordered_map<std::string, std::string> portDisplayToPort{};
   std::vector<HWND> serialTabControls{};
   std::vector<HWND> outputTabControls{};
   std::vector<HWND> applicationTabControls{};
@@ -110,6 +112,12 @@ void LoadSettingsIntoControls(HWND settingsHwnd);
 std::wstring ToWide(std::string_view text) { return std::wstring(text.begin(), text.end()); }
 
 std::string ToUtf8(const std::wstring& text) { return std::string(text.begin(), text.end()); }
+
+std::string ExtractPortToken(const std::string& display) {
+  const auto emDashPos = display.find(" — ");
+  const auto cutPos = emDashPos == std::string::npos ? display.find(" - ") : emDashPos;
+  return cutPos == std::string::npos ? display : display.substr(0, cutPos);
+}
 
 bool IsDarkModeEnabled() {
   return g_ui.controller && g_ui.controller->Config().darkMode;
@@ -497,7 +505,9 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
                                    L"\r\nLine log mode: " + (config.lineLogMode == LineLogMode::Verbose ? L"verbose" : L"compact") +
                                    L"\r\nStandalone: " + std::wstring(config.standaloneMode ? L"true" : L"false") +
                                    L"\r\nConnect on startup: " + std::wstring(config.connectOnStartup ? L"true" : L"false") +
-                                   L"\r\nStartup mode: " + ToWide(config.startupMode);
+                                   L"\r\nStartup mode: " + ToWide(config.startupMode) +
+                                   L"\r\nSerial: " + ToWide(settings.serial.port) + L"@" + ToWide(std::to_string(settings.serial.baudRate)) +
+                                   L"; Output action: " + action;
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppPathsLabel), pathSummary.c_str());
   const std::wstring serialSummary = L"Port=" + ToWide(settings.serial.port) + L"; Baud=" + ToWide(std::to_string(settings.serial.baudRate)) +
                                      L"; DataBits=" + ToWide(std::to_string(settings.serial.dataBits)) + L"; Parity=" +
@@ -517,6 +527,9 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
 
 bool ReadSerialSettingsFromControls(HWND settingsHwnd, AppSettings& settingsOut, std::string& error) {
   settingsOut.serial.port = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialPortCombo)));
+  const auto mapped = g_ui.portDisplayToPort.find(settingsOut.serial.port);
+  if (mapped != g_ui.portDisplayToPort.end()) settingsOut.serial.port = mapped->second;
+  settingsOut.serial.port = ExtractPortToken(settingsOut.serial.port);
   if (settingsOut.serial.port.empty()) {
     error = "Invalid serial port: value is empty.";
     return false;
@@ -617,6 +630,7 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
   }
 
   g_ui.controller->ApplySettings(nextSettings, nextConfig);
+  LoadSettingsIntoControls(settingsHwnd);
   InvalidateRect(g_ui.mainWindow, nullptr, TRUE);
   if (g_ui.settingsWindow) InvalidateRect(g_ui.settingsWindow, nullptr, TRUE);
 }
@@ -654,12 +668,25 @@ void RefreshPortList(HWND settingsHwnd) {
   if (ports.empty()) ports.push_back(g_ui.controller->Settings().serial.port);
   std::sort(ports.begin(), ports.end());
   ports.erase(std::unique(ports.begin(), ports.end()), ports.end());
+  g_ui.portDisplayToPort.clear();
 
   std::vector<std::wstring> values;
   values.reserve(ports.size());
-  for (const auto& port : ports) values.push_back(ToWide(port));
+  for (const auto& portEntry : ports) {
+    const auto rawPort = ExtractPortToken(portEntry);
+    g_ui.portDisplayToPort[portEntry] = rawPort;
+    values.push_back(ToWide(portEntry));
+  }
   PopulateComboWithValues(GetDlgItem(settingsHwnd, kSerialPortCombo), values);
-  SetComboToText(GetDlgItem(settingsHwnd, kSerialPortCombo), ToWide(g_ui.controller->Settings().serial.port));
+  const auto currentPort = g_ui.controller->Settings().serial.port;
+  auto currentDisplay = currentPort;
+  for (const auto& entry : g_ui.portDisplayToPort) {
+    if (entry.second == currentPort) {
+      currentDisplay = entry.first;
+      break;
+    }
+  }
+  SetComboToText(GetDlgItem(settingsHwnd, kSerialPortCombo), ToWide(currentDisplay));
   std::string joined;
   for (std::size_t i = 0; i < ports.size(); ++i) {
     if (i) joined += ", ";
@@ -711,7 +738,11 @@ void RunTestReceive(HWND settingsHwnd) {
   std::string line;
   std::string error;
   if (g_ui.controller->TestReceive(testSettings.serial, line, error)) {
-    AddLogLine("Test Receive line: " + line);
+    AddLogLine("Raw received line: '" + line + "'");
+    ValueParser parser;
+    const auto parsed = parser.Process(line, testSettings.parsing);
+    if (parsed.ok) AddLogLine("Parsed value: '" + parsed.processed + "'");
+    else AddLogLine("Parse rejected: " + parsed.message);
   } else {
     AddLogLine("Test Receive failed: " + error);
   }
@@ -834,19 +865,31 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
       label(L"Baud", top + 36, g_ui.serialTabControls);
       HWND baud = editableCombo(kSerialBaudCombo, top + 36, 645, g_ui.serialTabControls);
-      for (const wchar_t* value : {L"1200", L"2400", L"4800", L"9600"}) SendMessageW(baud, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
+      for (int value : g_ui.controller->Config().baudRates) {
+        const auto text = ToWide(std::to_string(value));
+        SendMessageW(baud, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
+      }
 
       label(L"Data bits", top + 72, g_ui.serialTabControls);
       HWND bits = editableCombo(kSerialDataBitsCombo, top + 72, 645, g_ui.serialTabControls);
-      for (const wchar_t* value : {L"7", L"8"}) SendMessageW(bits, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
+      for (int value : g_ui.controller->Config().dataBitsOptions) {
+        const auto text = ToWide(std::to_string(value));
+        SendMessageW(bits, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
+      }
 
       label(L"Parity", top + 108, g_ui.serialTabControls);
       HWND parity = editableCombo(kSerialParityCombo, top + 108, 645, g_ui.serialTabControls);
-      for (const wchar_t* value : {L"O", L"N", L"E"}) SendMessageW(parity, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
+      for (const auto& value : g_ui.controller->Config().parityOptions) {
+        const auto text = ToWide(value);
+        SendMessageW(parity, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
+      }
 
       label(L"Stop bits", top + 144, g_ui.serialTabControls);
       HWND stopBits = editableCombo(kSerialStopBitsCombo, top + 144, 645, g_ui.serialTabControls);
-      for (const wchar_t* value : {L"1", L"1.5", L"2"}) SendMessageW(stopBits, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
+      for (const auto& value : g_ui.controller->Config().stopBitsOptions) {
+        const auto text = ToWide(value);
+        SendMessageW(stopBits, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
+      }
 
       label(L"Timeout", top + 180, g_ui.serialTabControls);
       HWND timeout = editableCombo(kSerialTimeoutCombo, top + 180, 645, g_ui.serialTabControls);

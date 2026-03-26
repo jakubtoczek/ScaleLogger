@@ -57,6 +57,7 @@ ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with
 - `dark_mode`
 - `startup_mode` and preset name fields
 - `standalone_mode`
+- optional serial dropdown option arrays: `baud_rates`, `data_bits_options`, `parity_options`, `stop_bits_options`
 
 To keep schema consistency, config files also carry serial/parsing/output fields (same structure used by presets), including `custom_sequence` and `eol`.
 Presets may also include app-level fields (`config_folder`, `logs_folder`, `log_mode`, etc.); unknown/extra fields remain backward-compatible.
@@ -84,6 +85,10 @@ Runtime file logging flushes each line and emits a one-time visible error if fil
 ## Standalone mode
 When `standalone_mode` is `true`, ScaleLogger avoids writing config, preset, and log files.  
 This mode is intended for restricted or temporary environments where no local file output is desired.
+
+Behavior notes:
+- If no config file exists, app still loads runtime defaults (or `default_config.json`) for current session.
+- In standalone mode, settings still apply in-memory, but file persistence is intentionally skipped.
 
 ## Portable default paths
 `default_config.json` uses `%LOCALAPPDATA%` placeholders for folder defaults.  

@@ -4,8 +4,12 @@
 #include <condition_variable>
 #include <ctime>
 #include <filesystem>
-#include <cstdlib>
 #include <mutex>
+#include <vector>
+
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 
 namespace scalelogger {
 namespace {
@@ -19,16 +23,15 @@ std::wstring Utf8ToWide(const std::string& text) {
 }
 
 std::string ExpandPathPlaceholders(std::string value) {
-  auto expandOne = [&](const char* token, const char* envName) {
-    const std::string placeholder = token;
-    const auto pos = value.find(placeholder);
-    if (pos == std::string::npos) return;
-    const char* env = std::getenv(envName);
-    if (!env || !*env) return;
-    value.replace(pos, placeholder.size(), env);
-  };
-  expandOne("%LOCALAPPDATA%", "LOCALAPPDATA");
-  expandOne("%APPDATA%", "APPDATA");
+  if (value.empty()) return value;
+#ifdef _WIN32
+  const std::wstring wide(value.begin(), value.end());
+  std::vector<wchar_t> buffer(32768, L'\0');
+  const DWORD written = ExpandEnvironmentStringsW(wide.c_str(), buffer.data(), static_cast<DWORD>(buffer.size()));
+  if (written > 0 && written < buffer.size()) {
+    value.assign(buffer.data(), buffer.data() + written - 1);
+  }
+#endif
   return value;
 }
 } // namespace

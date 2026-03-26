@@ -56,6 +56,10 @@ struct AppConfig {
   std::string startupPresetName{};
   std::string lastUsedPresetName{};
   bool standaloneMode{false};
+  std::vector<int> baudRates{1200, 2400, 4800, 9600};
+  std::vector<int> dataBitsOptions{7, 8};
+  std::vector<std::string> parityOptions{"O", "N", "E"};
+  std::vector<std::string> stopBitsOptions{"1", "1.5", "2"};
 };
 
 } // namespace scalelogger

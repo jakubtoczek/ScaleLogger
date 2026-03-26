@@ -76,6 +76,25 @@ std::vector<std::string> ExtractStringArray(const std::string& text, const std::
   return out;
 }
 
+std::vector<int> ExtractIntArray(const std::string& text, const std::string& key) {
+  std::vector<int> out;
+  const auto pos = text.find("\"" + key + "\"");
+  if (pos == std::string::npos) return out;
+  const auto lb = text.find('[', pos);
+  const auto rb = text.find(']', lb + 1);
+  if (lb == std::string::npos || rb == std::string::npos) return out;
+  const auto content = text.substr(lb + 1, rb - lb - 1);
+  std::stringstream ss(content);
+  std::string token;
+  while (std::getline(ss, token, ',')) {
+    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.front())) != 0) token.erase(token.begin());
+    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.back())) != 0) token.pop_back();
+    if (token.empty()) continue;
+    out.push_back(std::atoi(token.c_str()));
+  }
+  return out;
+}
+
 std::string DecodeEolString(const std::string& value) {
   if (value == "\\r\\n") return "\r\n";
   if (value == "\\n") return "\n";
@@ -121,6 +140,14 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   cfg.startupPresetName = ExtractString(text, "startup_preset_name", "");
   cfg.lastUsedPresetName = ExtractString(text, "last_used_preset_name", "");
   cfg.standaloneMode = ExtractBool(text, "standalone_mode", cfg.standaloneMode);
+  const auto baudRates = ExtractIntArray(text, "baud_rates");
+  if (!baudRates.empty()) cfg.baudRates = baudRates;
+  const auto dataBitsOptions = ExtractIntArray(text, "data_bits_options");
+  if (!dataBitsOptions.empty()) cfg.dataBitsOptions = dataBitsOptions;
+  const auto parityOptions = ExtractStringArray(text, "parity_options");
+  if (!parityOptions.empty()) cfg.parityOptions = parityOptions;
+  const auto stopBitsOptions = ExtractStringArray(text, "stop_bits_options");
+  if (!stopBitsOptions.empty()) cfg.stopBitsOptions = stopBitsOptions;
   const auto logMode = ExtractString(text, "log_mode", "per_session");
   cfg.logMode = logMode == "single_file" ? LogMode::SingleFile : (logMode == "none" ? LogMode::None : LogMode::PerSession);
   cfg.lineLogMode = ExtractString(text, "line_log_mode", "compact") == "verbose" ? LineLogMode::Verbose : LineLogMode::Compact;
@@ -147,7 +174,31 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, cons
       << "  \"startup_mode\": \"" << config.startupMode << "\",\n"
       << "  \"startup_preset_name\": \"" << config.startupPresetName << "\",\n"
       << "  \"last_used_preset_name\": \"" << config.lastUsedPresetName << "\",\n"
-      << "  \"standalone_mode\": " << (config.standaloneMode ? "true" : "false");
+      << "  \"standalone_mode\": " << (config.standaloneMode ? "true" : "false") << ",\n"
+      << "  \"baud_rates\": [";
+  for (std::size_t i = 0; i < config.baudRates.size(); ++i) {
+    if (i) ofs << ", ";
+    ofs << config.baudRates[i];
+  }
+  ofs << "],\n"
+      << "  \"data_bits_options\": [";
+  for (std::size_t i = 0; i < config.dataBitsOptions.size(); ++i) {
+    if (i) ofs << ", ";
+    ofs << config.dataBitsOptions[i];
+  }
+  ofs << "],\n"
+      << "  \"parity_options\": [";
+  for (std::size_t i = 0; i < config.parityOptions.size(); ++i) {
+    if (i) ofs << ", ";
+    ofs << '"' << config.parityOptions[i] << '"';
+  }
+  ofs << "],\n"
+      << "  \"stop_bits_options\": [";
+  for (std::size_t i = 0; i < config.stopBitsOptions.size(); ++i) {
+    if (i) ofs << ", ";
+    ofs << '"' << config.stopBitsOptions[i] << '"';
+  }
+  ofs << "]";
   if (settings) {
     const auto mode = settings->parsing.mode == ParseMode::Raw ? "raw" : "parsed";
     const auto parity = std::string(1, settings->serial.parity);
