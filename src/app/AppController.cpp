@@ -215,8 +215,7 @@ bool AppController::SaveCurrentSettingsAsPreset(const std::string& presetName) {
   if (presetName.empty()) return false;
   const auto presetPath = std::filesystem::path(config_.presetsFolder) / (presetName + ".json");
   if (config_.standaloneMode) return false;
-  SavePreset(presetPath, settings_, &config_);
-  if (!std::filesystem::exists(presetPath)) {
+  if (!SavePreset(presetPath, settings_, &config_)) {
     EmitLog("ERROR: Failed to save preset: " + presetPath.string(), true);
     return false;
   }

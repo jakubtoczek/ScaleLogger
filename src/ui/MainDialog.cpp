@@ -886,8 +886,8 @@ void SaveAsPresetFromControls(HWND settingsHwnd) {
   if (presetPath.parent_path() == presetsFolder) {
     g_ui.controller->SaveCurrentSettingsAsPreset(presetName);
   } else {
-    SavePreset(presetPath, g_ui.controller->Settings(), &g_ui.controller->Config());
-    AddLogLine("Preset saved: " + presetName);
+    if (SavePreset(presetPath, g_ui.controller->Settings(), &g_ui.controller->Config())) AddLogLine("Preset saved: " + presetName);
+    else AddLogLine("ERROR: Failed to save preset: " + presetPath.string());
   }
   RefreshPresetDropdown();
 }

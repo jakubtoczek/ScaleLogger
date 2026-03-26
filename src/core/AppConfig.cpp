@@ -10,19 +10,68 @@ namespace scalelogger {
 namespace {
 std::string ReadAll(const std::filesystem::path& path) {
   std::ifstream ifs(path);
+  if (!ifs) return {};
   std::stringstream ss;
   ss << ifs.rdbuf();
   return ss.str();
+}
+
+std::string JsonEscape(const std::string& value) {
+  std::string out;
+  out.reserve(value.size() + 8);
+  for (char ch : value) {
+    switch (ch) {
+      case '\\': out += "\\\\"; break;
+      case '"': out += "\\\""; break;
+      case '\r': out += "\\r"; break;
+      case '\n': out += "\\n"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if (static_cast<unsigned char>(ch) < 0x20) out += ' ';
+        else out += ch;
+        break;
+    }
+  }
+  return out;
+}
+
+bool ParseJsonStringAt(const std::string& text, std::size_t quotePos, std::string& out, std::size_t& endPos) {
+  if (quotePos >= text.size() || text[quotePos] != '"') return false;
+  out.clear();
+  for (std::size_t i = quotePos + 1; i < text.size(); ++i) {
+    const char ch = text[i];
+    if (ch == '"') {
+      endPos = i;
+      return true;
+    }
+    if (ch == '\\' && i + 1 < text.size()) {
+      const char esc = text[++i];
+      switch (esc) {
+        case '\\': out.push_back('\\'); break;
+        case '"': out.push_back('"'); break;
+        case 'r': out.push_back('\r'); break;
+        case 'n': out.push_back('\n'); break;
+        case 't': out.push_back('\t'); break;
+        default: out.push_back(esc); break;
+      }
+      continue;
+    }
+    out.push_back(ch);
+  }
+  return false;
 }
 
 std::string ExtractString(const std::string& text, const std::string& key, const std::string& fallback) {
   const auto pos = text.find("\"" + key + "\"");
   if (pos == std::string::npos) return fallback;
   const auto colon = text.find(':', pos);
+  if (colon == std::string::npos) return fallback;
   const auto q1 = text.find('"', colon + 1);
-  const auto q2 = text.find('"', q1 + 1);
-  if (q1 == std::string::npos || q2 == std::string::npos) return fallback;
-  return text.substr(q1 + 1, q2 - q1 - 1);
+  if (q1 == std::string::npos) return fallback;
+  std::string out;
+  std::size_t endPos = std::string::npos;
+  if (!ParseJsonStringAt(text, q1, out, endPos)) return fallback;
+  return out;
 }
 
 bool ContainsKey(const std::string& text, const std::string& key) {
@@ -65,13 +114,19 @@ std::vector<std::string> ExtractStringArray(const std::string& text, const std::
   if (lb == std::string::npos || rb == std::string::npos) return out;
   const auto content = text.substr(lb + 1, rb - lb - 1);
 
-  std::stringstream ss(content);
-  std::string token;
-  while (std::getline(ss, token, ',')) {
-    token.erase(std::remove(token.begin(), token.end(), '"'), token.end());
-    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.front())) != 0) token.erase(token.begin());
-    while (!token.empty() && std::isspace(static_cast<unsigned char>(token.back())) != 0) token.pop_back();
-    if (!token.empty()) out.push_back(token);
+  std::size_t i = 0;
+  while (i < content.size()) {
+    while (i < content.size() && (std::isspace(static_cast<unsigned char>(content[i])) != 0 || content[i] == ',')) ++i;
+    if (i >= content.size()) break;
+    if (content[i] != '"') {
+      ++i;
+      continue;
+    }
+    std::string value;
+    std::size_t endPos = std::string::npos;
+    if (!ParseJsonStringAt(content, i, value, endPos)) break;
+    out.push_back(value);
+    i = endPos + 1;
   }
   return out;
 }
@@ -161,19 +216,19 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, cons
   std::ofstream ofs(path);
   if (!ofs) return false;
   ofs << "{\n"
-      << "  \"presets_folder\": \"" << config.presetsFolder << "\",\n"
-      << "  \"logs_folder\": \"" << config.logsFolder << "\",\n"
-      << "  \"config_folder\": \"" << config.configFolder << "\",\n"
-      << "  \"config_file_name\": \"" << config.configFileName << "\",\n"
-      << "  \"log_file_pattern\": \"" << config.logFilePattern << "\",\n"
+      << "  \"presets_folder\": \"" << JsonEscape(config.presetsFolder) << "\",\n"
+      << "  \"logs_folder\": \"" << JsonEscape(config.logsFolder) << "\",\n"
+      << "  \"config_folder\": \"" << JsonEscape(config.configFolder) << "\",\n"
+      << "  \"config_file_name\": \"" << JsonEscape(config.configFileName) << "\",\n"
+      << "  \"log_file_pattern\": \"" << JsonEscape(config.logFilePattern) << "\",\n"
       << "  \"log_mode\": \""
       << (config.logMode == LogMode::SingleFile ? "single_file" : (config.logMode == LogMode::None ? "none" : "per_session")) << "\",\n"
       << "  \"line_log_mode\": \"" << (config.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
       << "  \"connect_on_startup\": " << (config.connectOnStartup ? "true" : "false") << ",\n"
       << "  \"dark_mode\": " << (config.darkMode ? "true" : "false") << ",\n"
-      << "  \"startup_mode\": \"" << config.startupMode << "\",\n"
-      << "  \"startup_preset_name\": \"" << config.startupPresetName << "\",\n"
-      << "  \"last_used_preset_name\": \"" << config.lastUsedPresetName << "\",\n"
+      << "  \"startup_mode\": \"" << JsonEscape(config.startupMode) << "\",\n"
+      << "  \"startup_preset_name\": \"" << JsonEscape(config.startupPresetName) << "\",\n"
+      << "  \"last_used_preset_name\": \"" << JsonEscape(config.lastUsedPresetName) << "\",\n"
       << "  \"standalone_mode\": " << (config.standaloneMode ? "true" : "false") << ",\n"
       << "  \"baud_rates\": [";
   for (std::size_t i = 0; i < config.baudRates.size(); ++i) {
@@ -190,13 +245,13 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, cons
       << "  \"parity_options\": [";
   for (std::size_t i = 0; i < config.parityOptions.size(); ++i) {
     if (i) ofs << ", ";
-    ofs << '"' << config.parityOptions[i] << '"';
+    ofs << '"' << JsonEscape(config.parityOptions[i]) << '"';
   }
   ofs << "],\n"
       << "  \"stop_bits_options\": [";
   for (std::size_t i = 0; i < config.stopBitsOptions.size(); ++i) {
     if (i) ofs << ", ";
-    ofs << '"' << config.stopBitsOptions[i] << '"';
+    ofs << '"' << JsonEscape(config.stopBitsOptions[i]) << '"';
   }
   ofs << "]";
   if (settings) {
@@ -216,26 +271,26 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, cons
       default: break;
     }
     ofs << ",\n"
-        << "  \"port\": \"" << settings->serial.port << "\",\n"
+        << "  \"port\": \"" << JsonEscape(settings->serial.port) << "\",\n"
         << "  \"baudrate\": " << settings->serial.baudRate << ",\n"
         << "  \"databits\": " << settings->serial.dataBits << ",\n"
-        << "  \"parity\": \"" << parity << "\",\n"
+        << "  \"parity\": \"" << JsonEscape(parity) << "\",\n"
         << "  \"stopbits\": " << settings->serial.stopBits << ",\n"
         << "  \"timeout\": " << settings->serial.timeoutSeconds << ",\n"
-        << "  \"eol\": \"" << eol << "\",\n"
+        << "  \"eol\": \"" << JsonEscape(eol) << "\",\n"
         << "  \"mode\": \"" << mode << "\",\n"
         << "  \"trim_whitespace\": " << (settings->parsing.trimWhitespace ? "true" : "false") << ",\n"
         << "  \"strip_suffix\": " << (settings->parsing.stripSuffix ? "true" : "false") << ",\n"
-        << "  \"suffix\": \"" << settings->parsing.suffix << "\",\n"
+        << "  \"suffix\": \"" << JsonEscape(settings->parsing.suffix) << "\",\n"
         << "  \"normalize_sign\": " << (settings->parsing.normalizeSign ? "true" : "false") << ",\n"
         << "  \"preserve_plus_sign\": " << (settings->parsing.preservePlusSign ? "true" : "false") << ",\n"
         << "  \"preserve_minus_sign\": " << (settings->parsing.preserveMinusSign ? "true" : "false") << ",\n"
         << "  \"numeric_validation\": " << (settings->parsing.numericValidation ? "true" : "false") << ",\n"
-        << "  \"post_action\": \"" << postAction << "\",\n"
+        << "  \"post_action\": \"" << JsonEscape(postAction) << "\",\n"
         << "  \"custom_sequence\": [";
     for (std::size_t i = 0; i < settings->output.customSequence.size(); ++i) {
       if (i) ofs << ", ";
-      ofs << '"' << settings->output.customSequence[i] << '"';
+      ofs << '"' << JsonEscape(settings->output.customSequence[i]) << '"';
     }
     ofs << "]";
   }
@@ -251,7 +306,8 @@ AppSettings LoadPreset(const std::filesystem::path& path, bool* usedLegacyCompat
   s.serial.port = ExtractString(text, "port", s.serial.port);
   s.serial.baudRate = ExtractInt(text, "baudrate", s.serial.baudRate);
   s.serial.dataBits = ExtractInt(text, "databits", s.serial.dataBits);
-  s.serial.parity = ExtractString(text, "parity", "O")[0];
+  const auto parity = ExtractString(text, "parity", "O");
+  s.serial.parity = parity.empty() ? 'O' : parity[0];
   s.serial.stopBits = ExtractFloat(text, "stopbits", s.serial.stopBits);
   s.serial.timeoutSeconds = ExtractFloat(text, "timeout", s.serial.timeoutSeconds);
   s.serial.eol = DecodeEolString(ExtractString(text, "eol", "\\r\\n"));
@@ -275,10 +331,12 @@ AppSettings LoadPreset(const std::filesystem::path& path, bool* usedLegacyCompat
   return s;
 }
 
-void SavePreset(const std::filesystem::path& path, const AppSettings& settings, const AppConfig* config) {
-  std::filesystem::create_directories(path.parent_path());
+bool SavePreset(const std::filesystem::path& path, const AppSettings& settings, const AppConfig* config) {
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+  if (ec) return false;
   std::ofstream ofs(path);
-  if (!ofs) return;
+  if (!ofs) return false;
 
   const auto mode = settings.parsing.mode == ParseMode::Raw ? "raw" : "parsed";
   const auto parity = std::string(1, settings.serial.parity);
@@ -298,46 +356,47 @@ void SavePreset(const std::filesystem::path& path, const AppSettings& settings, 
   }
 
   ofs << "{\n"
-      << "  \"port\": \"" << settings.serial.port << "\",\n"
+      << "  \"port\": \"" << JsonEscape(settings.serial.port) << "\",\n"
       << "  \"baudrate\": " << settings.serial.baudRate << ",\n"
       << "  \"databits\": " << settings.serial.dataBits << ",\n"
-      << "  \"parity\": \"" << parity << "\",\n"
+      << "  \"parity\": \"" << JsonEscape(parity) << "\",\n"
       << "  \"stopbits\": " << settings.serial.stopBits << ",\n"
       << "  \"timeout\": " << settings.serial.timeoutSeconds << ",\n"
-      << "  \"eol\": \"" << eol << "\",\n"
-      << "  \"mode\": \"" << mode << "\",\n"
+      << "  \"eol\": \"" << JsonEscape(eol) << "\",\n"
+      << "  \"mode\": \"" << JsonEscape(mode) << "\",\n"
       << "  \"trim_whitespace\": " << (settings.parsing.trimWhitespace ? "true" : "false") << ",\n"
       << "  \"strip_suffix\": " << (settings.parsing.stripSuffix ? "true" : "false") << ",\n"
-      << "  \"suffix\": \"" << settings.parsing.suffix << "\",\n"
+      << "  \"suffix\": \"" << JsonEscape(settings.parsing.suffix) << "\",\n"
       << "  \"normalize_sign\": " << (settings.parsing.normalizeSign ? "true" : "false") << ",\n"
       << "  \"preserve_plus_sign\": " << (settings.parsing.preservePlusSign ? "true" : "false") << ",\n"
       << "  \"preserve_minus_sign\": " << (settings.parsing.preserveMinusSign ? "true" : "false") << ",\n"
       << "  \"numeric_validation\": " << (settings.parsing.numericValidation ? "true" : "false") << ",\n"
-      << "  \"post_action\": \"" << postAction << "\",\n"
+      << "  \"post_action\": \"" << JsonEscape(postAction) << "\",\n"
       << "  \"custom_sequence\": [";
   for (std::size_t i = 0; i < settings.output.customSequence.size(); ++i) {
     if (i) ofs << ", ";
-    ofs << '"' << settings.output.customSequence[i] << '"';
+    ofs << '"' << JsonEscape(settings.output.customSequence[i]) << '"';
   }
   ofs << "]";
   if (config) {
     ofs << ",\n"
-        << "  \"config_folder\": \"" << config->configFolder << "\",\n"
-        << "  \"config_file_name\": \"" << config->configFileName << "\",\n"
-        << "  \"presets_folder\": \"" << config->presetsFolder << "\",\n"
-        << "  \"logs_folder\": \"" << config->logsFolder << "\",\n"
-        << "  \"log_file_pattern\": \"" << config->logFilePattern << "\",\n"
+        << "  \"config_folder\": \"" << JsonEscape(config->configFolder) << "\",\n"
+        << "  \"config_file_name\": \"" << JsonEscape(config->configFileName) << "\",\n"
+        << "  \"presets_folder\": \"" << JsonEscape(config->presetsFolder) << "\",\n"
+        << "  \"logs_folder\": \"" << JsonEscape(config->logsFolder) << "\",\n"
+        << "  \"log_file_pattern\": \"" << JsonEscape(config->logFilePattern) << "\",\n"
         << "  \"log_mode\": \""
         << (config->logMode == LogMode::SingleFile ? "single_file" : (config->logMode == LogMode::None ? "none" : "per_session")) << "\",\n"
         << "  \"line_log_mode\": \"" << (config->lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
         << "  \"connect_on_startup\": " << (config->connectOnStartup ? "true" : "false") << ",\n"
         << "  \"dark_mode\": " << (config->darkMode ? "true" : "false") << ",\n"
-        << "  \"startup_mode\": \"" << config->startupMode << "\",\n"
-        << "  \"startup_preset_name\": \"" << config->startupPresetName << "\",\n"
-        << "  \"last_used_preset_name\": \"" << config->lastUsedPresetName << "\",\n"
+        << "  \"startup_mode\": \"" << JsonEscape(config->startupMode) << "\",\n"
+        << "  \"startup_preset_name\": \"" << JsonEscape(config->startupPresetName) << "\",\n"
+        << "  \"last_used_preset_name\": \"" << JsonEscape(config->lastUsedPresetName) << "\",\n"
         << "  \"standalone_mode\": " << (config->standaloneMode ? "true" : "false");
   }
   ofs << "\n}\n";
+  return static_cast<bool>(ofs);
 }
 
 bool SerialSettingsRequireReconnect(const SerialSettings& lhs, const SerialSettings& rhs) {
