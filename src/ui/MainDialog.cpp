@@ -531,8 +531,7 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   SetWindowTextW(GetDlgItem(settingsHwnd, kOutputSummaryEdit), outputSummary.c_str());
   SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_SETCHECK, config.darkMode ? BST_CHECKED : BST_UNCHECKED, 0);
   if (g_ui.settingsTab) {
-    TabCtrl_SetBkColor(g_ui.settingsTab, config.darkMode ? RGB(32, 32, 32) : GetSysColor(COLOR_BTNFACE));
-    TabCtrl_SetTextColor(g_ui.settingsTab, config.darkMode ? RGB(235, 235, 235) : GetSysColor(COLOR_BTNTEXT));
+    SendMessageW(g_ui.settingsTab, TCM_SETBKCOLOR, 0, static_cast<LPARAM>(config.darkMode ? RGB(32, 32, 32) : GetSysColor(COLOR_BTNFACE)));
   }
 }
 

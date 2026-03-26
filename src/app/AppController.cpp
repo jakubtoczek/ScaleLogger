@@ -22,6 +22,15 @@ std::wstring Utf8ToWide(const std::string& text) {
   return std::wstring(text.begin(), text.end());
 }
 
+std::string WideToUtf8(const std::wstring& text) {
+  if (text.empty()) return {};
+  const int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+  if (sizeNeeded <= 0) return {};
+  std::string out(static_cast<std::size_t>(sizeNeeded), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), out.data(), sizeNeeded, nullptr, nullptr);
+  return out;
+}
+
 std::string ExpandPathPlaceholders(std::string value) {
   if (value.empty()) return value;
 #ifdef _WIN32
@@ -29,7 +38,7 @@ std::string ExpandPathPlaceholders(std::string value) {
   std::vector<wchar_t> buffer(32768, L'\0');
   const DWORD written = ExpandEnvironmentStringsW(wide.c_str(), buffer.data(), static_cast<DWORD>(buffer.size()));
   if (written > 0 && written < buffer.size()) {
-    value.assign(buffer.data(), buffer.data() + written - 1);
+    value = WideToUtf8(std::wstring(buffer.data(), buffer.data() + written - 1));
   }
 #endif
   return value;
