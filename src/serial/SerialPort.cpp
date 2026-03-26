@@ -11,6 +11,15 @@ bool EndsWith(const std::string& value, const std::string& suffix) {
   if (suffix.size() > value.size()) return false;
   return std::equal(suffix.rbegin(), suffix.rend(), value.rbegin());
 }
+
+std::string DescribeOpenError(DWORD err) {
+  switch (err) {
+    case ERROR_ACCESS_DENIED: return "access denied / port busy";
+    case ERROR_FILE_NOT_FOUND: return "port not found";
+    case ERROR_SHARING_VIOLATION: return "sharing violation / port busy";
+    default: return "system error " + std::to_string(static_cast<unsigned long>(err));
+  }
+}
 } // namespace
 
 bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLine, const LogHandler& onLog, const LogHandler& onError) {
@@ -19,7 +28,8 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLi
   const std::string full = "\\\\.\\" + settings.port;
   handle_ = CreateFileA(full.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
   if (handle_ == INVALID_HANDLE_VALUE) {
-    onError("Serial connection failed on " + settings.port);
+    const auto err = GetLastError();
+    onError("Serial connection failed on " + settings.port + ": " + DescribeOpenError(err));
     return false;
   }
 

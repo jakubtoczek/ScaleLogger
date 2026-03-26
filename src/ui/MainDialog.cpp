@@ -111,7 +111,14 @@ void LoadSettingsIntoControls(HWND settingsHwnd);
 
 std::wstring ToWide(std::string_view text) { return std::wstring(text.begin(), text.end()); }
 
-std::string ToUtf8(const std::wstring& text) { return std::string(text.begin(), text.end()); }
+std::string ToUtf8(const std::wstring& text) {
+  if (text.empty()) return {};
+  const int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+  if (sizeNeeded <= 0) return {};
+  std::string out(static_cast<std::size_t>(sizeNeeded), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), out.data(), sizeNeeded, nullptr, nullptr);
+  return out;
+}
 
 std::string ExtractPortToken(const std::string& display) {
   const auto emDashPos = display.find(" — ");
@@ -773,7 +780,7 @@ void LayoutSettingsWindow(HWND hwnd) {
   };
   auto moveCombo = [&](int id, int y, int width = -1) {
     const int fieldWidth = width < 0 ? fullFieldWidth : width;
-    MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, 260, TRUE);
+    MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, 24, TRUE);
   };
   auto moveBrowse = [&](int id, int y) { MoveWindow(GetDlgItem(hwnd, id), fieldLeft + browsedFieldWidth + 5, y, browseWidth, 24, TRUE); };
 
@@ -981,6 +988,11 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
                                  left + 10, top + 210, 760, 90, hwnd, reinterpret_cast<HMENU>(kAppPathsLabel), nullptr, nullptr));
 
+      for (int comboId : {kSerialPortCombo, kSerialBaudCombo, kSerialDataBitsCombo, kSerialParityCombo, kSerialStopBitsCombo, kSerialTimeoutCombo,
+                          kSerialEolCombo, kOutputModeCombo, kOutputActionCombo, kAppLogModeCombo, kAppStartupPresetCombo}) {
+        SendMessageW(GetDlgItem(hwnd, comboId), CB_SETMINVISIBLE, 8, 0);
+      }
+
       CreateWindowW(L"BUTTON", L"Save Configuration", WS_CHILD | WS_VISIBLE, 20, 520, 140, 32, hwnd,
                     reinterpret_cast<HMENU>(kSettingsSaveConfig), nullptr, nullptr);
       CreateWindowW(L"BUTTON", L"Save as Preset", WS_CHILD | WS_VISIBLE, 170, 520, 120, 32, hwnd,
@@ -992,7 +1004,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
       ShowTab(0);
       LoadSettingsIntoControls(hwnd);
-      RefreshPortList(hwnd);
       LayoutSettingsWindow(hwnd);
       return 0;
     }
@@ -1128,6 +1139,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     default:
       return DefWindowProcW(hwnd, msg, wParam, lParam);
   }
+  return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
 void OpenSettingsWindow(HINSTANCE hInstance) {
@@ -1234,6 +1246,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     default:
       return DefWindowProcW(hwnd, msg, wParam, lParam);
   }
+  return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 } // namespace
 

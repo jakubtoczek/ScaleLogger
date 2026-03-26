@@ -1,8 +1,8 @@
 #include "serial/PortScanner.hpp"
 
 #ifdef _WIN32
-#include <SetupAPI.h>
 #include <Windows.h>
+#include <SetupAPI.h>
 #include <devguid.h>
 #include <regstr.h>
 #pragma comment(lib, "Setupapi.lib")
