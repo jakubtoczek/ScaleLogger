@@ -579,9 +579,27 @@ bool ReadSerialSettingsFromControls(HWND settingsHwnd, AppSettings& settingsOut,
   return true;
 }
 
-void ApplySettingsFromControls(HWND settingsHwnd) {
+int CountConfigDifferences(const AppConfig& before, const AppConfig& after) {
+  int count = 0;
+  if (before.configFolder != after.configFolder) ++count;
+  if (before.configFileName != after.configFileName) ++count;
+  if (before.presetsFolder != after.presetsFolder) ++count;
+  if (before.logsFolder != after.logsFolder) ++count;
+  if (before.logMode != after.logMode) ++count;
+  if (before.lineLogMode != after.lineLogMode) ++count;
+  if (before.connectOnStartup != after.connectOnStartup) ++count;
+  if (before.darkMode != after.darkMode) ++count;
+  if (before.startupMode != after.startupMode) ++count;
+  if (before.startupPresetName != after.startupPresetName) ++count;
+  if (before.standaloneMode != after.standaloneMode) ++count;
+  return count;
+}
+
+void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested = false) {
   AppSettings nextSettings = g_ui.controller->Settings();
   AppConfig nextConfig = g_ui.controller->Config();
+  const auto prevSettings = nextSettings;
+  const auto prevConfig = nextConfig;
   std::string serialError;
   if (!ReadSerialSettingsFromControls(settingsHwnd, nextSettings, serialError)) {
     AddLogLine("ERROR: " + serialError);
@@ -636,8 +654,35 @@ void ApplySettingsFromControls(HWND settingsHwnd) {
     nextConfig.startupPresetName = startupPreset;
   }
 
+  std::vector<std::string> changedFields;
+  if (prevSettings.serial.port != nextSettings.serial.port) changedFields.push_back("port: " + prevSettings.serial.port + " -> " + nextSettings.serial.port);
+  if (prevSettings.serial.baudRate != nextSettings.serial.baudRate) changedFields.push_back("baud: " + std::to_string(prevSettings.serial.baudRate) + " -> " + std::to_string(nextSettings.serial.baudRate));
+  if (prevSettings.serial.dataBits != nextSettings.serial.dataBits) changedFields.push_back("data bits: " + std::to_string(prevSettings.serial.dataBits) + " -> " + std::to_string(nextSettings.serial.dataBits));
+  if (prevSettings.serial.parity != nextSettings.serial.parity) changedFields.push_back("parity: " + std::string(1, prevSettings.serial.parity) + " -> " + std::string(1, nextSettings.serial.parity));
+  if (prevSettings.serial.stopBits != nextSettings.serial.stopBits) changedFields.push_back("stop bits changed");
+  if (prevSettings.serial.timeoutSeconds != nextSettings.serial.timeoutSeconds) changedFields.push_back("timeout changed");
+  if (prevSettings.output.postAction != nextSettings.output.postAction) changedFields.push_back("post action changed");
+  if (prevConfig.logMode != nextConfig.logMode) changedFields.push_back("log mode changed");
+  if (prevConfig.darkMode != nextConfig.darkMode) changedFields.push_back("dark mode changed");
+  if (prevConfig.connectOnStartup != nextConfig.connectOnStartup) changedFields.push_back("connect on startup changed");
+
   g_ui.controller->ApplySettings(nextSettings, nextConfig);
   LoadSettingsIntoControls(settingsHwnd);
+  if (!changedFields.empty()) {
+    std::string joined;
+    for (std::size_t i = 0; i < changedFields.size(); ++i) {
+      if (i) joined += "; ";
+      joined += changedFields[i];
+    }
+    AddLogLine("Settings applied: " + joined);
+  } else if (!saveRequested) {
+    AddLogLine("Settings apply requested: no changes detected.");
+  }
+  if (saveRequested) {
+    const int configChanges = CountConfigDifferences(prevConfig, nextConfig);
+    if (configChanges == 0) AddLogLine("Configuration already up to date.");
+    else AddLogLine("Configuration updated (" + std::to_string(configChanges) + " fields changed).");
+  }
   InvalidateRect(g_ui.mainWindow, nullptr, TRUE);
   if (g_ui.settingsWindow) InvalidateRect(g_ui.settingsWindow, nullptr, TRUE);
 }
@@ -780,7 +825,7 @@ void LayoutSettingsWindow(HWND hwnd) {
   };
   auto moveCombo = [&](int id, int y, int width = -1) {
     const int fieldWidth = width < 0 ? fullFieldWidth : width;
-    MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, 24, TRUE);
+    MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, 28, TRUE);
   };
   auto moveBrowse = [&](int id, int y) { MoveWindow(GetDlgItem(hwnd, id), fieldLeft + browsedFieldWidth + 5, y, browseWidth, 24, TRUE); };
 
@@ -1017,10 +1062,10 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_COMMAND: {
       switch (LOWORD(wParam)) {
         case kSettingsApply:
-          ApplySettingsFromControls(hwnd);
+          ApplySettingsFromControls(hwnd, false);
           return 0;
         case kSettingsSaveConfig:
-          ApplySettingsFromControls(hwnd);
+          ApplySettingsFromControls(hwnd, true);
           return 0;
         case kSettingsSavePreset:
           SaveAsPresetFromControls(hwnd);

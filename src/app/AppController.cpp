@@ -91,13 +91,20 @@ void AppController::Connect() {
   const bool connected = serial_.Connect(
       settings_.serial,
       [this](const std::string& rawLine) {
-        EmitLog("Raw received line: '" + rawLine + "'");
         const auto parsed = parser_.Process(rawLine, settings_.parsing);
         if (!parsed.ok) {
+          if (config_.lineLogMode == LineLogMode::Compact) {
+            EmitLog("Scale input raw='" + rawLine + "' parse_error='" + parsed.message + "'", true);
+          } else {
+            EmitLog("Raw received line: '" + rawLine + "'");
+          }
           EmitLog("Parse rejected: " + parsed.message + " raw='" + rawLine + "'", true);
           return;
         }
-        if (settings_.parsing.mode == ParseMode::Parsed) {
+        if (config_.lineLogMode == LineLogMode::Compact) {
+          EmitLog("Scale input raw='" + rawLine + "' parsed='" + parsed.processed + "'");
+        } else if (settings_.parsing.mode == ParseMode::Parsed) {
+          EmitLog("Raw received line: '" + rawLine + "'");
           EmitLog("Parsed value: '" + parsed.processed + "'");
         }
         if (settings_.output.postAction == PostAction::CustomSequence) {
