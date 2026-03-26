@@ -15,7 +15,6 @@
   "startup_mode": "last_used_preset",
   "startup_preset_name": "",
   "last_used_preset_name": "",
-  "standalone_mode": false,
   "port": "COM6",
   "baudrate": 1200,
   "databits": 7,

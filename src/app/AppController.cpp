@@ -86,10 +86,8 @@ void AppController::Initialize() {
   config_.logsFolder = ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
   configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
 
-  if (!config_.standaloneMode) {
-    std::filesystem::create_directories(std::filesystem::path(config_.logsFolder));
-    std::filesystem::create_directories(std::filesystem::path(config_.presetsFolder));
-  }
+  std::filesystem::create_directories(std::filesystem::path(config_.logsFolder));
+  std::filesystem::create_directories(std::filesystem::path(config_.presetsFolder));
 
   const auto presetsDir = std::filesystem::path(config_.presetsFolder);
   std::filesystem::path startupPresetPath;
@@ -191,15 +189,14 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
       config_.logMode != resolvedConfig.logMode || config_.lineLogMode != resolvedConfig.lineLogMode ||
       config_.connectOnStartup != resolvedConfig.connectOnStartup || config_.darkMode != resolvedConfig.darkMode ||
       config_.startupMode != resolvedConfig.startupMode ||
-      config_.startupPresetName != resolvedConfig.startupPresetName || config_.lastUsedPresetName != resolvedConfig.lastUsedPresetName ||
-      config_.standaloneMode != resolvedConfig.standaloneMode;
+      config_.startupPresetName != resolvedConfig.startupPresetName || config_.lastUsedPresetName != resolvedConfig.lastUsedPresetName;
   if (!settingsChanged && !configChanged) return;
 
   const bool reconnect = serial_.IsConnected() && SerialSettingsRequireReconnect(settings_.serial, nextSettings.serial);
   settings_ = nextSettings;
   config_ = resolvedConfig;
   configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
-  if (persistToDisk && (settingsChanged || configChanged) && !config_.standaloneMode) {
+  if (persistToDisk && (settingsChanged || configChanged)) {
     if (SaveConfig(configPath_, config_, &settings_)) EmitLog("Configuration saved");
     else EmitLog("ERROR: Failed to save configuration: " + configPath_.string(), true);
   }
@@ -214,7 +211,6 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
 bool AppController::SaveCurrentSettingsAsPreset(const std::string& presetName) {
   if (presetName.empty()) return false;
   const auto presetPath = std::filesystem::path(config_.presetsFolder) / (presetName + ".json");
-  if (config_.standaloneMode) return false;
   if (!SavePreset(presetPath, settings_, &config_)) {
     EmitLog("ERROR: Failed to save preset: " + presetPath.string(), true);
     return false;
@@ -293,7 +289,7 @@ void AppController::EmitConnectionState(bool connected) const {
 }
 
 void AppController::WriteLogFileLine(const std::string& message, bool isError) const {
-  if (config_.logMode == LogMode::None || config_.standaloneMode) return;
+  if (config_.logMode == LogMode::None) return;
 
   const auto path = ResolveLogPath();
   if (path.empty()) return;

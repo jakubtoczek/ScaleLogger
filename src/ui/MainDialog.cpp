@@ -35,6 +35,8 @@ constexpr int kBtnConnect = 103;
 constexpr int kBtnSettings = 104;
 constexpr int kBtnAbout = 105;
 constexpr int kEditLog = 106;
+constexpr UINT kMsgUiLogLine = WM_APP + 1;
+constexpr UINT kMsgUiConnectionState = WM_APP + 2;
 
 constexpr int kSettingsTab = 200;
 constexpr int kSettingsApply = 201;
@@ -196,6 +198,17 @@ void AddLogLine(const std::string& text) {
   const auto currentLen = GetWindowTextLengthW(g_ui.logEdit);
   SendMessageW(g_ui.logEdit, EM_SETSEL, currentLen, currentLen);
   SendMessageW(g_ui.logEdit, EM_REPLACESEL, FALSE, reinterpret_cast<LPARAM>(lineW.c_str()));
+}
+
+void PostLogLineToUiThread(const std::string& text) {
+  if (!g_ui.mainWindow) return;
+  auto* payload = new std::string(text);
+  if (!PostMessageW(g_ui.mainWindow, kMsgUiLogLine, 0, reinterpret_cast<LPARAM>(payload))) delete payload;
+}
+
+void PostConnectionStateToUiThread(bool connected) {
+  if (!g_ui.mainWindow) return;
+  PostMessageW(g_ui.mainWindow, kMsgUiConnectionState, connected ? 1 : 0, 0);
 }
 
 void UpdateConnectionUi(bool connected) {
@@ -571,8 +584,7 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
       L"\r\nCurrent preset: " + ToWide(config.lastUsedPresetName.empty() ? std::string("(none)") : config.lastUsedPresetName) +
       L"\r\nLogs: " + std::filesystem::path(config.logsFolder).wstring() + L" (" +
       (config.logMode == LogMode::None ? L"none" : (config.logMode == LogMode::SingleFile ? L"single_file" : L"per_session")) + L")" +
-      L"\r\nStandalone: " + std::wstring(config.standaloneMode ? L"on" : L"off") + L"; Dark mode (experimental): " +
-      std::wstring(config.darkMode ? L"on" : L"off") +
+      L"\r\nDark mode (experimental): " + std::wstring(config.darkMode ? L"on" : L"off") +
       L"\r\nSerial: " + ToWide(settings.serial.port) + L" @ " + ToWide(std::to_string(settings.serial.baudRate)) + L" baud" +
       L"\r\nOutput: " + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") + L"; action=" + action;
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppPathsLabel), pathSummary.c_str());
@@ -651,7 +663,6 @@ int CountConfigDifferences(const AppConfig& before, const AppConfig& after) {
   if (before.darkMode != after.darkMode) ++count;
   if (before.startupMode != after.startupMode) ++count;
   if (before.startupPresetName != after.startupPresetName) ++count;
-  if (before.standaloneMode != after.standaloneMode) ++count;
   return count;
 }
 
@@ -1386,6 +1397,14 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
       InvalidateRect(hwnd, nullptr, TRUE);
       return 0;
     }
+    case kMsgUiLogLine: {
+      std::unique_ptr<std::string> payload(reinterpret_cast<std::string*>(lParam));
+      if (payload) AddLogLine(*payload);
+      return 0;
+    }
+    case kMsgUiConnectionState:
+      UpdateConnectionUi(wParam != 0);
+      return 0;
     case WM_ERASEBKGND: {
       RECT rc{};
       GetClientRect(hwnd, &rc);
@@ -1450,10 +1469,8 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
                                                : (std::filesystem::temp_directory_path() / "ScaleLogger");
   g_ui.controller = std::make_unique<AppController>(dataRoot);
 
-  g_ui.controller->SetLogSink([](const std::string& message, bool isError) {
-    AddLogLine((isError ? "ERROR: " : "") + message);
-  });
-  g_ui.controller->SetConnectionStateSink([](bool connected) { UpdateConnectionUi(connected); });
+  g_ui.controller->SetLogSink([](const std::string& message, bool isError) { PostLogLineToUiThread((isError ? "ERROR: " : "") + message); });
+  g_ui.controller->SetConnectionStateSink([](bool connected) { PostConnectionStateToUiThread(connected); });
 
   WNDCLASSW wc{};
   wc.lpfnWndProc = MainWndProc;

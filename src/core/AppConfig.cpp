@@ -194,7 +194,7 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   cfg.startupMode = ExtractString(text, "startup_mode", cfg.startupMode);
   cfg.startupPresetName = ExtractString(text, "startup_preset_name", "");
   cfg.lastUsedPresetName = ExtractString(text, "last_used_preset_name", "");
-  cfg.standaloneMode = ExtractBool(text, "standalone_mode", cfg.standaloneMode);
+  (void)ExtractBool(text, "standalone_mode", false); // legacy key ignored
   const auto baudRates = ExtractIntArray(text, "baud_rates");
   if (!baudRates.empty()) cfg.baudRates = baudRates;
   const auto dataBitsOptions = ExtractIntArray(text, "data_bits_options");
@@ -229,7 +229,6 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, cons
       << "  \"startup_mode\": \"" << JsonEscape(config.startupMode) << "\",\n"
       << "  \"startup_preset_name\": \"" << JsonEscape(config.startupPresetName) << "\",\n"
       << "  \"last_used_preset_name\": \"" << JsonEscape(config.lastUsedPresetName) << "\",\n"
-      << "  \"standalone_mode\": " << (config.standaloneMode ? "true" : "false") << ",\n"
       << "  \"baud_rates\": [";
   for (std::size_t i = 0; i < config.baudRates.size(); ++i) {
     if (i) ofs << ", ";
@@ -392,8 +391,7 @@ bool SavePreset(const std::filesystem::path& path, const AppSettings& settings, 
         << "  \"dark_mode\": " << (config->darkMode ? "true" : "false") << ",\n"
         << "  \"startup_mode\": \"" << JsonEscape(config->startupMode) << "\",\n"
         << "  \"startup_preset_name\": \"" << JsonEscape(config->startupPresetName) << "\",\n"
-        << "  \"last_used_preset_name\": \"" << JsonEscape(config->lastUsedPresetName) << "\",\n"
-        << "  \"standalone_mode\": " << (config->standaloneMode ? "true" : "false");
+        << "  \"last_used_preset_name\": \"" << JsonEscape(config->lastUsedPresetName) << '"';
   }
   ofs << "\n}\n";
   return static_cast<bool>(ofs);
