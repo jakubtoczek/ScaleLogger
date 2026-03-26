@@ -530,6 +530,10 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
                                      L"; PostAction=" + action + L"; Sequence=" + sequence;
   SetWindowTextW(GetDlgItem(settingsHwnd, kOutputSummaryEdit), outputSummary.c_str());
   SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_SETCHECK, config.darkMode ? BST_CHECKED : BST_UNCHECKED, 0);
+  if (g_ui.settingsTab) {
+    TabCtrl_SetBkColor(g_ui.settingsTab, config.darkMode ? RGB(32, 32, 32) : GetSysColor(COLOR_BTNFACE));
+    TabCtrl_SetTextColor(g_ui.settingsTab, config.darkMode ? RGB(235, 235, 235) : GetSysColor(COLOR_BTNTEXT));
+  }
 }
 
 bool ReadSerialSettingsFromControls(HWND settingsHwnd, AppSettings& settingsOut, std::string& error) {
@@ -592,6 +596,28 @@ int CountConfigDifferences(const AppConfig& before, const AppConfig& after) {
   if (before.startupMode != after.startupMode) ++count;
   if (before.startupPresetName != after.startupPresetName) ++count;
   if (before.standaloneMode != after.standaloneMode) ++count;
+  return count;
+}
+
+int CountSettingsDifferences(const AppSettings& before, const AppSettings& after) {
+  int count = 0;
+  if (before.serial.port != after.serial.port) ++count;
+  if (before.serial.baudRate != after.serial.baudRate) ++count;
+  if (before.serial.dataBits != after.serial.dataBits) ++count;
+  if (before.serial.parity != after.serial.parity) ++count;
+  if (before.serial.stopBits != after.serial.stopBits) ++count;
+  if (before.serial.timeoutSeconds != after.serial.timeoutSeconds) ++count;
+  if (before.serial.eol != after.serial.eol) ++count;
+  if (before.parsing.mode != after.parsing.mode) ++count;
+  if (before.parsing.trimWhitespace != after.parsing.trimWhitespace) ++count;
+  if (before.parsing.stripSuffix != after.parsing.stripSuffix) ++count;
+  if (before.parsing.suffix != after.parsing.suffix) ++count;
+  if (before.parsing.normalizeSign != after.parsing.normalizeSign) ++count;
+  if (before.parsing.preservePlusSign != after.parsing.preservePlusSign) ++count;
+  if (before.parsing.preserveMinusSign != after.parsing.preserveMinusSign) ++count;
+  if (before.parsing.numericValidation != after.parsing.numericValidation) ++count;
+  if (before.output.postAction != after.output.postAction) ++count;
+  if (before.output.customSequence != after.output.customSequence) ++count;
   return count;
 }
 
@@ -666,7 +692,7 @@ void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested = false) {
   if (prevConfig.darkMode != nextConfig.darkMode) changedFields.push_back("dark mode changed");
   if (prevConfig.connectOnStartup != nextConfig.connectOnStartup) changedFields.push_back("connect on startup changed");
 
-  g_ui.controller->ApplySettings(nextSettings, nextConfig);
+  g_ui.controller->ApplySettings(nextSettings, nextConfig, false);
   LoadSettingsIntoControls(settingsHwnd);
   if (!changedFields.empty()) {
     std::string joined;
@@ -674,14 +700,32 @@ void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested = false) {
       if (i) joined += "; ";
       joined += changedFields[i];
     }
-    AddLogLine("Settings applied: " + joined);
+    AddLogLine("Settings applied (runtime only): " + joined);
   } else if (!saveRequested) {
     AddLogLine("Settings apply requested: no changes detected.");
   }
   if (saveRequested) {
-    const int configChanges = CountConfigDifferences(prevConfig, nextConfig);
-    if (configChanges == 0) AddLogLine("Configuration already up to date.");
-    else AddLogLine("Configuration updated (" + std::to_string(configChanges) + " fields changed).");
+    const auto configPath = std::filesystem::path(nextConfig.configFolder) / nextConfig.configFileName;
+    const bool existed = std::filesystem::exists(configPath);
+    AppConfig diskConfig{};
+    AppSettings diskSettings{};
+    if (existed) {
+      diskConfig = LoadConfig(configPath);
+      diskSettings = LoadPreset(configPath);
+    }
+    const int configChanges = CountConfigDifferences(diskConfig, nextConfig);
+    const int settingsChanges = CountSettingsDifferences(diskSettings, nextSettings);
+    const int totalChanges = configChanges + settingsChanges;
+    if (existed && totalChanges == 0) {
+      AddLogLine("Configuration already up to date.");
+    } else {
+      if (SaveConfig(configPath, nextConfig, &nextSettings)) {
+        if (!existed) AddLogLine("Configuration file created at: " + configPath.string());
+        AddLogLine("Configuration saved (" + std::to_string(totalChanges) + " fields changed).");
+      } else {
+        AddLogLine("ERROR: Failed to save configuration file: " + configPath.string());
+      }
+    }
   }
   InvalidateRect(g_ui.mainWindow, nullptr, TRUE);
   if (g_ui.settingsWindow) InvalidateRect(g_ui.settingsWindow, nullptr, TRUE);
@@ -901,7 +945,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         return c;
       };
       auto editableCombo = [&](int id, int y, int width, std::vector<HWND>& list) {
-        HWND c = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWN, fieldLeft, y, width, 300, hwnd,
+        HWND c = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWN | CBS_AUTOHSCROLL, fieldLeft, y, width, 300, hwnd,
                                reinterpret_cast<HMENU>(id), nullptr, nullptr);
         AddControl(list, c);
         return c;
@@ -917,28 +961,36 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
       label(L"Baud", top + 36, g_ui.serialTabControls);
       HWND baud = editableCombo(kSerialBaudCombo, top + 36, 645, g_ui.serialTabControls);
-      for (int value : g_ui.controller->Config().baudRates) {
+      auto baudRates = g_ui.controller->Config().baudRates;
+      if (baudRates.empty()) baudRates = {1200, 2400, 4800, 9600};
+      for (int value : baudRates) {
         const auto text = ToWide(std::to_string(value));
         SendMessageW(baud, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
       }
 
       label(L"Data bits", top + 72, g_ui.serialTabControls);
       HWND bits = editableCombo(kSerialDataBitsCombo, top + 72, 645, g_ui.serialTabControls);
-      for (int value : g_ui.controller->Config().dataBitsOptions) {
+      auto dataBits = g_ui.controller->Config().dataBitsOptions;
+      if (dataBits.empty()) dataBits = {7, 8};
+      for (int value : dataBits) {
         const auto text = ToWide(std::to_string(value));
         SendMessageW(bits, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
       }
 
       label(L"Parity", top + 108, g_ui.serialTabControls);
       HWND parity = editableCombo(kSerialParityCombo, top + 108, 645, g_ui.serialTabControls);
-      for (const auto& value : g_ui.controller->Config().parityOptions) {
+      auto parityOptions = g_ui.controller->Config().parityOptions;
+      if (parityOptions.empty()) parityOptions = {"O", "N", "E"};
+      for (const auto& value : parityOptions) {
         const auto text = ToWide(value);
         SendMessageW(parity, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
       }
 
       label(L"Stop bits", top + 144, g_ui.serialTabControls);
       HWND stopBits = editableCombo(kSerialStopBitsCombo, top + 144, 645, g_ui.serialTabControls);
-      for (const auto& value : g_ui.controller->Config().stopBitsOptions) {
+      auto stopBitsOptions = g_ui.controller->Config().stopBitsOptions;
+      if (stopBitsOptions.empty()) stopBitsOptions = {"1", "1.5", "2"};
+      for (const auto& value : stopBitsOptions) {
         const auto text = ToWide(value);
         SendMessageW(stopBits, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
       }

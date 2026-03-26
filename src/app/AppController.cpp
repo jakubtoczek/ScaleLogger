@@ -137,7 +137,7 @@ void AppController::Disconnect() {
   EmitLog("Disconnected");
 }
 
-void AppController::ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig) {
+void AppController::ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig, bool persistToDisk) {
   const bool settingsChanged =
       settings_.serial.port != nextSettings.serial.port || settings_.serial.baudRate != nextSettings.serial.baudRate ||
       settings_.serial.dataBits != nextSettings.serial.dataBits || settings_.serial.parity != nextSettings.serial.parity ||
@@ -165,7 +165,7 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
   settings_ = nextSettings;
   config_ = nextConfig;
   configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
-  if (configChanged && !config_.standaloneMode) {
+  if (persistToDisk && configChanged && !config_.standaloneMode) {
     if (SaveConfig(configPath_, config_, &settings_)) EmitLog("Configuration saved");
     else EmitLog("ERROR: Failed to save configuration: " + configPath_.string(), true);
   }

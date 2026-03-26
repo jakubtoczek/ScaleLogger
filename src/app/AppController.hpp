@@ -23,7 +23,7 @@ class AppController {
   void Initialize();
   void Connect();
   void Disconnect();
-  void ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig);
+  void ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig, bool persistToDisk = true);
   bool SaveCurrentSettingsAsPreset(const std::string& presetName);
   std::vector<std::string> ScanPorts() const;
   bool TestReceive(const SerialSettings& settings, std::string& receivedLine, std::string& errorMessage);
