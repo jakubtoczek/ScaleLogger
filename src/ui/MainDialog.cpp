@@ -330,8 +330,12 @@ void SetComboToText(HWND combo, const std::wstring& text) {
   if (idx != CB_ERR) {
     SendMessageW(combo, CB_SETCURSEL, idx, 0);
   } else {
-    const LRESULT count = SendMessageW(combo, CB_GETCOUNT, 0, 0);
-    if (count > 0) SendMessageW(combo, CB_SETCURSEL, 0, 0);
+    const LRESULT added = SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
+    if (added != CB_ERR && added != CB_ERRSPACE) SendMessageW(combo, CB_SETCURSEL, added, 0);
+    else {
+      const LRESULT count = SendMessageW(combo, CB_GETCOUNT, 0, 0);
+      if (count > 0) SendMessageW(combo, CB_SETCURSEL, 0, 0);
+    }
   }
 }
 
@@ -542,17 +546,15 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   for (const auto& entry : g_ui.presetMap) SendMessageW(startupCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ToWide(entry.first).c_str()));
   SetComboToText(startupCombo, config.startupMode == "specific_preset" ? ToWide(config.startupPresetName) : L"Last used / defaults");
 
-  const std::wstring pathSummary = L"Config: " + (std::filesystem::path(config.configFolder) / ToWide(config.configFileName)).wstring() +
-                                   L"\r\nPresets folder: " + std::filesystem::path(config.presetsFolder).wstring() +
-                                   L"\r\nCurrent preset: " + ToWide(config.lastUsedPresetName.empty() ? std::string("(none)") : config.lastUsedPresetName) +
-                                   L"\r\nLogs folder: " + std::filesystem::path(config.logsFolder).wstring() +
-                                   L"\r\nLog mode: " + (config.logMode == LogMode::None ? L"none" : (config.logMode == LogMode::SingleFile ? L"single_file" : L"per_session")) +
-                                   L"\r\nLine log mode: " + (config.lineLogMode == LineLogMode::Verbose ? L"verbose" : L"compact") +
-                                   L"\r\nStandalone: " + std::wstring(config.standaloneMode ? L"true" : L"false") +
-                                   L"\r\nConnect on startup: " + std::wstring(config.connectOnStartup ? L"true" : L"false") +
-                                   L"\r\nStartup mode: " + ToWide(config.startupMode) +
-                                   L"\r\nSerial: " + ToWide(settings.serial.port) + L"@" + ToWide(std::to_string(settings.serial.baudRate)) +
-                                   L"; Output action: " + action;
+  const std::wstring pathSummary =
+      L"Config: " + (std::filesystem::path(config.configFolder) / ToWide(config.configFileName)).wstring() +
+      L"\r\nCurrent preset: " + ToWide(config.lastUsedPresetName.empty() ? std::string("(none)") : config.lastUsedPresetName) +
+      L"\r\nLogs: " + std::filesystem::path(config.logsFolder).wstring() + L" (" +
+      (config.logMode == LogMode::None ? L"none" : (config.logMode == LogMode::SingleFile ? L"single_file" : L"per_session")) + L")" +
+      L"\r\nStandalone: " + std::wstring(config.standaloneMode ? L"on" : L"off") + L"; Dark mode (experimental): " +
+      std::wstring(config.darkMode ? L"on" : L"off") +
+      L"\r\nSerial: " + ToWide(settings.serial.port) + L" @ " + ToWide(std::to_string(settings.serial.baudRate)) + L" baud" +
+      L"\r\nOutput: " + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") + L"; action=" + action;
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppPathsLabel), pathSummary.c_str());
   const std::wstring serialSummary = L"Port=" + ToWide(settings.serial.port) + L"; Baud=" + ToWide(std::to_string(settings.serial.baudRate)) +
                                      L"; DataBits=" + ToWide(std::to_string(settings.serial.dataBits)) + L"; Parity=" +
@@ -715,16 +717,30 @@ void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested = false) {
   }
 
   std::vector<std::string> changedFields;
+  auto boolText = [](bool v) -> const char* { return v ? "on" : "off"; };
   if (prevSettings.serial.port != nextSettings.serial.port) changedFields.push_back("port: " + prevSettings.serial.port + " -> " + nextSettings.serial.port);
   if (prevSettings.serial.baudRate != nextSettings.serial.baudRate) changedFields.push_back("baud: " + std::to_string(prevSettings.serial.baudRate) + " -> " + std::to_string(nextSettings.serial.baudRate));
   if (prevSettings.serial.dataBits != nextSettings.serial.dataBits) changedFields.push_back("data bits: " + std::to_string(prevSettings.serial.dataBits) + " -> " + std::to_string(nextSettings.serial.dataBits));
   if (prevSettings.serial.parity != nextSettings.serial.parity) changedFields.push_back("parity: " + std::string(1, prevSettings.serial.parity) + " -> " + std::string(1, nextSettings.serial.parity));
-  if (prevSettings.serial.stopBits != nextSettings.serial.stopBits) changedFields.push_back("stop bits changed");
-  if (prevSettings.serial.timeoutSeconds != nextSettings.serial.timeoutSeconds) changedFields.push_back("timeout changed");
+  if (prevSettings.serial.stopBits != nextSettings.serial.stopBits) changedFields.push_back("stop bits: " + std::to_string(prevSettings.serial.stopBits) + " -> " + std::to_string(nextSettings.serial.stopBits));
+  if (prevSettings.serial.timeoutSeconds != nextSettings.serial.timeoutSeconds) changedFields.push_back("timeout: " + std::to_string(prevSettings.serial.timeoutSeconds) + " -> " + std::to_string(nextSettings.serial.timeoutSeconds));
+  if (prevSettings.serial.eol != nextSettings.serial.eol) changedFields.push_back("eol changed");
+  if (prevSettings.parsing.mode != nextSettings.parsing.mode) changedFields.push_back("parse mode changed");
+  if (prevSettings.parsing.trimWhitespace != nextSettings.parsing.trimWhitespace) changedFields.push_back(std::string("trim whitespace: ") + boolText(prevSettings.parsing.trimWhitespace) + " -> " + boolText(nextSettings.parsing.trimWhitespace));
+  if (prevSettings.parsing.stripSuffix != nextSettings.parsing.stripSuffix) changedFields.push_back(std::string("strip suffix: ") + boolText(prevSettings.parsing.stripSuffix) + " -> " + boolText(nextSettings.parsing.stripSuffix));
+  if (prevSettings.parsing.suffix != nextSettings.parsing.suffix) changedFields.push_back("suffix changed");
+  if (prevSettings.parsing.normalizeSign != nextSettings.parsing.normalizeSign) changedFields.push_back(std::string("normalize sign: ") + boolText(prevSettings.parsing.normalizeSign) + " -> " + boolText(nextSettings.parsing.normalizeSign));
+  if (prevSettings.parsing.preservePlusSign != nextSettings.parsing.preservePlusSign) changedFields.push_back(std::string("preserve plus: ") + boolText(prevSettings.parsing.preservePlusSign) + " -> " + boolText(nextSettings.parsing.preservePlusSign));
+  if (prevSettings.parsing.preserveMinusSign != nextSettings.parsing.preserveMinusSign) changedFields.push_back(std::string("preserve minus: ") + boolText(prevSettings.parsing.preserveMinusSign) + " -> " + boolText(nextSettings.parsing.preserveMinusSign));
+  if (prevSettings.parsing.numericValidation != nextSettings.parsing.numericValidation) changedFields.push_back(std::string("numeric validation: ") + boolText(prevSettings.parsing.numericValidation) + " -> " + boolText(nextSettings.parsing.numericValidation));
   if (prevSettings.output.postAction != nextSettings.output.postAction) changedFields.push_back("post action changed");
+  if (prevSettings.output.customSequence != nextSettings.output.customSequence) changedFields.push_back("custom sequence changed");
   if (prevConfig.logMode != nextConfig.logMode) changedFields.push_back("log mode changed");
-  if (prevConfig.darkMode != nextConfig.darkMode) changedFields.push_back("dark mode changed");
-  if (prevConfig.connectOnStartup != nextConfig.connectOnStartup) changedFields.push_back("connect on startup changed");
+  if (prevConfig.darkMode != nextConfig.darkMode) changedFields.push_back(std::string("dark mode (experimental): ") + boolText(prevConfig.darkMode) + " -> " + boolText(nextConfig.darkMode));
+  if (prevConfig.connectOnStartup != nextConfig.connectOnStartup) changedFields.push_back(std::string("connect on startup: ") + boolText(prevConfig.connectOnStartup) + " -> " + boolText(nextConfig.connectOnStartup));
+  if (prevConfig.presetsFolder != nextConfig.presetsFolder) changedFields.push_back("presets folder changed");
+  if (prevConfig.logsFolder != nextConfig.logsFolder) changedFields.push_back("logs folder changed");
+  if (prevConfig.configFolder != nextConfig.configFolder || prevConfig.configFileName != nextConfig.configFileName) changedFields.push_back("config path changed");
 
   g_ui.controller->ApplySettings(nextSettings, nextConfig, false);
   LoadSettingsIntoControls(settingsHwnd);
@@ -942,7 +958,7 @@ void LayoutSettingsWindow(HWND hwnd) {
   moveCombo(kAppStartupPresetCombo, top + 174);
   const int pathsLabelAvailableWidth = static_cast<int>(rc.right) - (left + rightPadding + 10);
   const int pathsLabelWidth = (std::max)(280, pathsLabelAvailableWidth);
-  MoveWindow(GetDlgItem(hwnd, kAppPathsLabel), left + 10, top + 210, pathsLabelWidth, 90, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kAppPathsLabel), left + 10, top + 210, pathsLabelWidth, 120, TRUE);
 
   MoveWindow(GetDlgItem(hwnd, kSettingsSaveConfig), 20, buttonY, 160, 32, TRUE);
   MoveWindow(GetDlgItem(hwnd, kSettingsSavePreset), 190, buttonY, 130, 32, TRUE);
@@ -996,7 +1012,10 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       label(L"Baud", top + 36, g_ui.serialTabControls);
       HWND baud = editableCombo(kSerialBaudCombo, top + 36, 645, g_ui.serialTabControls);
       auto baudRates = g_ui.controller->Config().baudRates;
-      if (baudRates.empty()) baudRates = {1200, 2400, 4800, 9600};
+      baudRates.erase(std::remove_if(baudRates.begin(), baudRates.end(), [](int v) { return v <= 0; }), baudRates.end());
+      for (int value : {1200, 2400, 4800, 9600}) {
+        if (std::find(baudRates.begin(), baudRates.end(), value) == baudRates.end()) baudRates.push_back(value);
+      }
       for (int value : baudRates) {
         const auto text = ToWide(std::to_string(value));
         SendMessageW(baud, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
@@ -1005,7 +1024,10 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       label(L"Data bits", top + 72, g_ui.serialTabControls);
       HWND bits = editableCombo(kSerialDataBitsCombo, top + 72, 645, g_ui.serialTabControls);
       auto dataBits = g_ui.controller->Config().dataBitsOptions;
-      if (dataBits.empty()) dataBits = {7, 8};
+      dataBits.erase(std::remove_if(dataBits.begin(), dataBits.end(), [](int v) { return v < 5 || v > 8; }), dataBits.end());
+      for (int value : {7, 8}) {
+        if (std::find(dataBits.begin(), dataBits.end(), value) == dataBits.end()) dataBits.push_back(value);
+      }
       for (int value : dataBits) {
         const auto text = ToWide(std::to_string(value));
         SendMessageW(bits, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
@@ -1014,8 +1036,16 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       label(L"Parity", top + 108, g_ui.serialTabControls);
       HWND parity = editableCombo(kSerialParityCombo, top + 108, 645, g_ui.serialTabControls);
       auto parityOptions = g_ui.controller->Config().parityOptions;
-      if (parityOptions.empty()) parityOptions = {"O", "N", "E"};
-      for (const auto& value : parityOptions) {
+      std::vector<std::string> parityClean;
+      for (auto value : parityOptions) {
+        if (value.empty()) continue;
+        value[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(value[0])));
+        if (value[0] == 'N' || value[0] == 'E' || value[0] == 'O') parityClean.emplace_back(1, value[0]);
+      }
+      for (const char value : {'O', 'N', 'E'}) {
+        if (std::find(parityClean.begin(), parityClean.end(), std::string(1, value)) == parityClean.end()) parityClean.emplace_back(1, value);
+      }
+      for (const auto& value : parityClean) {
         const auto text = ToWide(value);
         SendMessageW(parity, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
       }
@@ -1023,8 +1053,16 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       label(L"Stop bits", top + 144, g_ui.serialTabControls);
       HWND stopBits = editableCombo(kSerialStopBitsCombo, top + 144, 645, g_ui.serialTabControls);
       auto stopBitsOptions = g_ui.controller->Config().stopBitsOptions;
-      if (stopBitsOptions.empty()) stopBitsOptions = {"1", "1.5", "2"};
+      std::vector<std::string> stopBitsClean;
       for (const auto& value : stopBitsOptions) {
+        if (value == "1" || value == "1.0" || value == "1.5" || value == "2" || value == "2.0") {
+          stopBitsClean.push_back(value == "1.0" ? "1" : (value == "2.0" ? "2" : value));
+        }
+      }
+      for (const std::string value : {"1", "1.5", "2"}) {
+        if (std::find(stopBitsClean.begin(), stopBitsClean.end(), value) == stopBitsClean.end()) stopBitsClean.push_back(value);
+      }
+      for (const auto& value : stopBitsClean) {
         const auto text = ToWide(value);
         SendMessageW(stopBits, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
       }
@@ -1109,7 +1147,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                  CreateWindowW(L"BUTTON", L"Connect on startup", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 8, top + 142, 220, 24, hwnd,
                                reinterpret_cast<HMENU>(kAppConnectStartupCheck), nullptr, nullptr));
       AddControl(g_ui.applicationTabControls,
-                 CreateWindowW(L"BUTTON", L"Dark mode", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 250, top + 142, 120, 24, hwnd,
+                 CreateWindowW(L"BUTTON", L"Dark mode (experimental)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 250, top + 142, 190, 24, hwnd,
                                reinterpret_cast<HMENU>(kAppDarkModeCheck), nullptr, nullptr));
       label(L"Startup preset", top + 176, g_ui.applicationTabControls);
       HWND startup = combo(kAppStartupPresetCombo, top + 174, 645, g_ui.applicationTabControls);
@@ -1117,7 +1155,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-                                 left + 10, top + 210, 760, 90, hwnd, reinterpret_cast<HMENU>(kAppPathsLabel), nullptr, nullptr));
+                                 left + 10, top + 210, 760, 120, hwnd, reinterpret_cast<HMENU>(kAppPathsLabel), nullptr, nullptr));
 
       for (int comboId : {kSerialPortCombo, kSerialBaudCombo, kSerialDataBitsCombo, kSerialParityCombo, kSerialStopBitsCombo, kSerialTimeoutCombo,
                           kSerialEolCombo, kOutputModeCombo, kOutputActionCombo, kAppLogModeCombo, kAppStartupPresetCombo}) {
@@ -1423,6 +1461,7 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   } else if (!cfg.lastUsedPresetName.empty()) {
     SetComboToText(g_ui.presetsCombo, ToWide(cfg.lastUsedPresetName));
   }
+  if (cfg.darkMode) AddLogLine("Dark mode is experimental in 0.96 and is disabled by default.");
 
   AddLogLine("Scanning serial ports...");
   const auto ports = g_ui.controller->ScanPorts();

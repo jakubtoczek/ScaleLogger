@@ -27,7 +27,7 @@ std::vector<std::string> ScanComPorts() {
       const auto r = friendly.find(')', l == std::string::npos ? 0 : l);
       if (l == std::string::npos || r == std::string::npos || r <= l + 1) continue;
       const std::string comPort = friendly.substr(l + 1, r - l - 1);
-      ports.push_back(comPort + " — " + friendly);
+      ports.push_back(comPort + " - " + friendly);
     }
     SetupDiDestroyDeviceInfoList(devInfo);
   }

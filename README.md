@@ -54,7 +54,7 @@ ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with
 - `log_file_pattern`
 - `log_mode` (`none`, `single_file`, `per_session`)
 - `connect_on_startup`
-- `dark_mode`
+- `dark_mode` (experimental; default is `false`)
 - `startup_mode` and preset name fields
 - `standalone_mode`
 - optional serial dropdown option arrays: `baud_rates`, `data_bits_options`, `parity_options`, `stop_bits_options`
