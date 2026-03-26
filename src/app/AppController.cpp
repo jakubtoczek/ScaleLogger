@@ -19,22 +19,35 @@ std::filesystem::path ResolvePresetPath(const std::filesystem::path& presetsDir,
 }
 
 std::wstring Utf8ToWide(const std::string& text) {
+#ifdef _WIN32
+  if (text.empty()) return {};
+  const int sizeNeeded = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.c_str(), static_cast<int>(text.size()), nullptr, 0);
+  if (sizeNeeded <= 0) return std::wstring(text.begin(), text.end());
+  std::wstring out(static_cast<std::size_t>(sizeNeeded), L'\0');
+  MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.c_str(), static_cast<int>(text.size()), out.data(), sizeNeeded);
+  return out;
+#else
   return std::wstring(text.begin(), text.end());
+#endif
 }
 
 std::string WideToUtf8(const std::wstring& text) {
+#ifdef _WIN32
   if (text.empty()) return {};
   const int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
   if (sizeNeeded <= 0) return {};
   std::string out(static_cast<std::size_t>(sizeNeeded), '\0');
   WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), out.data(), sizeNeeded, nullptr, nullptr);
   return out;
+#else
+  return std::string(text.begin(), text.end());
+#endif
 }
 
 std::string ExpandPathPlaceholders(std::string value) {
   if (value.empty()) return value;
 #ifdef _WIN32
-  const std::wstring wide(value.begin(), value.end());
+  const std::wstring wide = Utf8ToWide(value);
   std::vector<wchar_t> buffer(32768, L'\0');
   const DWORD written = ExpandEnvironmentStringsW(wide.c_str(), buffer.data(), static_cast<DWORD>(buffer.size()));
   if (written > 0 && written < buffer.size()) {
@@ -42,6 +55,14 @@ std::string ExpandPathPlaceholders(std::string value) {
   }
 #endif
   return value;
+}
+
+std::filesystem::path ResolveConfiguredPath(const std::filesystem::path& root, const std::string& configuredPath) {
+  const auto expanded = ExpandPathPlaceholders(configuredPath);
+  std::filesystem::path path(expanded);
+  if (path.empty()) return root;
+  if (path.is_absolute()) return path.lexically_normal();
+  return (root / path).lexically_normal();
 }
 } // namespace
 
@@ -60,10 +81,9 @@ void AppController::Initialize() {
     }
   }
 
-  if (config_.configFolder.empty()) config_.configFolder = dataRoot_.string();
-  config_.configFolder = ExpandPathPlaceholders(config_.configFolder);
-  config_.presetsFolder = ExpandPathPlaceholders(config_.presetsFolder);
-  config_.logsFolder = ExpandPathPlaceholders(config_.logsFolder);
+  config_.configFolder = ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
+  config_.presetsFolder = ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
+  config_.logsFolder = ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
   configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
 
   if (!config_.standaloneMode) {
@@ -71,7 +91,7 @@ void AppController::Initialize() {
     std::filesystem::create_directories(std::filesystem::path(config_.presetsFolder));
   }
 
-  const auto presetsDir = dataRoot_ / config_.presetsFolder;
+  const auto presetsDir = std::filesystem::path(config_.presetsFolder);
   std::filesystem::path startupPresetPath;
   if (config_.startupMode == "specific_preset") {
     startupPresetPath = ResolvePresetPath(presetsDir, config_.startupPresetName);
@@ -147,6 +167,11 @@ void AppController::Disconnect() {
 }
 
 void AppController::ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig, bool persistToDisk) {
+  AppConfig resolvedConfig = nextConfig;
+  resolvedConfig.configFolder = ResolveConfiguredPath(dataRoot_, resolvedConfig.configFolder).string();
+  resolvedConfig.presetsFolder = ResolveConfiguredPath(dataRoot_, resolvedConfig.presetsFolder).string();
+  resolvedConfig.logsFolder = ResolveConfiguredPath(dataRoot_, resolvedConfig.logsFolder).string();
+
   const bool settingsChanged =
       settings_.serial.port != nextSettings.serial.port || settings_.serial.baudRate != nextSettings.serial.baudRate ||
       settings_.serial.dataBits != nextSettings.serial.dataBits || settings_.serial.parity != nextSettings.serial.parity ||
@@ -160,21 +185,21 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
       settings_.parsing.numericValidation != nextSettings.parsing.numericValidation ||
       settings_.output.postAction != nextSettings.output.postAction || settings_.output.customSequence != nextSettings.output.customSequence;
   const bool configChanged =
-      config_.configFolder != nextConfig.configFolder || config_.configFileName != nextConfig.configFileName ||
-      config_.presetsFolder != nextConfig.presetsFolder || config_.logsFolder != nextConfig.logsFolder ||
-      config_.logFilePattern != nextConfig.logFilePattern ||
-      config_.logMode != nextConfig.logMode || config_.lineLogMode != nextConfig.lineLogMode ||
-      config_.connectOnStartup != nextConfig.connectOnStartup || config_.darkMode != nextConfig.darkMode ||
-      config_.startupMode != nextConfig.startupMode ||
-      config_.startupPresetName != nextConfig.startupPresetName || config_.lastUsedPresetName != nextConfig.lastUsedPresetName ||
-      config_.standaloneMode != nextConfig.standaloneMode;
+      config_.configFolder != resolvedConfig.configFolder || config_.configFileName != resolvedConfig.configFileName ||
+      config_.presetsFolder != resolvedConfig.presetsFolder || config_.logsFolder != resolvedConfig.logsFolder ||
+      config_.logFilePattern != resolvedConfig.logFilePattern ||
+      config_.logMode != resolvedConfig.logMode || config_.lineLogMode != resolvedConfig.lineLogMode ||
+      config_.connectOnStartup != resolvedConfig.connectOnStartup || config_.darkMode != resolvedConfig.darkMode ||
+      config_.startupMode != resolvedConfig.startupMode ||
+      config_.startupPresetName != resolvedConfig.startupPresetName || config_.lastUsedPresetName != resolvedConfig.lastUsedPresetName ||
+      config_.standaloneMode != resolvedConfig.standaloneMode;
   if (!settingsChanged && !configChanged) return;
 
   const bool reconnect = serial_.IsConnected() && SerialSettingsRequireReconnect(settings_.serial, nextSettings.serial);
   settings_ = nextSettings;
-  config_ = nextConfig;
+  config_ = resolvedConfig;
   configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
-  if (persistToDisk && configChanged && !config_.standaloneMode) {
+  if (persistToDisk && (settingsChanged || configChanged) && !config_.standaloneMode) {
     if (SaveConfig(configPath_, config_, &settings_)) EmitLog("Configuration saved");
     else EmitLog("ERROR: Failed to save configuration: " + configPath_.string(), true);
   }
@@ -188,9 +213,13 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
 
 bool AppController::SaveCurrentSettingsAsPreset(const std::string& presetName) {
   if (presetName.empty()) return false;
-  const auto presetPath = dataRoot_ / config_.presetsFolder / (presetName + ".json");
+  const auto presetPath = std::filesystem::path(config_.presetsFolder) / (presetName + ".json");
   if (config_.standaloneMode) return false;
   SavePreset(presetPath, settings_, &config_);
+  if (!std::filesystem::exists(presetPath)) {
+    EmitLog("ERROR: Failed to save preset: " + presetPath.string(), true);
+    return false;
+  }
   config_.lastUsedPresetName = presetName;
   if (!SaveConfig(configPath_, config_, &settings_)) EmitLog("ERROR: Failed to save configuration: " + configPath_.string(), true);
   EmitLog("Preset saved: " + presetName);

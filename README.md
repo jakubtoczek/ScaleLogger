@@ -66,6 +66,11 @@ Precedence rule:
 1. Config provides app-level defaults and serial/output defaults.
 2. When a startup/selected preset is loaded, preset values override runtime serial/output behavior.
 
+Path rule:
+- `config_folder`, `presets_folder`, and `logs_folder` are treated as runtime-resolved filesystem paths.
+- Absolute paths are used as-is.
+- Relative paths are resolved against the app data root (`%USERPROFILE%\ScaleLogger` on Windows).
+
 ## Python compatibility notes
 Preset loading is backward compatible with legacy Python-era keys:
 - `drop_plus_sign` maps to `preserve_plus_sign` behavior
