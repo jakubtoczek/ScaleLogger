@@ -108,8 +108,16 @@ struct UiState {
 UiState g_ui;
 HBRUSH g_darkBrush = CreateSolidBrush(RGB(32, 32, 32));
 void LoadSettingsIntoControls(HWND settingsHwnd);
+std::wstring GetControlText(HWND control);
 
-std::wstring ToWide(std::string_view text) { return std::wstring(text.begin(), text.end()); }
+std::wstring ToWide(std::string_view text) {
+  if (text.empty()) return {};
+  const int sizeNeeded = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
+  if (sizeNeeded <= 0) return std::wstring(text.begin(), text.end());
+  std::wstring out(static_cast<std::size_t>(sizeNeeded), L'\0');
+  MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), out.data(), sizeNeeded);
+  return out;
+}
 
 std::string ToUtf8(const std::wstring& text) {
   if (text.empty()) return {};
@@ -318,24 +326,36 @@ void LayoutMainControls(HWND hwnd) {
 }
 
 void PopulateComboWithValues(HWND combo, const std::vector<std::wstring>& values) {
+  const std::wstring previous = GetControlText(combo);
   SendMessageW(combo, CB_RESETCONTENT, 0, 0);
   for (const auto& value : values) {
     SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value.c_str()));
+  }
+  if (!previous.empty()) {
+    const LRESULT idx = SendMessageW(combo, CB_FINDSTRINGEXACT, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(previous.c_str()));
+    if (idx != CB_ERR) {
+      SendMessageW(combo, CB_SETCURSEL, idx, 0);
+      return;
+    }
+    SetWindowTextW(combo, previous.c_str());
+    return;
   }
   if (!values.empty()) SendMessageW(combo, CB_SETCURSEL, 0, 0);
 }
 
 void SetComboToText(HWND combo, const std::wstring& text) {
+  if (text.empty()) return;
   const LRESULT idx = SendMessageW(combo, CB_FINDSTRINGEXACT, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(text.c_str()));
   if (idx != CB_ERR) {
     SendMessageW(combo, CB_SETCURSEL, idx, 0);
   } else {
-    const LRESULT added = SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
-    if (added != CB_ERR && added != CB_ERRSPACE) SendMessageW(combo, CB_SETCURSEL, added, 0);
-    else {
-      const LRESULT count = SendMessageW(combo, CB_GETCOUNT, 0, 0);
-      if (count > 0) SendMessageW(combo, CB_SETCURSEL, 0, 0);
+    const LONG_PTR style = GetWindowLongPtrW(combo, GWL_STYLE);
+    if ((style & CBS_DROPDOWNLIST) == 0) {
+      SetWindowTextW(combo, text.c_str());
+      return;
     }
+    const LRESULT count = SendMessageW(combo, CB_GETCOUNT, 0, 0);
+    if (count > 0) SendMessageW(combo, CB_SETCURSEL, 0, 0);
   }
 }
 
@@ -919,7 +939,7 @@ void LayoutSettingsWindow(HWND hwnd) {
   };
   auto moveCombo = [&](int id, int y, int width = -1) {
     const int fieldWidth = width < 0 ? fullFieldWidth : width;
-    MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, 28, TRUE);
+    MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, 220, TRUE);
   };
   auto moveBrowse = [&](int id, int y) { MoveWindow(GetDlgItem(hwnd, id), fieldLeft + browsedFieldWidth + 5, y, browseWidth, 24, TRUE); };
 
@@ -1427,7 +1447,7 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
 
   const char* userProfile = std::getenv("USERPROFILE");
   std::filesystem::path dataRoot = userProfile ? std::filesystem::path(userProfile) / "ScaleLogger"
-                                               : std::filesystem::path("C:\\Users\\toczekj\\ScaleLogger");
+                                               : (std::filesystem::temp_directory_path() / "ScaleLogger");
   g_ui.controller = std::make_unique<AppController>(dataRoot);
 
   g_ui.controller->SetLogSink([](const std::string& message, bool isError) {
