@@ -26,7 +26,8 @@ ParseResult ValueParser::Process(const std::string& raw, const ParsingSettings& 
   if (settings.normalizeSign) {
     std::smatch m;
     if (std::regex_match(out, m, kSpacedSignPattern)) out = m[1].str() + Trim(m[2].str());
-    if (settings.dropPlusSign && !out.empty() && out[0] == '+') out.erase(0, 1);
+    if (!settings.preservePlusSign && !out.empty() && out[0] == '+') out.erase(0, 1);
+    if (!settings.preserveMinusSign && !out.empty() && out[0] == '-') out.erase(0, 1);
   }
 
   if (settings.stripSuffix) {

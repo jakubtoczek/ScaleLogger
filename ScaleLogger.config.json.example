@@ -1,4 +1,6 @@
 {
+  "config_folder": "%USERPROFILE%\\ScaleLogger",
+  "config_file_name": "ScaleLogger.config.json",
   "log_mode": "per_session",
   "line_log_mode": "compact",
   "connect_on_startup": true,

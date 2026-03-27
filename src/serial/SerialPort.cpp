@@ -11,6 +11,15 @@ bool EndsWith(const std::string& value, const std::string& suffix) {
   if (suffix.size() > value.size()) return false;
   return std::equal(suffix.rbegin(), suffix.rend(), value.rbegin());
 }
+
+std::string DescribeOpenError(DWORD err) {
+  switch (err) {
+    case ERROR_ACCESS_DENIED: return "access denied / port busy";
+    case ERROR_FILE_NOT_FOUND: return "port not found";
+    case ERROR_SHARING_VIOLATION: return "sharing violation / port busy";
+    default: return "system error " + std::to_string(static_cast<unsigned long>(err));
+  }
+}
 } // namespace
 
 bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLine, const LogHandler& onLog, const LogHandler& onError) {
@@ -19,7 +28,8 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLi
   const std::string full = "\\\\.\\" + settings.port;
   handle_ = CreateFileA(full.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
   if (handle_ == INVALID_HANDLE_VALUE) {
-    onError("Serial connection failed on " + settings.port);
+    const auto err = GetLastError();
+    onError("Serial connection failed on " + settings.port + ": " + DescribeOpenError(err));
     return false;
   }
 
@@ -62,32 +72,61 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLi
   onError_ = onError;
   stopRequested_.store(false);
   connected_ = true;
-  onLog("Serial connection opened on " + settings.port + ".");
+  if (onLog_) onLog_("Serial connection opened on " + settings.port + " at " + std::to_string(settings.baudRate) + " baud.");
+  if (onLog_) onLog_("Serial receive thread starting.");
 
-  receiveThread_ = std::thread([this]() { ReceiveLoop(); });
+  receiveThread_ = std::thread([this]() {
+    try {
+      if (onLog_) onLog_("Serial receive thread entered.");
+      ReceiveLoop();
+    } catch (const std::exception& ex) {
+      if (onError_) onError_(std::string("ERROR: Unhandled exception in serial receive thread: ") + ex.what());
+    } catch (...) {
+      if (onError_) onError_("ERROR: Unhandled exception in serial receive thread");
+    }
+  });
   return true;
 }
 
 void SerialPort::ReceiveLoop() {
   std::string buffer;
+  bool firstDispatchedLine = false;
   char ch = 0;
   DWORD read = 0;
 
   while (!stopRequested_.load()) {
     const BOOL ok = ReadFile(handle_, &ch, 1, &read, nullptr);
     if (!ok) {
-      if (!stopRequested_.load() && onError_) onError_("Serial read error.");
+      if (!stopRequested_.load() && onError_) {
+        onError_("Serial receive loop ReadFile error: " + DescribeOpenError(GetLastError()));
+      }
       break;
     }
     if (read == 0) continue;
 
+    const bool fallbackTerminator = (ch == '\r' || ch == '\n');
     buffer.push_back(ch);
-    if (EndsWith(buffer, settings_.eol)) {
-      const auto line = buffer.substr(0, buffer.size() - settings_.eol.size());
+    if (EndsWith(buffer, settings_.eol) || fallbackTerminator) {
+      std::string line = buffer;
+      if (EndsWith(line, settings_.eol)) line = line.substr(0, line.size() - settings_.eol.size());
+      while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
       buffer.clear();
-      if (onLine_) onLine_(line);
+      if (onLine_ && !line.empty()) {
+        if (!firstDispatchedLine && onLog_) {
+          onLog_("First serial line received.");
+          firstDispatchedLine = true;
+        }
+        try {
+          onLine_(line);
+        } catch (const std::exception& ex) {
+          if (onError_) onError_(std::string("ERROR: Exception while dispatching received serial line: ") + ex.what());
+        } catch (...) {
+          if (onError_) onError_("ERROR: Exception while dispatching received serial line");
+        }
+      }
     }
   }
+  if (onLog_) onLog_("Serial receive loop exiting.");
 }
 
 void SerialPort::Disconnect() {
@@ -99,7 +138,13 @@ void SerialPort::Disconnect() {
     handle_ = INVALID_HANDLE_VALUE;
   }
 
-  if (receiveThread_.joinable()) receiveThread_.join();
+  if (receiveThread_.joinable()) {
+    if (receiveThread_.get_id() == std::this_thread::get_id()) {
+      receiveThread_.detach();
+    } else {
+      receiveThread_.join();
+    }
+  }
 }
 
 bool SerialPort::IsConnected() const { return connected_; }

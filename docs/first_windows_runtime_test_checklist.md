@@ -39,16 +39,16 @@ Expected Results:
 
 ## 2) Prepare runtime data folder
 Runtime data lives under:
-- `%LOCALAPPDATA%\ScaleLogger`
+- `%USERPROFILE%\ScaleLogger`
 
 Ensure these exist (create if missing):
-- `%LOCALAPPDATA%\ScaleLogger\ScaleLogger.config.json`
-- `%LOCALAPPDATA%\ScaleLogger\presets\`
+- `%USERPROFILE%\ScaleLogger\ScaleLogger.config.json`
+- `%USERPROFILE%\ScaleLogger\presets\`
 
 Use a preset file in `presets\` that matches your device serial parameters and parse/output settings.
 
 Expected Results:
-- Config and presets folder are present under `%LOCALAPPDATA%\ScaleLogger`.
+- Config and presets folder are present under `%USERPROFILE%\ScaleLogger`.
 - Preset file is readable and uses the intended serial/parsing/output values for this test run.
 
 ## 3) Validate startup preset load before auto-connect

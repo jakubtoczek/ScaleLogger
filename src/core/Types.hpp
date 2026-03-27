@@ -26,7 +26,8 @@ struct ParsingSettings {
   bool stripSuffix{true};
   std::string suffix{"g"};
   bool normalizeSign{true};
-  bool dropPlusSign{false};
+  bool preservePlusSign{true};
+  bool preserveMinusSign{true};
   bool numericValidation{true};
 };
 
@@ -42,14 +43,22 @@ struct AppSettings {
 };
 
 struct AppConfig {
+  std::string configFolder{};
+  std::string configFileName{"ScaleLogger.config.json"};
   std::string presetsFolder{"presets"};
   std::string logsFolder{"logs"};
+  std::string logFilePattern{"ScaleLogger_%Y%m%d_%H%M%S.log"};
   LogMode logMode{LogMode::PerSession};
   LineLogMode lineLogMode{LineLogMode::Compact};
   bool connectOnStartup{true};
+  bool darkMode{false};
   std::string startupMode{"last_used_preset"};
   std::string startupPresetName{};
   std::string lastUsedPresetName{};
+  std::vector<int> baudRates{1200, 2400, 4800, 9600};
+  std::vector<int> dataBitsOptions{7, 8};
+  std::vector<std::string> parityOptions{"O", "N", "E"};
+  std::vector<std::string> stopBitsOptions{"1", "1.5", "2"};
 };
 
 } // namespace scalelogger
