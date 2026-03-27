@@ -10,12 +10,20 @@
 #include <functional>
 #include <fstream>
 #include <memory>
+#include <mutex>
 #include <string>
 
 namespace scalelogger {
 
 class AppController {
  public:
+  enum class SaveConfigStatus { Created, Updated, Unchanged, Failed };
+  struct SaveConfigResult {
+    SaveConfigStatus status{SaveConfigStatus::Failed};
+    int changedFieldCount{0};
+    std::filesystem::path path{};
+  };
+
   using LogSink = std::function<void(const std::string&, bool)>;
   using ConnectionStateSink = std::function<void(bool)>;
 
@@ -24,6 +32,7 @@ class AppController {
   void Connect();
   void Disconnect();
   void ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig, bool persistToDisk = true);
+  SaveConfigResult SaveResolvedConfiguration();
   bool SaveCurrentSettingsAsPreset(const std::string& presetName);
   std::vector<std::string> ScanPorts() const;
   bool TestReceive(const SerialSettings& settings, std::string& receivedLine, std::string& errorMessage);
@@ -57,6 +66,7 @@ class AppController {
   mutable std::ofstream logFile_{};
   mutable std::filesystem::path activeLogPath_{};
   mutable bool logWriteErrorNotified_{false};
+  mutable std::mutex fileLogMutex_{};
 };
 
 } // namespace scalelogger

@@ -38,6 +38,7 @@ constexpr int kEditLog = 106;
 constexpr UINT kMsgUiLogLine = WM_APP + 1;
 constexpr UINT kMsgUiConnectionState = WM_APP + 2;
 constexpr UINT kMsgStartupAutoConnect = WM_APP + 3;
+constexpr UINT kMsgSettingsFinalizeCombos = WM_APP + 4;
 
 constexpr int kSettingsTab = 200;
 constexpr int kSettingsApply = 201;
@@ -399,11 +400,19 @@ std::wstring FormatEolForSummary(const std::string& eol) {
   return ToWide(eol);
 }
 
-void ClearComboEditSelection(HWND combo) {
-  const LONG_PTR style = GetWindowLongPtrW(combo, GWL_STYLE);
-  if ((style & CBS_DROPDOWNLIST) != 0) return;
-  const int length = GetWindowTextLengthW(combo);
-  SendMessageW(combo, CB_SETEDITSEL, 0, MAKELPARAM(length, length));
+void FinalizeEditableComboFirstPaint(HWND settingsHwnd) {
+  for (int comboId : {kSerialPortCombo, kSerialBaudCombo, kSerialDataBitsCombo, kSerialParityCombo, kSerialStopBitsCombo, kSerialTimeoutCombo,
+                      kSerialEolCombo}) {
+    HWND combo = GetDlgItem(settingsHwnd, comboId);
+    if (!combo) continue;
+    COMBOBOXINFO info{};
+    info.cbSize = sizeof(COMBOBOXINFO);
+    if (!GetComboBoxInfo(combo, &info) || !info.hwndItem) continue;
+    const int length = GetWindowTextLengthW(info.hwndItem);
+    SendMessageW(info.hwndItem, EM_SETSEL, length, length);
+    RedrawWindow(combo, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
+  }
+  SetFocus(settingsHwnd);
 }
 
 std::string ParseEolFromUiText(const std::wstring& eolText) {
@@ -666,43 +675,6 @@ bool ReadSerialSettingsFromControls(HWND settingsHwnd, AppSettings& settingsOut,
   return true;
 }
 
-int CountConfigDifferences(const AppConfig& before, const AppConfig& after) {
-  int count = 0;
-  if (before.configFolder != after.configFolder) ++count;
-  if (before.configFileName != after.configFileName) ++count;
-  if (before.presetsFolder != after.presetsFolder) ++count;
-  if (before.logsFolder != after.logsFolder) ++count;
-  if (before.logMode != after.logMode) ++count;
-  if (before.lineLogMode != after.lineLogMode) ++count;
-  if (before.connectOnStartup != after.connectOnStartup) ++count;
-  if (before.darkMode != after.darkMode) ++count;
-  if (before.startupMode != after.startupMode) ++count;
-  if (before.startupPresetName != after.startupPresetName) ++count;
-  return count;
-}
-
-int CountSettingsDifferences(const AppSettings& before, const AppSettings& after) {
-  int count = 0;
-  if (before.serial.port != after.serial.port) ++count;
-  if (before.serial.baudRate != after.serial.baudRate) ++count;
-  if (before.serial.dataBits != after.serial.dataBits) ++count;
-  if (before.serial.parity != after.serial.parity) ++count;
-  if (before.serial.stopBits != after.serial.stopBits) ++count;
-  if (before.serial.timeoutSeconds != after.serial.timeoutSeconds) ++count;
-  if (before.serial.eol != after.serial.eol) ++count;
-  if (before.parsing.mode != after.parsing.mode) ++count;
-  if (before.parsing.trimWhitespace != after.parsing.trimWhitespace) ++count;
-  if (before.parsing.stripSuffix != after.parsing.stripSuffix) ++count;
-  if (before.parsing.suffix != after.parsing.suffix) ++count;
-  if (before.parsing.normalizeSign != after.parsing.normalizeSign) ++count;
-  if (before.parsing.preservePlusSign != after.parsing.preservePlusSign) ++count;
-  if (before.parsing.preserveMinusSign != after.parsing.preserveMinusSign) ++count;
-  if (before.parsing.numericValidation != after.parsing.numericValidation) ++count;
-  if (before.output.postAction != after.output.postAction) ++count;
-  if (before.output.customSequence != after.output.customSequence) ++count;
-  return count;
-}
-
 void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested = false) {
   AppSettings nextSettings = g_ui.controller->Settings();
   AppConfig nextConfig = g_ui.controller->Config();
@@ -801,28 +773,22 @@ void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested = false) {
     AddLogLine("Settings apply requested: no changes detected.");
   }
   if (saveRequested) {
-    const auto configPath = g_ui.controller->ResolvedConfigPath();
-    const auto& resolvedConfig = g_ui.controller->Config();
-    const auto& resolvedSettings = g_ui.controller->Settings();
-    const bool existed = std::filesystem::exists(configPath);
-    AppConfig diskConfig{};
-    AppSettings diskSettings{};
-    if (existed) {
-      diskConfig = LoadConfig(configPath);
-      diskSettings = LoadPreset(configPath);
-    }
-    const int configChanges = CountConfigDifferences(diskConfig, resolvedConfig);
-    const int settingsChanges = CountSettingsDifferences(diskSettings, resolvedSettings);
-    const int totalChanges = configChanges + settingsChanges;
-    if (existed && totalChanges == 0) {
-      AddLogLine("Configuration already up to date.");
-    } else {
-      if (SaveConfig(configPath, resolvedConfig, &resolvedSettings)) {
-        if (!existed) AddLogLine("Configuration file created at: " + configPath.string());
-        AddLogLine("Configuration saved (" + std::to_string(totalChanges) + " fields changed).");
-      } else {
-        AddLogLine("ERROR: Failed to save configuration file: " + configPath.string());
-      }
+    const auto saveResult = g_ui.controller->SaveResolvedConfiguration();
+    switch (saveResult.status) {
+      case AppController::SaveConfigStatus::Created:
+        AddLogLine("Configuration file created at: " + saveResult.path.string());
+        AddLogLine("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
+        break;
+      case AppController::SaveConfigStatus::Updated:
+        AddLogLine("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
+        break;
+      case AppController::SaveConfigStatus::Unchanged:
+        AddLogLine("Configuration already up to date.");
+        break;
+      case AppController::SaveConfigStatus::Failed:
+      default:
+        AddLogLine("ERROR: Failed to save configuration file: " + saveResult.path.string());
+        break;
     }
   }
   InvalidateRect(g_ui.mainWindow, nullptr, TRUE);
@@ -1222,13 +1188,12 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       ShowTab(0);
       LoadSettingsIntoControls(hwnd);
       LayoutSettingsWindow(hwnd);
-      for (int comboId : {kSerialPortCombo, kSerialBaudCombo, kSerialDataBitsCombo, kSerialParityCombo, kSerialStopBitsCombo, kSerialTimeoutCombo,
-                          kSerialEolCombo}) {
-        ClearComboEditSelection(GetDlgItem(hwnd, comboId));
-      }
-      RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+      PostMessageW(hwnd, kMsgSettingsFinalizeCombos, 0, 0);
       return 0;
     }
+    case kMsgSettingsFinalizeCombos:
+      FinalizeEditableComboFirstPaint(hwnd);
+      return 0;
     case WM_NOTIFY: {
       auto* header = reinterpret_cast<LPNMHDR>(lParam);
       if (header && header->idFrom == kSettingsTab) {

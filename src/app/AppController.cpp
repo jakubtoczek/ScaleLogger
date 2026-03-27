@@ -108,6 +108,49 @@ void SanitizeConfig(AppConfig& config) {
   if (config.stopBitsOptions.empty()) config.stopBitsOptions = {"1", "1.5", "2"};
   Dedup(config.stopBitsOptions);
 }
+
+int CountConfigDifferences(const AppConfig& before, const AppConfig& after) {
+  int count = 0;
+  if (before.configFolder != after.configFolder) ++count;
+  if (before.configFileName != after.configFileName) ++count;
+  if (before.presetsFolder != after.presetsFolder) ++count;
+  if (before.logsFolder != after.logsFolder) ++count;
+  if (before.logFilePattern != after.logFilePattern) ++count;
+  if (before.logMode != after.logMode) ++count;
+  if (before.lineLogMode != after.lineLogMode) ++count;
+  if (before.connectOnStartup != after.connectOnStartup) ++count;
+  if (before.darkMode != after.darkMode) ++count;
+  if (before.startupMode != after.startupMode) ++count;
+  if (before.startupPresetName != after.startupPresetName) ++count;
+  if (before.lastUsedPresetName != after.lastUsedPresetName) ++count;
+  if (before.baudRates != after.baudRates) ++count;
+  if (before.dataBitsOptions != after.dataBitsOptions) ++count;
+  if (before.parityOptions != after.parityOptions) ++count;
+  if (before.stopBitsOptions != after.stopBitsOptions) ++count;
+  return count;
+}
+
+int CountSettingsDifferences(const AppSettings& before, const AppSettings& after) {
+  int count = 0;
+  if (before.serial.port != after.serial.port) ++count;
+  if (before.serial.baudRate != after.serial.baudRate) ++count;
+  if (before.serial.dataBits != after.serial.dataBits) ++count;
+  if (before.serial.parity != after.serial.parity) ++count;
+  if (before.serial.stopBits != after.serial.stopBits) ++count;
+  if (before.serial.timeoutSeconds != after.serial.timeoutSeconds) ++count;
+  if (before.serial.eol != after.serial.eol) ++count;
+  if (before.parsing.mode != after.parsing.mode) ++count;
+  if (before.parsing.trimWhitespace != after.parsing.trimWhitespace) ++count;
+  if (before.parsing.stripSuffix != after.parsing.stripSuffix) ++count;
+  if (before.parsing.suffix != after.parsing.suffix) ++count;
+  if (before.parsing.normalizeSign != after.parsing.normalizeSign) ++count;
+  if (before.parsing.preservePlusSign != after.parsing.preservePlusSign) ++count;
+  if (before.parsing.preserveMinusSign != after.parsing.preserveMinusSign) ++count;
+  if (before.parsing.numericValidation != after.parsing.numericValidation) ++count;
+  if (before.output.postAction != after.output.postAction) ++count;
+  if (before.output.customSequence != after.output.customSequence) ++count;
+  return count;
+}
 } // namespace
 
 AppController::AppController(std::filesystem::path dataRoot)
@@ -275,9 +318,18 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
   if (!settingsChanged && !configChanged) return;
 
   const bool reconnect = serial_.IsConnected() && SerialSettingsRequireReconnect(settings_.serial, nextSettings.serial);
+  const bool logDestinationChanged = config_.logsFolder != resolvedConfig.logsFolder || config_.logMode != resolvedConfig.logMode ||
+                                     config_.logFilePattern != resolvedConfig.logFilePattern;
   settings_ = nextSettings;
   config_ = resolvedConfig;
   configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
+  if (logDestinationChanged) {
+    std::lock_guard<std::mutex> lock(fileLogMutex_);
+    if (logFile_.is_open()) logFile_.close();
+    activeLogPath_.clear();
+    sessionLogName_.clear();
+    logWriteErrorNotified_ = false;
+  }
   if (persistToDisk && (settingsChanged || configChanged)) {
     if (SaveConfig(configPath_, config_, &settings_)) EmitLog("Configuration saved");
     else EmitLog("ERROR: Failed to save configuration: " + configPath_.string(), true);
@@ -300,6 +352,29 @@ bool AppController::SaveCurrentSettingsAsPreset(const std::string& presetName) {
   if (!SaveConfig(configPath_, config_, &settings_)) EmitLog("ERROR: Failed to save configuration: " + configPath_.string(), true);
   EmitLog("Preset saved: " + presetName);
   return true;
+}
+
+AppController::SaveConfigResult AppController::SaveResolvedConfiguration() {
+  SaveConfigResult result{};
+  result.path = configPath_;
+  const bool existed = std::filesystem::exists(result.path);
+  AppConfig diskConfig{};
+  AppSettings diskSettings{};
+  if (existed) {
+    diskConfig = LoadConfig(result.path);
+    diskSettings = LoadPreset(result.path);
+  }
+  result.changedFieldCount = CountConfigDifferences(diskConfig, config_) + CountSettingsDifferences(diskSettings, settings_);
+  if (existed && result.changedFieldCount == 0) {
+    result.status = SaveConfigStatus::Unchanged;
+    return result;
+  }
+  if (!SaveConfig(result.path, config_, &settings_)) {
+    result.status = SaveConfigStatus::Failed;
+    return result;
+  }
+  result.status = existed ? SaveConfigStatus::Updated : SaveConfigStatus::Created;
+  return result;
 }
 
 std::vector<std::string> AppController::ScanPorts() const { return ScanComPorts(); }
@@ -371,50 +446,54 @@ void AppController::EmitConnectionState(bool connected) const {
 
 void AppController::WriteLogFileLine(const std::string& message, bool isError) const {
   if (config_.logMode == LogMode::None) return;
+  std::string warning;
+  {
+    std::lock_guard<std::mutex> lock(fileLogMutex_);
+    const auto path = ResolveLogPath();
+    if (path.empty()) return;
 
-  const auto path = ResolveLogPath();
-  if (path.empty()) return;
-
-  if (activeLogPath_ != path) {
-    if (logFile_.is_open()) logFile_.close();
-    std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    if (ec) {
+    if (activeLogPath_ != path) {
+      if (logFile_.is_open()) logFile_.close();
+      std::error_code ec;
+      std::filesystem::create_directories(path.parent_path(), ec);
+      if (ec) {
+        activeLogPath_ = path;
+        if (!logWriteErrorNotified_) {
+          warning = "ERROR: Unable to prepare log directory: " + path.parent_path().string();
+          logWriteErrorNotified_ = true;
+        }
+        return;
+      }
+      logFile_.open(path, std::ios::out | std::ios::app);
       activeLogPath_ = path;
-      if (!logWriteErrorNotified_ && logSink_) {
-        logSink_("ERROR: Unable to prepare log directory: " + path.parent_path().string(), true);
+      logWriteErrorNotified_ = false;
+    }
+    if (!logFile_.is_open()) {
+      if (!logWriteErrorNotified_) {
+        warning = "ERROR: Unable to write to log file: " + path.string();
         logWriteErrorNotified_ = true;
       }
       return;
     }
-    logFile_.open(path, std::ios::out | std::ios::app);
-    activeLogPath_ = path;
-    logWriteErrorNotified_ = false;
-  }
-  if (!logFile_.is_open()) {
-    if (!logWriteErrorNotified_ && logSink_) {
-      logSink_("ERROR: Unable to write to log file: " + path.string(), true);
+
+    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm tmNow{};
+#ifdef _WIN32
+    localtime_s(&tmNow, &now);
+#else
+    localtime_r(&now, &tmNow);
+#endif
+    char stamp[16];
+    std::strftime(stamp, sizeof(stamp), "%H:%M:%S", &tmNow);
+    (void)isError;
+    logFile_ << "[" << stamp << "] " << message << "\n";
+    logFile_.flush();
+    if (!logFile_ && !logWriteErrorNotified_) {
+      warning = "ERROR: Failed while flushing log file: " + path.string();
       logWriteErrorNotified_ = true;
     }
-    return;
   }
-
-  const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-  std::tm tmNow{};
-#ifdef _WIN32
-  localtime_s(&tmNow, &now);
-#else
-  localtime_r(&now, &tmNow);
-#endif
-  char stamp[16];
-  std::strftime(stamp, sizeof(stamp), "%H:%M:%S", &tmNow);
-  (void)isError;
-  logFile_ << "[" << stamp << "] " << message << "\n";
-  logFile_.flush();
-  if (!logFile_ && !logWriteErrorNotified_ && logSink_) {
-    logSink_("ERROR: Failed while flushing log file: " + path.string(), true);
-    logWriteErrorNotified_ = true;
-  }
+  if (!warning.empty() && logSink_) logSink_(warning, true);
 }
 
 std::filesystem::path AppController::ResolveLogPath() const {

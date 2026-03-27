@@ -170,7 +170,12 @@ std::vector<int> ExtractIntArray(const std::string& text, const std::string& key
     while (!token.empty() && std::isspace(static_cast<unsigned char>(token.front())) != 0) token.erase(token.begin());
     while (!token.empty() && std::isspace(static_cast<unsigned char>(token.back())) != 0) token.pop_back();
     if (token.empty()) continue;
-    out.push_back(std::atoi(token.c_str()));
+    std::size_t idx = 0;
+    try {
+      const int value = std::stoi(token, &idx);
+      if (idx == token.size()) out.push_back(value);
+    } catch (...) {
+    }
   }
   return out;
 }
