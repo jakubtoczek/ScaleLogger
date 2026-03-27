@@ -102,6 +102,7 @@ struct UiState {
   HWND settingsWindow{nullptr};
   HWND settingsTab{nullptr};
   bool settingsClassRegistered{false};
+  bool settingsNormalizeFocusPending{false};
   bool captureCustomSequenceKey{false};
   std::unordered_map<std::string, std::filesystem::path> presetMap{};
   std::unordered_map<std::string, std::string> portDisplayToPort{};
@@ -436,11 +437,25 @@ void FinalizeEditableComboFirstPaint(HWND settingsHwnd) {
     SendMessageW(info.hwndItem, EM_SETSEL, length, length);
     RedrawWindow(combo, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
   }
-  SetFocus(settingsHwnd);
 }
 
 void FinalizeSettingsDisplay(HWND settingsHwnd) {
   LayoutSettingsWindow(settingsHwnd);
+  if (g_ui.settingsNormalizeFocusPending) {
+    for (int comboId : {kSerialPortCombo, kSerialBaudCombo, kSerialDataBitsCombo, kSerialParityCombo, kSerialStopBitsCombo, kSerialTimeoutCombo,
+                        kSerialEolCombo}) {
+      HWND combo = GetDlgItem(settingsHwnd, comboId);
+      if (!combo) continue;
+      COMBOBOXINFO info{};
+      info.cbSize = sizeof(COMBOBOXINFO);
+      if (!GetComboBoxInfo(combo, &info) || !info.hwndItem) continue;
+      const int length = GetWindowTextLengthW(info.hwndItem);
+      SendMessageW(info.hwndItem, EM_SETSEL, length, length);
+    }
+    HWND applyButton = GetDlgItem(settingsHwnd, kSettingsApply);
+    if (applyButton) SetFocus(applyButton);
+    g_ui.settingsNormalizeFocusPending = false;
+  }
   RedrawWindow(settingsHwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_FRAME);
 }
 
@@ -1218,6 +1233,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       ShowTab(0);
       LoadSettingsIntoControls(hwnd);
       LayoutSettingsWindow(hwnd);
+      g_ui.settingsNormalizeFocusPending = true;
       PostMessageW(hwnd, kMsgSettingsFinalizeCombos, 0, 0);
       PostMessageW(hwnd, kMsgSettingsFinalizeDisplay, 0, 0);
       return 0;
@@ -1355,6 +1371,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       return 0;
     case WM_DESTROY:
       g_ui.settingsWindow = nullptr;
+      g_ui.settingsNormalizeFocusPending = false;
       g_ui.serialTabControls.clear();
       g_ui.outputTabControls.clear();
       g_ui.applicationTabControls.clear();

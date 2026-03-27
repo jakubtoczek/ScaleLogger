@@ -72,21 +72,34 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLi
   onError_ = onError;
   stopRequested_.store(false);
   connected_ = true;
-  onLog("Serial connection opened on " + settings.port + " at " + std::to_string(settings.baudRate) + " baud.");
+  if (onLog_) onLog_("Serial connection opened on " + settings.port + " at " + std::to_string(settings.baudRate) + " baud.");
+  if (onLog_) onLog_("Serial receive thread starting.");
 
-  receiveThread_ = std::thread([this]() { ReceiveLoop(); });
+  receiveThread_ = std::thread([this]() {
+    try {
+      if (onLog_) onLog_("Serial receive thread entered.");
+      ReceiveLoop();
+    } catch (const std::exception& ex) {
+      if (onError_) onError_(std::string("ERROR: Unhandled exception in serial receive thread: ") + ex.what());
+    } catch (...) {
+      if (onError_) onError_("ERROR: Unhandled exception in serial receive thread");
+    }
+  });
   return true;
 }
 
 void SerialPort::ReceiveLoop() {
   std::string buffer;
+  bool firstDispatchedLine = false;
   char ch = 0;
   DWORD read = 0;
 
   while (!stopRequested_.load()) {
     const BOOL ok = ReadFile(handle_, &ch, 1, &read, nullptr);
     if (!ok) {
-      if (!stopRequested_.load() && onError_) onError_("Serial read error.");
+      if (!stopRequested_.load() && onError_) {
+        onError_("Serial receive loop ReadFile error: " + DescribeOpenError(GetLastError()));
+      }
       break;
     }
     if (read == 0) continue;
@@ -98,9 +111,22 @@ void SerialPort::ReceiveLoop() {
       if (EndsWith(line, settings_.eol)) line = line.substr(0, line.size() - settings_.eol.size());
       while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
       buffer.clear();
-      if (onLine_ && !line.empty()) onLine_(line);
+      if (onLine_ && !line.empty()) {
+        if (!firstDispatchedLine && onLog_) {
+          onLog_("First serial line received.");
+          firstDispatchedLine = true;
+        }
+        try {
+          onLine_(line);
+        } catch (const std::exception& ex) {
+          if (onError_) onError_(std::string("ERROR: Exception while dispatching received serial line: ") + ex.what());
+        } catch (...) {
+          if (onError_) onError_("ERROR: Exception while dispatching received serial line");
+        }
+      }
     }
   }
+  if (onLog_) onLog_("Serial receive loop exiting.");
 }
 
 void SerialPort::Disconnect() {
