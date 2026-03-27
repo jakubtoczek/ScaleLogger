@@ -13,6 +13,7 @@
 #include <chrono>
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cwctype>
 #include <cstdlib>
 #include <filesystem>
@@ -132,6 +133,11 @@ std::string ToUtf8(const std::wstring& text) {
   std::string out(static_cast<std::size_t>(sizeNeeded), '\0');
   WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), out.data(), sizeNeeded, nullptr, nullptr);
   return out;
+}
+
+void TraceEarly(const std::string& message) {
+  OutputDebugStringA((message + "\n").c_str());
+  std::fprintf(stderr, "%s\n", message.c_str());
 }
 
 std::string ExtractPortToken(const std::string& display) {
@@ -1525,8 +1531,21 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
           return 0;
       }
     }
+    case WM_QUERYENDSESSION:
+      AddLogLine("Session end: system shutdown/logoff");
+      return TRUE;
+    case WM_ENDSESSION:
+      if (wParam) AddLogLine("Session end: system shutdown/logoff");
+      return 0;
+    case WM_CLOSE:
+      AddLogLine("Session end: user requested close");
+      DestroyWindow(hwnd);
+      return 0;
     case WM_DESTROY:
-      if (g_ui.controller) g_ui.controller->Disconnect();
+      if (g_ui.controller && g_ui.controller->IsConnected()) {
+        AddLogLine("Disconnecting serial before shutdown");
+        g_ui.controller->Disconnect();
+      }
       PostQuitMessage(0);
       return 0;
     default:
@@ -1537,15 +1556,25 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 } // namespace
 
 int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarly("TRACE: RunMainDialog entered");
   g_ui.hInstance = hInstance;
   INITCOMMONCONTROLSEX icc{sizeof(INITCOMMONCONTROLSEX), ICC_TAB_CLASSES};
   InitCommonControlsEx(&icc);
 
+  TraceEarly("TRACE: Before data-root resolution");
   const char* userProfile = std::getenv("USERPROFILE");
   const char* localAppData = std::getenv("LOCALAPPDATA");
   std::filesystem::path dataRoot = userProfile     ? std::filesystem::path(userProfile) / "ScaleLogger"
                                    : localAppData ? std::filesystem::path(localAppData) / "ScaleLogger"
                                                   : (std::filesystem::temp_directory_path() / "ScaleLogger");
+  TraceEarly("TRACE: Before creating data/log directories");
+  std::error_code ec;
+  std::filesystem::create_directories(dataRoot, ec);
+  if (ec) TraceEarly("WARN: Failed to create data root directory: " + dataRoot.string() + " error=" + std::to_string(ec.value()));
+  ec.clear();
+  std::filesystem::create_directories(dataRoot / "logs", ec);
+  if (ec) TraceEarly("WARN: Failed to create logs directory: " + (dataRoot / "logs").string() + " error=" + std::to_string(ec.value()));
+  TraceEarly("TRACE: After creating data/log directories");
   g_ui.controller = std::make_unique<AppController>(dataRoot);
 
   g_ui.controller->SetLogSink([](const std::string& message, bool isError) { PostLogLineToUiThread((isError ? "ERROR: " : "") + message); });
@@ -1579,8 +1608,10 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   }
   if (cfg.darkMode) AddLogLine("Dark mode is experimental in 0.96 and is disabled by default.");
   const char* disableStartupConnect = std::getenv("SCALELOGGER_DISABLE_STARTUP_CONNECT");
+  AddLogLine(std::string("TRACE: Env SCALELOGGER_DISABLE_STARTUP_CONNECT=") + (disableStartupConnect ? disableStartupConnect : "<unset>"));
   const bool startupConnectDisabledByEnv = disableStartupConnect && std::string(disableStartupConnect) == "1";
   if (cfg.connectOnStartup && startupConnectDisabledByEnv) {
+    AddLogLine("TRACE: Startup auto-connect DISABLED by env override");
     AddLogLine("Startup auto-connect disabled by environment override.");
   } else if (cfg.connectOnStartup) {
     AddLogLine("Posting deferred startup auto-connect.");
@@ -1602,6 +1633,7 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
     DispatchMessageW(&msg);
   }
 
+  if (g_ui.controller) g_ui.controller->LogMessage("Session end: normal shutdown");
   g_ui.controller.reset();
   return static_cast<int>(msg.wParam);
 }

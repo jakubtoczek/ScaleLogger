@@ -5,6 +5,7 @@
 #include <cctype>
 #include <condition_variable>
 #include <ctime>
+#include <cstdlib>
 #include <filesystem>
 #include <iomanip>
 #include <mutex>
@@ -307,6 +308,15 @@ void AppController::Initialize() {
 
 void AppController::Connect() {
   EmitLog("Connect begin");
+  if (const char* forceNoSerial = std::getenv("SCALELOGGER_FORCE_NO_SERIAL")) {
+    if (std::string(forceNoSerial) == "1") {
+      EmitLog("Serial subsystem fully disabled by env override");
+      connected_ = false;
+      EmitConnectionState(false);
+      EmitLog("Connect end: skipped by environment override");
+      return;
+    }
+  }
   if (connected_) {
     EmitLog("Connect end: already connected");
     return;
