@@ -638,13 +638,14 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
                                      std::wstring(1, static_cast<wchar_t>(settings.serial.parity)) + L"; StopBits=" + FormatStopBits(settings.serial.stopBits) +
                                      L"; Timeout=" + FormatTimeout(settings.serial.timeoutSeconds) + L"; EOL=" + FormatEolForSummary(settings.serial.eol);
   SetWindowTextW(GetDlgItem(settingsHwnd, kSerialSummaryEdit), serialSummary.c_str());
-  const std::wstring outputSummary = std::wstring(L"Mode=") + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") +
-                                     L"; Trim=" + std::wstring(settings.parsing.trimWhitespace ? L"true" : L"false") +
-                                     L"; StripSuffix=" + std::wstring(settings.parsing.stripSuffix ? L"true" : L"false") +
-                                     L"; NormalizeSign=" + std::wstring(settings.parsing.normalizeSign ? L"true" : L"false") +
-                                     L"; PreservePlus=" + std::wstring(settings.parsing.preservePlusSign ? L"true" : L"false") +
-                                     L"; PreserveMinus=" + std::wstring(settings.parsing.preserveMinusSign ? L"true" : L"false") +
-                                     L"; PostAction=" + action + L"; Sequence=" + sequence;
+  std::wstring outputSummary = std::wstring(L"Mode=") + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") +
+                               L"; Trim=" + std::wstring(settings.parsing.trimWhitespace ? L"true" : L"false") +
+                               L"; StripSuffix=" + std::wstring(settings.parsing.stripSuffix ? L"true" : L"false") +
+                               L"; NormalizeSign=" + std::wstring(settings.parsing.normalizeSign ? L"true" : L"false") +
+                               L"; PreservePlus=" + std::wstring(settings.parsing.preservePlusSign ? L"true" : L"false") +
+                               L"; PreserveMinus=" + std::wstring(settings.parsing.preserveMinusSign ? L"true" : L"false") +
+                               L"; PostAction=" + action;
+  if (settings.output.postAction == PostAction::CustomSequence) outputSummary += L"; Sequence=" + sequence;
   SetWindowTextW(GetDlgItem(settingsHwnd, kOutputSummaryEdit), outputSummary.c_str());
   SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_SETCHECK, config.darkMode ? BST_CHECKED : BST_UNCHECKED, 0);
 }
@@ -1499,11 +1500,11 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   INITCOMMONCONTROLSEX icc{sizeof(INITCOMMONCONTROLSEX), ICC_TAB_CLASSES};
   InitCommonControlsEx(&icc);
 
-  const char* localAppData = std::getenv("LOCALAPPDATA");
   const char* userProfile = std::getenv("USERPROFILE");
-  std::filesystem::path dataRoot = localAppData   ? std::filesystem::path(localAppData) / "ScaleLogger"
-                                   : userProfile ? std::filesystem::path(userProfile) / "ScaleLogger"
-                                                 : (std::filesystem::temp_directory_path() / "ScaleLogger");
+  const char* localAppData = std::getenv("LOCALAPPDATA");
+  std::filesystem::path dataRoot = userProfile     ? std::filesystem::path(userProfile) / "ScaleLogger"
+                                   : localAppData ? std::filesystem::path(localAppData) / "ScaleLogger"
+                                                  : (std::filesystem::temp_directory_path() / "ScaleLogger");
   g_ui.controller = std::make_unique<AppController>(dataRoot);
 
   g_ui.controller->SetLogSink([](const std::string& message, bool isError) { PostLogLineToUiThread((isError ? "ERROR: " : "") + message); });

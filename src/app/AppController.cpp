@@ -299,42 +299,48 @@ void AppController::Connect() {
   const bool connected = serial_.Connect(
       settings_.serial,
       [this](const std::string& rawLine) {
-        const auto parsed = parser_.Process(rawLine, settings_.parsing);
-        if (!parsed.ok) {
-          if (config_.lineLogMode == LineLogMode::Compact) {
-            EmitLog("Scale input raw='" + rawLine + "' parse_error='" + parsed.message + "'", true);
-          } else {
-            EmitLog("Raw received line: '" + rawLine + "'");
-          }
-          EmitLog("Parse rejected: " + parsed.message + " raw='" + rawLine + "'", true);
-          return;
-        }
-        if (config_.lineLogMode == LineLogMode::Compact) {
-          EmitLog("Scale input raw='" + rawLine + "' parsed='" + parsed.processed + "'");
-        } else if (settings_.parsing.mode == ParseMode::Parsed) {
-          EmitLog("Raw received line: '" + rawLine + "'");
-          EmitLog("Parsed value: '" + parsed.processed + "'");
-        }
-        if (settings_.output.postAction == PostAction::CustomSequence) {
-          std::string seq;
-          for (std::size_t i = 0; i < settings_.output.customSequence.size(); ++i) {
-            if (i > 0) seq += " -> ";
-            seq += settings_.output.customSequence[i];
-          }
-          EmitLog("Executing custom sequence: " + seq);
-        }
-        const auto sendResult = injector_.SendTextAndAction(Utf8ToWide(parsed.processed), settings_.output);
-        if (sendResult.status != InputInjector::SendStatus::Success) {
-          if (sendResult.status == InputInjector::SendStatus::TextFailed) {
-            EmitLog("Text injection failed for value: " + parsed.processed, true);
-          } else {
-            if (settings_.output.postAction == PostAction::CustomSequence && !sendResult.failedToken.empty()) {
-              EmitLog("WARN: Unrecognized or failed custom sequence token: " + sendResult.failedToken, true);
-              EmitLog("Custom sequence execution failed after text injection", true);
+        try {
+          const auto parsed = parser_.Process(rawLine, settings_.parsing);
+          if (!parsed.ok) {
+            if (config_.lineLogMode == LineLogMode::Compact) {
+              EmitLog("Scale input raw='" + rawLine + "' parse_error='" + parsed.message + "'", true);
             } else {
-              EmitLog("Post-action key injection failed after text injection", true);
+              EmitLog("Raw received line: '" + rawLine + "'");
+            }
+            EmitLog("Parse rejected: " + parsed.message + " raw='" + rawLine + "'", true);
+            return;
+          }
+          if (config_.lineLogMode == LineLogMode::Compact) {
+            EmitLog("Scale input raw='" + rawLine + "' parsed='" + parsed.processed + "'");
+          } else if (settings_.parsing.mode == ParseMode::Parsed) {
+            EmitLog("Raw received line: '" + rawLine + "'");
+            EmitLog("Parsed value: '" + parsed.processed + "'");
+          }
+          if (settings_.output.postAction == PostAction::CustomSequence) {
+            std::string seq;
+            for (std::size_t i = 0; i < settings_.output.customSequence.size(); ++i) {
+              if (i > 0) seq += " -> ";
+              seq += settings_.output.customSequence[i];
+            }
+            EmitLog("Executing custom sequence: " + seq);
+          }
+          const auto sendResult = injector_.SendTextAndAction(Utf8ToWide(parsed.processed), settings_.output);
+          if (sendResult.status != InputInjector::SendStatus::Success) {
+            if (sendResult.status == InputInjector::SendStatus::TextFailed) {
+              EmitLog("Text injection failed for value: " + parsed.processed, true);
+            } else {
+              if (settings_.output.postAction == PostAction::CustomSequence && !sendResult.failedToken.empty()) {
+                EmitLog("WARN: Unrecognized or failed custom sequence token: " + sendResult.failedToken, true);
+                EmitLog("Custom sequence execution failed after text injection", true);
+              } else {
+                EmitLog("Post-action key injection failed after text injection", true);
+              }
             }
           }
+        } catch (const std::exception& ex) {
+          EmitLog(std::string("ERROR: Exception while handling serial line callback: ") + ex.what(), true);
+        } catch (...) {
+          EmitLog("ERROR: Non-standard exception while handling serial line callback.", true);
         }
       },
       [this](const std::string& m) { EmitLog(m); }, [this](const std::string& m) { EmitLog(m, true); });
