@@ -270,7 +270,9 @@ void AppController::Initialize() {
             "; databits=" + std::to_string(settings_.serial.dataBits) + "; parity=" + std::string(1, settings_.serial.parity) +
             "; stopbits=" + std::to_string(settings_.serial.stopBits) + "; timeout=" + std::to_string(settings_.serial.timeoutSeconds) +
             "; eol=" + EscapeForLog(settings_.serial.eol));
-    EmitLog("Startup effective logging: folder=" + config_.logsFolder + "; mode=" + ToString(config_.logMode) + "; pattern=" + config_.logFilePattern);
+    const std::string logModeText =
+        config_.logMode == LogMode::SingleFile ? "single_file" : (config_.logMode == LogMode::None ? "none" : "per_session");
+    EmitLog("Startup effective logging: folder=" + config_.logsFolder + "; mode=" + logModeText + "; pattern=" + config_.logFilePattern);
     EmitLog(config_.connectOnStartup ? "Startup auto-connect enabled" : "Startup auto-connect disabled");
     EmitLog("Startup load completed");
   } catch (const std::exception& ex) {
