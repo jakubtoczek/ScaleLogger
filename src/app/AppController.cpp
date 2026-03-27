@@ -312,6 +312,7 @@ void AppController::Connect() {
     return;
   }
 
+  EmitLog("TRACE: AppController::Connect before serial_.Connect()");
   const bool connected = serial_.Connect(
       settings_.serial,
       [this](const std::string& rawLine) {
@@ -361,6 +362,7 @@ void AppController::Connect() {
       },
       [this](const std::string& m) { EmitLog(m); }, [this](const std::string& m) { EmitLog(m, true); });
 
+  EmitLog(std::string("TRACE: AppController::Connect after serial_.Connect() result=") + (connected ? "success" : "failure"));
   connected_ = connected;
   EmitConnectionState(connected_);
   if (connected_) EmitLog("Connected to " + settings_.serial.port + ". No valid scale data received yet.");

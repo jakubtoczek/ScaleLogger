@@ -1462,6 +1462,17 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
           AddLogLine("Startup auto-connect skipped because requested port is unavailable.");
           return 0;
         }
+        if (const char* delayMsText = std::getenv("SCALELOGGER_CONNECT_DELAY_MS")) {
+          try {
+            const int delayMs = std::max(0, std::stoi(delayMsText));
+            if (delayMs > 0) {
+              AddLogLine("Delaying startup auto-connect by " + std::to_string(delayMs) + " ms (environment override).");
+              Sleep(static_cast<DWORD>(delayMs));
+            }
+          } catch (...) {
+            AddLogLine("WARN: Ignoring invalid SCALELOGGER_CONNECT_DELAY_MS value.");
+          }
+        }
         try {
           g_ui.controller->Connect();
         } catch (const std::exception& ex) {
