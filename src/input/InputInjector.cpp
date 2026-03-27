@@ -37,6 +37,7 @@ WORD TokenToVk(const std::string& token) {
   if (token == "end") return VK_END;
   if (token == "pageup") return VK_PRIOR;
   if (token == "pagedown") return VK_NEXT;
+  if (token.rfind("num", 0) == 0 && token.size() == 4 && token[3] >= '0' && token[3] <= '9') return static_cast<WORD>(VK_NUMPAD0 + (token[3] - '0'));
   if (token.size() == 1 && token[0] >= '0' && token[0] <= '9') return static_cast<WORD>(token[0]);
   if (token.size() == 1 && token[0] >= 'a' && token[0] <= 'z') return static_cast<WORD>(token[0] - 32);
   if (token == "f10") return VK_F10;
@@ -46,34 +47,39 @@ WORD TokenToVk(const std::string& token) {
   return 0;
 }
 
-bool SendPostAction(const OutputSettings& output) {
-  auto sendToken = [](const std::string& token) -> bool {
+InputInjector::SendResult SendPostAction(const OutputSettings& output) {
+  auto sendToken = [](const std::string& token) -> InputInjector::SendResult {
     const auto normalized = NormalizeKeyToken(token);
-    if (!normalized.has_value()) return false;
+    if (!normalized.has_value()) return {InputInjector::SendStatus::PostActionFailed, token};
     const WORD vk = TokenToVk(*normalized);
-    return vk != 0 && SendVirtualKey(vk);
+    if (vk == 0 || !SendVirtualKey(vk)) return {InputInjector::SendStatus::PostActionFailed, token};
+    return {InputInjector::SendStatus::Success, {}};
   };
 
   switch (output.postAction) {
-    case PostAction::Down: return SendVirtualKey(VK_DOWN);
-    case PostAction::Right: return SendVirtualKey(VK_RIGHT);
-    case PostAction::Enter: return SendVirtualKey(VK_RETURN);
-    case PostAction::Tab: return SendVirtualKey(VK_TAB);
-    case PostAction::None: return true;
+    case PostAction::Down: return SendVirtualKey(VK_DOWN) ? InputInjector::SendResult{} : InputInjector::SendResult{InputInjector::SendStatus::PostActionFailed, "down"};
+    case PostAction::Right:
+      return SendVirtualKey(VK_RIGHT) ? InputInjector::SendResult{} : InputInjector::SendResult{InputInjector::SendStatus::PostActionFailed, "right"};
+    case PostAction::Enter:
+      return SendVirtualKey(VK_RETURN) ? InputInjector::SendResult{} : InputInjector::SendResult{InputInjector::SendStatus::PostActionFailed, "enter"};
+    case PostAction::Tab: return SendVirtualKey(VK_TAB) ? InputInjector::SendResult{} : InputInjector::SendResult{InputInjector::SendStatus::PostActionFailed, "tab"};
+    case PostAction::None: return {InputInjector::SendStatus::Success, {}};
     case PostAction::CustomSequence:
+      if (output.customSequence.empty()) return {InputInjector::SendStatus::Success, {}};
       for (const auto& token : output.customSequence) {
-        if (!sendToken(token)) return false;
+        const auto tokenResult = sendToken(token);
+        if (tokenResult.status != InputInjector::SendStatus::Success) return tokenResult;
       }
-      return true;
+      return {InputInjector::SendStatus::Success, {}};
   }
-  return false;
+  return {InputInjector::SendStatus::PostActionFailed, {}};
 }
 } // namespace
 #endif
 
-bool InputInjector::SendTextAndAction(const std::wstring& text, const OutputSettings& output) {
+InputInjector::SendResult InputInjector::SendTextAndAction(const std::wstring& text, const OutputSettings& output) {
 #ifdef _WIN32
-  if (text.empty()) return false;
+  if (text.empty()) return {SendStatus::TextFailed, {}};
   for (wchar_t ch : text) {
     INPUT in[2]{};
     in[0].type = INPUT_KEYBOARD;
@@ -81,13 +87,13 @@ bool InputInjector::SendTextAndAction(const std::wstring& text, const OutputSett
     in[0].ki.wScan = ch;
     in[1] = in[0];
     in[1].ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
-    if (SendInput(2, in, sizeof(INPUT)) != 2) return false;
+    if (SendInput(2, in, sizeof(INPUT)) != 2) return {SendStatus::TextFailed, {}};
   }
   return SendPostAction(output);
 #else
   (void)text;
   (void)output;
-  return false;
+  return {SendStatus::TextFailed, {}};
 #endif
 }
 

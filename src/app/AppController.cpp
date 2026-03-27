@@ -109,6 +109,13 @@ void SanitizeConfig(AppConfig& config) {
   Dedup(config.stopBitsOptions);
 }
 
+std::string UpperAscii(std::string text) {
+  for (char& ch : text) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+  return text;
+}
+
+bool PortNamesMatch(const std::string& lhs, const std::string& rhs) { return UpperAscii(lhs) == UpperAscii(rhs); }
+
 int CountConfigDifferences(const AppConfig& before, const AppConfig& after) {
   int count = 0;
   if (before.configFolder != after.configFolder) ++count;
@@ -265,11 +272,18 @@ void AppController::Connect() {
           }
           EmitLog("Executing custom sequence: " + seq);
         }
-        if (!injector_.SendTextAndAction(Utf8ToWide(parsed.processed), settings_.output)) {
-          if (settings_.output.postAction == PostAction::CustomSequence) {
-            EmitLog("Custom sequence execution failed", true);
+        const auto sendResult = injector_.SendTextAndAction(Utf8ToWide(parsed.processed), settings_.output);
+        if (sendResult.status != InputInjector::SendStatus::Success) {
+          if (sendResult.status == InputInjector::SendStatus::TextFailed) {
+            EmitLog("Text injection failed for value: " + parsed.processed, true);
+          } else {
+            if (settings_.output.postAction == PostAction::CustomSequence && !sendResult.failedToken.empty()) {
+              EmitLog("WARN: Unrecognized or failed custom sequence token: " + sendResult.failedToken, true);
+              EmitLog("Custom sequence execution failed after text injection", true);
+            } else {
+              EmitLog("Post-action key injection failed after text injection", true);
+            }
           }
-          EmitLog("Injection failed for value: " + parsed.processed, true);
         }
       },
       [this](const std::string& m) { EmitLog(m); }, [this](const std::string& m) { EmitLog(m, true); });
@@ -380,6 +394,19 @@ AppController::SaveConfigResult AppController::SaveResolvedConfiguration() {
 std::vector<std::string> AppController::ScanPorts() const { return ScanComPorts(); }
 
 bool AppController::TestReceive(const SerialSettings& settings, std::string& receivedLine, std::string& errorMessage) {
+  EmitLog("Test receive begin on " + settings.port);
+  if (settings.port.empty()) {
+    errorMessage = "Test receive failed on <empty port>: no port selected.";
+    EmitLog(errorMessage, true);
+    return false;
+  }
+  if (serial_.IsConnected() && PortNamesMatch(settings_.serial.port, settings.port)) {
+    errorMessage = "Test Receive cannot run while already connected to " + settings.port + ". Disconnect first.";
+    EmitLog(errorMessage, true);
+    EmitLog("Test receive end on " + settings.port + ": blocked");
+    return false;
+  }
+
   SerialPort probe;
   std::mutex mutex;
   std::condition_variable cv;
@@ -408,7 +435,8 @@ bool AppController::TestReceive(const SerialSettings& settings, std::string& rec
       });
 
   if (!connected) {
-    if (errorMessage.empty()) errorMessage = "Unable to open serial port for test receive.";
+    if (errorMessage.empty()) errorMessage = "Unable to open serial port " + settings.port + " for test receive.";
+    EmitLog("Test receive end on " + settings.port + ": open failed", true);
     return false;
   }
 
@@ -419,9 +447,11 @@ bool AppController::TestReceive(const SerialSettings& settings, std::string& rec
   probe.Disconnect();
 
   if (!done) {
-    errorMessage = "No data received — check device or COM port";
+    errorMessage = "No data received on " + settings.port + " — check device or COM port";
+    EmitLog("Test receive end on " + settings.port + ": timeout", true);
     return false;
   }
+  EmitLog("Test receive end on " + settings.port + ": success");
   return ok;
 }
 

@@ -9,6 +9,12 @@ namespace scalelogger {
 std::optional<std::string> NormalizeKeyToken(const std::string& token) {
   std::string t;
   for (char c : token) if (!std::isspace(static_cast<unsigned char>(c))) t.push_back(static_cast<char>(std::tolower(c)));
+  if (t.rfind("numpad", 0) == 0 && t.size() == 7 && t[6] >= '0' && t[6] <= '9') {
+    return std::string("num") + t[6];
+  }
+  if (t.rfind("num", 0) == 0 && t.size() == 4 && t[3] >= '0' && t[3] <= '9') {
+    return t;
+  }
   static const std::unordered_set<std::string> valid = {
       "down", "right", "left", "up", "enter", "tab", "esc", "space", "backspace", "delete", "home", "end", "pageup", "pagedown"};
   if (valid.contains(t)) return t;
