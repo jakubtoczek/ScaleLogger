@@ -138,6 +138,27 @@ std::string ExtractPortToken(const std::string& display) {
   return cutPos == std::string::npos ? display : display.substr(0, cutPos);
 }
 
+bool IsLikelySerialPortName(const std::string& port) {
+  if (port.size() < 4) return false;
+  if (!(port[0] == 'C' || port[0] == 'c') || !(port[1] == 'O' || port[1] == 'o') || !(port[2] == 'M' || port[2] == 'm')) return false;
+  for (std::size_t i = 3; i < port.size(); ++i) {
+    if (!std::isdigit(static_cast<unsigned char>(port[i]))) return false;
+  }
+  return true;
+}
+
+bool PortExistsInScan(const std::vector<std::string>& scannedPorts, const std::string& port) {
+  auto upper = [](std::string value) {
+    for (char& ch : value) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    return value;
+  };
+  const auto wanted = upper(port);
+  for (const auto& entry : scannedPorts) {
+    if (upper(ExtractPortToken(entry)) == wanted) return true;
+  }
+  return false;
+}
+
 bool IsDarkModeEnabled() {
   return g_ui.controller && g_ui.controller->Config().darkMode;
 }
@@ -1395,10 +1416,27 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case kMsgStartupAutoConnect:
       AddLogLine("Handling deferred startup auto-connect.");
       if (g_ui.controller) {
+        const auto serial = g_ui.controller->Settings().serial;
+        if (serial.port.empty()) {
+          AddLogLine("Startup auto-connect skipped: empty startup port.");
+          return 0;
+        }
+        if (!IsLikelySerialPortName(serial.port)) {
+          AddLogLine("Startup auto-connect skipped: malformed startup port '" + serial.port + "'.");
+          return 0;
+        }
+        const auto scannedPorts = g_ui.controller->ScanPorts();
+        if (!PortExistsInScan(scannedPorts, serial.port)) {
+          AddLogLine("Startup port not present in current scan: " + serial.port);
+          AddLogLine("Startup auto-connect skipped because requested port is unavailable.");
+          return 0;
+        }
         try {
           g_ui.controller->Connect();
+        } catch (const std::exception& ex) {
+          AddLogLine(std::string("ERROR: Unhandled exception during startup connect: ") + ex.what());
         } catch (...) {
-          AddLogLine("ERROR: Unhandled exception during startup connect.");
+          AddLogLine("ERROR: Unhandled non-standard exception during startup connect.");
         }
       }
       return 0;
@@ -1498,7 +1536,11 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
     SetComboToText(g_ui.presetsCombo, ToWide(cfg.lastUsedPresetName));
   }
   if (cfg.darkMode) AddLogLine("Dark mode is experimental in 0.96 and is disabled by default.");
-  if (cfg.connectOnStartup) {
+  const char* disableStartupConnect = std::getenv("SCALELOGGER_DISABLE_STARTUP_CONNECT");
+  const bool startupConnectDisabledByEnv = disableStartupConnect && std::string(disableStartupConnect) == "1";
+  if (cfg.connectOnStartup && startupConnectDisabledByEnv) {
+    AddLogLine("Startup auto-connect disabled by environment override.");
+  } else if (cfg.connectOnStartup) {
     AddLogLine("Posting deferred startup auto-connect.");
     PostMessageW(hwnd, kMsgStartupAutoConnect, 0, 0);
   }

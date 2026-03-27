@@ -63,15 +63,48 @@ if (Test-Path $ChecksumFile) {
 $defaultConfigSource = if (Test-Path "default_config.json") { "file: default_config.json" } else { "embedded defaults" }
 $defaultConfigSha256 = "n/a"
 $defaultConfigSummary = "n/a"
+$defaultConfigDetail = @()
 if (Test-Path "default_config.json") {
   try {
     $defaultConfigSha256 = (Get-FileHash -Algorithm SHA256 "default_config.json").Hash.ToLowerInvariant()
     $cfg = Get-Content -Raw -Path "default_config.json" | ConvertFrom-Json
-    $startupPresetState = if ([string]::IsNullOrWhiteSpace([string]$cfg.startup_preset_name)) { "empty" } else { "set" }
-    $lastUsedPresetState = if ([string]::IsNullOrWhiteSpace([string]$cfg.last_used_preset_name)) { "empty" } else { "set" }
-    $stopBitsText = [string]$cfg.stopbits
-    if ($stopBitsText -match '^\d+\.0$') { $stopBitsText = $stopBitsText.Substring(0, $stopBitsText.Length - 2) }
-    $defaultConfigSummary = "connect_on_startup=$($cfg.connect_on_startup); startup_mode=$($cfg.startup_mode); log_mode=$($cfg.log_mode); line_log_mode=$($cfg.line_log_mode); baudrate=$($cfg.baudrate); parity=$($cfg.parity); stopbits=$stopBitsText; output_action=$($cfg.post_action); config_file_name=$($cfg.config_file_name); startup_preset_name=$startupPresetState; last_used_preset_name=$lastUsedPresetState"
+    $defaultConfigSummary = "connect_on_startup=$($cfg.connect_on_startup); startup_mode=$($cfg.startup_mode); log_mode=$($cfg.log_mode); config_file_name=$($cfg.config_file_name)"
+    $defaultConfigDetail = @(
+      "Default config values:",
+      "  Application:",
+      "    config_folder=$($cfg.config_folder)",
+      "    config_file_name=$($cfg.config_file_name)",
+      "    presets_folder=$($cfg.presets_folder)",
+      "    logs_folder=$($cfg.logs_folder)",
+      "    log_file_pattern=$($cfg.log_file_pattern)",
+      "    log_mode=$($cfg.log_mode)",
+      "    line_log_mode=$($cfg.line_log_mode)",
+      "    connect_on_startup=$($cfg.connect_on_startup)",
+      "    dark_mode=$($cfg.dark_mode)",
+      "    startup_mode=$($cfg.startup_mode)",
+      "    startup_preset_name=$($cfg.startup_preset_name)",
+      "    last_used_preset_name=$($cfg.last_used_preset_name)",
+      "  Serial:",
+      "    port=$($cfg.port)",
+      "    baudrate=$($cfg.baudrate)",
+      "    databits=$($cfg.databits)",
+      "    parity=$($cfg.parity)",
+      "    stopbits=$($cfg.stopbits)",
+      "    timeout=$($cfg.timeout)",
+      "    eol=$($cfg.eol)",
+      "  Parsing:",
+      "    mode=$($cfg.mode)",
+      "    trim_whitespace=$($cfg.trim_whitespace)",
+      "    strip_suffix=$($cfg.strip_suffix)",
+      "    suffix=$($cfg.suffix)",
+      "    normalize_sign=$($cfg.normalize_sign)",
+      "    preserve_plus_sign=$($cfg.preserve_plus_sign)",
+      "    preserve_minus_sign=$($cfg.preserve_minus_sign)",
+      "    numeric_validation=$($cfg.numeric_validation)",
+      "  Output:",
+      "    post_action=$($cfg.post_action)",
+      "    custom_sequence=$([string]::Join(',', $cfg.custom_sequence))"
+    )
   } catch {}
 }
 
@@ -96,4 +129,5 @@ SHA256 checksum: $checksumValue
 Default config source: $defaultConfigSource
 Default config SHA256: $defaultConfigSha256
 Default config summary: $defaultConfigSummary
+$($defaultConfigDetail -join "`n")
 "@ | Out-File -Encoding utf8 BUILD_MANIFEST.md

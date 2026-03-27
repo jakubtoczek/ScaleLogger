@@ -59,6 +59,20 @@ std::string ExpandPathPlaceholders(std::string value) {
   return value;
 }
 
+std::string EscapeForLog(const std::string& value) {
+  std::string out;
+  out.reserve(value.size() * 2);
+  for (char ch : value) {
+    switch (ch) {
+      case '\r': out += "\\r"; break;
+      case '\n': out += "\\n"; break;
+      case '\t': out += "\\t"; break;
+      default: out.push_back(ch); break;
+    }
+  }
+  return out;
+}
+
 std::filesystem::path ResolveConfiguredPath(const std::filesystem::path& root, const std::string& configuredPath) {
   const auto expanded = ExpandPathPlaceholders(configuredPath);
   std::filesystem::path path(expanded);
@@ -165,20 +179,28 @@ AppController::AppController(std::filesystem::path dataRoot)
 
 void AppController::Initialize() {
   EmitLog("Initialize begin");
+  std::string startupSerialSource = "config defaults";
   try {
     const bool hasUserConfig = std::filesystem::exists(configPath_);
+    EmitLog("Startup data root: " + dataRoot_.string());
+    EmitLog("Startup config path: " + configPath_.string());
     EmitLog(hasUserConfig ? ("Startup config found: " + configPath_.string()) : ("Startup config not found: " + configPath_.string()));
 
     config_ = LoadConfig(configPath_);
     SanitizeConfig(config_);
     settings_ = LoadPreset(configPath_);
+    EmitLog("Startup config source: " + std::string(hasUserConfig ? "disk config file" : "defaults from missing config"));
     if (!hasUserConfig) {
       const auto defaultConfigPath = std::filesystem::current_path() / "default_config.json";
       if (std::filesystem::exists(defaultConfigPath)) {
         config_ = LoadConfig(defaultConfigPath);
         SanitizeConfig(config_);
         settings_ = LoadPreset(defaultConfigPath);
-        EmitLog("Loaded defaults from default_config.json");
+        startupSerialSource = "built-in defaults";
+        EmitLog("Startup config source: default_config.json");
+      } else {
+        startupSerialSource = "built-in defaults";
+        EmitLog("Startup config source: built-in defaults");
       }
     }
 
@@ -206,23 +228,49 @@ void AppController::Initialize() {
 
     const auto presetsDir = std::filesystem::path(config_.presetsFolder);
     std::filesystem::path startupPresetPath;
+    std::string startupPresetSource;
+    std::string requestedStartupPreset;
     if (config_.startupMode == "specific_preset") {
-      startupPresetPath = ResolvePresetPath(presetsDir, config_.startupPresetName);
+      startupPresetSource = "startup preset";
+      requestedStartupPreset = config_.startupPresetName;
     } else if (config_.startupMode == "last_used_preset") {
-      startupPresetPath = ResolvePresetPath(presetsDir, config_.lastUsedPresetName);
+      startupPresetSource = "last-used preset";
+      requestedStartupPreset = config_.lastUsedPresetName;
     }
-    std::error_code presetEc;
-    if (!startupPresetPath.empty() && std::filesystem::exists(startupPresetPath, presetEc)) {
-      bool usedLegacyCompatibilityMapping = false;
-      settings_ = LoadPreset(startupPresetPath, &usedLegacyCompatibilityMapping);
-      EmitLog("Loaded startup preset: " + startupPresetPath.filename().string());
-      if (usedLegacyCompatibilityMapping) {
-        EmitLog("Loaded preset with legacy compatibility mapping");
+    EmitLog("Startup mode: " + config_.startupMode);
+    EmitLog("Startup preset name: " + (config_.startupPresetName.empty() ? "<empty>" : config_.startupPresetName));
+    EmitLog("Last-used preset name: " + (config_.lastUsedPresetName.empty() ? "<empty>" : config_.lastUsedPresetName));
+    if (!requestedStartupPreset.empty()) {
+      startupPresetPath = ResolvePresetPath(presetsDir, requestedStartupPreset);
+      std::error_code presetEc;
+      const bool presetExists = std::filesystem::exists(startupPresetPath, presetEc) && !presetEc;
+      EmitLog("Startup preset resolved path: " + startupPresetPath.string());
+      EmitLog("Startup preset file exists: " + std::string(presetExists ? "yes" : "no"));
+      if (presetExists) {
+        try {
+          bool usedLegacyCompatibilityMapping = false;
+          settings_ = LoadPreset(startupPresetPath, &usedLegacyCompatibilityMapping);
+          startupSerialSource = startupPresetSource + " '" + requestedStartupPreset + "'";
+          EmitLog("Loaded startup preset: " + startupPresetPath.filename().string());
+          if (usedLegacyCompatibilityMapping) {
+            EmitLog("Loaded preset with legacy compatibility mapping");
+          }
+        } catch (const std::exception& presetEx) {
+          EmitLog("WARN: Startup preset load failed: " + std::string(presetEx.what()), true);
+        }
+      } else {
+        EmitLog("WARN: Startup preset missing or invalid: " + startupPresetPath.string(), true);
       }
-    } else if (!startupPresetPath.empty()) {
-      EmitLog("WARN: Startup preset missing or invalid: " + startupPresetPath.string(), true);
+    } else if (config_.startupMode == "specific_preset" || config_.startupMode == "last_used_preset") {
+      EmitLog("Startup preset not requested: no preset name resolved.");
     }
 
+    EmitLog("Startup effective serial source: " + startupSerialSource);
+    EmitLog("Startup effective serial: port=" + settings_.serial.port + "; baudrate=" + std::to_string(settings_.serial.baudRate) +
+            "; databits=" + std::to_string(settings_.serial.dataBits) + "; parity=" + std::string(1, settings_.serial.parity) +
+            "; stopbits=" + std::to_string(settings_.serial.stopBits) + "; timeout=" + std::to_string(settings_.serial.timeoutSeconds) +
+            "; eol=" + EscapeForLog(settings_.serial.eol));
+    EmitLog("Startup effective logging: folder=" + config_.logsFolder + "; mode=" + ToString(config_.logMode) + "; pattern=" + config_.logFilePattern);
     EmitLog(config_.connectOnStartup ? "Startup auto-connect enabled" : "Startup auto-connect disabled");
     EmitLog("Startup load completed");
   } catch (const std::exception& ex) {
@@ -232,6 +280,7 @@ void AppController::Initialize() {
     config_.presetsFolder = ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
     config_.logsFolder = ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
     configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
+    EmitLog("Startup effective serial source: fallback defaults after startup-load failure");
     EmitLog(std::string("ERROR: Startup config/preset load failed. Using defaults. ") + ex.what(), true);
   }
   EmitLog("Initialize end");
