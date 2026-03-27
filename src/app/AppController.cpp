@@ -6,7 +6,9 @@
 #include <condition_variable>
 #include <ctime>
 #include <filesystem>
+#include <iomanip>
 #include <mutex>
+#include <sstream>
 #include <vector>
 
 #ifdef _WIN32
@@ -71,6 +73,18 @@ std::string EscapeForLog(const std::string& value) {
     }
   }
   return out;
+}
+
+std::string FormatStopBitsForLog(float value) {
+  if (value == 1.5F) return "1.5";
+  if (value >= 1.9F) return "2";
+  return "1";
+}
+
+std::string FormatTimeoutForLog(float value) {
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(2) << value;
+  return oss.str();
 }
 
 std::filesystem::path ResolveConfiguredPath(const std::filesystem::path& root, const std::string& configuredPath) {
@@ -225,6 +239,7 @@ void AppController::Initialize() {
     ec.clear();
     std::filesystem::create_directories(std::filesystem::path(config_.presetsFolder), ec);
     if (ec) EmitLog("WARN: Failed to create presets directory: " + std::filesystem::path(config_.presetsFolder).string(), true);
+    FlushBufferedFileLogs();
 
     const auto presetsDir = std::filesystem::path(config_.presetsFolder);
     std::filesystem::path startupPresetPath;
@@ -268,7 +283,7 @@ void AppController::Initialize() {
     EmitLog("Startup effective serial source: " + startupSerialSource);
     EmitLog("Startup effective serial: port=" + settings_.serial.port + "; baudrate=" + std::to_string(settings_.serial.baudRate) +
             "; databits=" + std::to_string(settings_.serial.dataBits) + "; parity=" + std::string(1, settings_.serial.parity) +
-            "; stopbits=" + std::to_string(settings_.serial.stopBits) + "; timeout=" + std::to_string(settings_.serial.timeoutSeconds) +
+            "; stopbits=" + FormatStopBitsForLog(settings_.serial.stopBits) + "; timeout=" + FormatTimeoutForLog(settings_.serial.timeoutSeconds) +
             "; eol=" + EscapeForLog(settings_.serial.eol));
     const std::string logModeText =
         config_.logMode == LogMode::SingleFile ? "single_file" : (config_.logMode == LogMode::None ? "none" : "per_session");
@@ -282,6 +297,7 @@ void AppController::Initialize() {
     config_.presetsFolder = ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
     config_.logsFolder = ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
     configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
+    FlushBufferedFileLogs();
     EmitLog("Startup effective serial source: fallback defaults after startup-load failure");
     EmitLog(std::string("ERROR: Startup config/preset load failed. Using defaults. ") + ex.what(), true);
   }
@@ -516,6 +532,8 @@ void AppController::SetLogSink(LogSink sink) { logSink_ = std::move(sink); }
 
 void AppController::SetConnectionStateSink(ConnectionStateSink sink) { connectionStateSink_ = std::move(sink); }
 
+void AppController::LogMessage(const std::string& message, bool isError) { EmitLog(message, isError); }
+
 bool AppController::IsConnected() const { return connected_ || serial_.IsConnected(); }
 
 void AppController::EmitLog(const std::string& message, bool isError) const {
@@ -532,10 +550,14 @@ void AppController::EmitConnectionState(bool connected) const {
 }
 
 void AppController::WriteLogFileLine(const std::string& message, bool isError) const {
-  if (config_.logMode == LogMode::None) return;
+  if (config_.logMode == LogMode::None && !fileLogBufferingActive_) return;
   std::string warning;
   {
     std::lock_guard<std::mutex> lock(fileLogMutex_);
+    if (fileLogBufferingActive_) {
+      bufferedFileLogs_.push_back({message, isError});
+      return;
+    }
     const auto path = ResolveLogPath();
     if (path.empty()) return;
 
@@ -581,6 +603,19 @@ void AppController::WriteLogFileLine(const std::string& message, bool isError) c
     }
   }
   if (!warning.empty() && logSink_) logSink_(warning, true);
+}
+
+void AppController::FlushBufferedFileLogs() {
+  std::vector<BufferedLogEntry> pending;
+  {
+    std::lock_guard<std::mutex> lock(fileLogMutex_);
+    if (!fileLogBufferingActive_) return;
+    fileLogBufferingActive_ = false;
+    pending.swap(bufferedFileLogs_);
+  }
+  for (const auto& entry : pending) {
+    WriteLogFileLine("[startup-buffered] " + entry.message, entry.isError);
+  }
 }
 
 std::filesystem::path AppController::ResolveLogPath() const {

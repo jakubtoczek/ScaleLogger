@@ -39,6 +39,7 @@ constexpr UINT kMsgUiLogLine = WM_APP + 1;
 constexpr UINT kMsgUiConnectionState = WM_APP + 2;
 constexpr UINT kMsgStartupAutoConnect = WM_APP + 3;
 constexpr UINT kMsgSettingsFinalizeCombos = WM_APP + 4;
+constexpr UINT kMsgSettingsFinalizeDisplay = WM_APP + 5;
 
 constexpr int kSettingsTab = 200;
 constexpr int kSettingsApply = 201;
@@ -421,6 +422,8 @@ std::wstring FormatEolForSummary(const std::string& eol) {
   return ToWide(eol);
 }
 
+void LayoutSettingsWindow(HWND hwnd);
+
 void FinalizeEditableComboFirstPaint(HWND settingsHwnd) {
   for (int comboId : {kSerialPortCombo, kSerialBaudCombo, kSerialDataBitsCombo, kSerialParityCombo, kSerialStopBitsCombo, kSerialTimeoutCombo,
                       kSerialEolCombo}) {
@@ -434,6 +437,11 @@ void FinalizeEditableComboFirstPaint(HWND settingsHwnd) {
     RedrawWindow(combo, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
   }
   SetFocus(settingsHwnd);
+}
+
+void FinalizeSettingsDisplay(HWND settingsHwnd) {
+  LayoutSettingsWindow(settingsHwnd);
+  RedrawWindow(settingsHwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_FRAME);
 }
 
 std::string ParseEolFromUiText(const std::wstring& eolText) {
@@ -790,26 +798,26 @@ void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested = false) {
       if (i) joined += "; ";
       joined += changedFields[i];
     }
-    AddLogLine("Settings applied (runtime only): " + joined);
+    g_ui.controller->LogMessage("Settings applied (runtime only): " + joined);
   } else if (!saveRequested) {
-    AddLogLine("Settings apply requested: no changes detected.");
+    g_ui.controller->LogMessage("Settings apply requested: no changes detected.");
   }
   if (saveRequested) {
     const auto saveResult = g_ui.controller->SaveResolvedConfiguration();
     switch (saveResult.status) {
       case AppController::SaveConfigStatus::Created:
-        AddLogLine("Configuration file created at: " + saveResult.path.string());
-        AddLogLine("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
+        g_ui.controller->LogMessage("Configuration file created at: " + saveResult.path.string());
+        g_ui.controller->LogMessage("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
         break;
       case AppController::SaveConfigStatus::Updated:
-        AddLogLine("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
+        g_ui.controller->LogMessage("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
         break;
       case AppController::SaveConfigStatus::Unchanged:
-        AddLogLine("Configuration already up to date.");
+        g_ui.controller->LogMessage("Configuration already up to date.");
         break;
       case AppController::SaveConfigStatus::Failed:
       default:
-        AddLogLine("ERROR: Failed to save configuration file: " + saveResult.path.string());
+        g_ui.controller->LogMessage("Failed to save configuration file: " + saveResult.path.string(), true);
         break;
     }
   }
@@ -1211,10 +1219,14 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       LoadSettingsIntoControls(hwnd);
       LayoutSettingsWindow(hwnd);
       PostMessageW(hwnd, kMsgSettingsFinalizeCombos, 0, 0);
+      PostMessageW(hwnd, kMsgSettingsFinalizeDisplay, 0, 0);
       return 0;
     }
     case kMsgSettingsFinalizeCombos:
       FinalizeEditableComboFirstPaint(hwnd);
+      return 0;
+    case kMsgSettingsFinalizeDisplay:
+      FinalizeSettingsDisplay(hwnd);
       return 0;
     case WM_NOTIFY: {
       auto* header = reinterpret_cast<LPNMHDR>(lParam);
@@ -1314,6 +1326,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       break;
     case WM_SIZE:
       LayoutSettingsWindow(hwnd);
+      PostMessageW(hwnd, kMsgSettingsFinalizeDisplay, 0, 0);
       return 0;
     case WM_CTLCOLORSTATIC:
     case WM_CTLCOLOREDIT:

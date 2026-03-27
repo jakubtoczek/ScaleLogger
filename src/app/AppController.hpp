@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace scalelogger {
 
@@ -39,6 +40,7 @@ class AppController {
 
   void SetLogSink(LogSink sink);
   void SetConnectionStateSink(ConnectionStateSink sink);
+  void LogMessage(const std::string& message, bool isError = false);
 
   const AppSettings& Settings() const { return settings_; }
   const AppConfig& Config() const { return config_; }
@@ -50,7 +52,13 @@ class AppController {
   void EmitLog(const std::string& message, bool isError = false) const;
   void EmitConnectionState(bool connected) const;
   void WriteLogFileLine(const std::string& message, bool isError) const;
+  void FlushBufferedFileLogs();
   std::filesystem::path ResolveLogPath() const;
+
+  struct BufferedLogEntry {
+    std::string message;
+    bool isError{false};
+  };
 
   std::filesystem::path dataRoot_;
   std::filesystem::path configPath_;
@@ -66,6 +74,8 @@ class AppController {
   mutable std::ofstream logFile_{};
   mutable std::filesystem::path activeLogPath_{};
   mutable bool logWriteErrorNotified_{false};
+  mutable bool fileLogBufferingActive_{true};
+  mutable std::vector<BufferedLogEntry> bufferedFileLogs_{};
   mutable std::mutex fileLogMutex_{};
 };
 
