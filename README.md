@@ -100,7 +100,7 @@ At runtime these placeholders are expanded to the active user profile location s
 Use `ScaleLogger_build_release.bat` to create a native release folder with:
 - `ScaleLogger.exe`
 - `SHA256SUMS.txt`
-- `BUILD_MANIFEST_0.96.txt`
+- `BUILD_MANIFEST_0.97.txt`
 
 ## First runtime validation
 Use [docs/first_windows_runtime_test_checklist.md](docs/first_windows_runtime_test_checklist.md) for the exact first real Windows runtime test pass (build -> launch -> COM/serial -> parse/inject -> after-send actions -> release script).

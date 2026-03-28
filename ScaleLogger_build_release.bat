@@ -7,7 +7,7 @@ REM Purpose: configure, build, test, package exe, checksum, and build manifest.
 REM Output: release\ScaleLogger.exe, release\SHA256SUMS.txt, release\BUILD_MANIFEST_<version>.txt
 REM ---------------------------------------------------------------------------
 
-set "APP_VERSION=0.96"
+set "APP_VERSION=0.97"
 set "RELEASE_DIR=release"
 set "BUILD_DIR=out\build\windows-vs2026-x64"
 set "SOURCE_EXE=%BUILD_DIR%\Release\ScaleLogger.exe"

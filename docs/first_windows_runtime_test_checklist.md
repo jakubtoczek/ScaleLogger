@@ -145,7 +145,7 @@ Pass criteria:
 - Script exits success.
 - `release\ScaleLogger.exe` exists.
 - `release\SHA256SUMS.txt` exists and references `ScaleLogger.exe`.
-- `release\BUILD_MANIFEST_0.96.txt` exists.
+- `release\BUILD_MANIFEST_0.97.txt` exists.
 
 Expected Results:
 - Release script completes end-to-end without manual intervention.

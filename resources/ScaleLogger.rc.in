@@ -1,10 +1,10 @@
 #include <windows.h>
 
-1 ICON "../icon.ico"
+1 ICON "@CMAKE_SOURCE_DIR@/icon.ico"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,97,0,0
- PRODUCTVERSION 0,97,0,0
+ FILEVERSION @SCALELOGGER_VERSION_COMMA@
+ PRODUCTVERSION @SCALELOGGER_VERSION_COMMA@
  FILEOS 0x40004
  FILETYPE 0x1
 BEGIN
@@ -14,9 +14,9 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "ScaleLogger"
       VALUE "FileDescription", "ScaleLogger"
-      VALUE "FileVersion", "0.97"
+      VALUE "FileVersion", "@PROJECT_VERSION@"
       VALUE "ProductName", "ScaleLogger"
-      VALUE "ProductVersion", "0.97"
+      VALUE "ProductVersion", "@PROJECT_VERSION@"
     END
   END
 END
