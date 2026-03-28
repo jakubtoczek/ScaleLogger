@@ -10,7 +10,7 @@ Validate these paths end-to-end:
 - serial connect + receive + line dispatch
 - parse -> inject
 - after-send action (including custom sequence)
-- startup preset loading before auto-connect
+- startup config-selection loading before auto-connect
 - release script consistency
 
 ## Prerequisites
@@ -45,17 +45,17 @@ Ensure these exist (create if missing):
 - `%USERPROFILE%\ScaleLogger\ScaleLogger.config.json`
 - `%USERPROFILE%\ScaleLogger\presets\`
 
-Use a preset file in `presets\` that matches your device serial parameters and parse/output settings.
+Use a config selection file in `presets\` that matches your device serial parameters and parse/output settings.
 
 Expected Results:
-- Config and presets folder are present under `%USERPROFILE%\ScaleLogger`.
+- Config and config-selection folder are present under `%USERPROFILE%\ScaleLogger`.
 - Preset file is readable and uses the intended serial/parsing/output values for this test run.
 
-## 3) Validate startup preset load before auto-connect
+## 3) Validate startup config-selection load before auto-connect
 In `ScaleLogger.config.json`, set:
 - `connect_on_startup: true`
 - `startup_mode: "specific_preset"` (or `"last_used_preset"`)
-- matching preset name field (`startup_preset_name` or `last_used_preset_name`)
+- matching config-selection name field (`startup_preset_name` or `last_used_preset_name`)
 
 Run app from terminal:
 
@@ -64,13 +64,13 @@ out/build/windows-vs2026-x64/Release/ScaleLogger.exe
 ```
 
 Pass criteria (terminal log order):
-1. Startup preset load message appears first.
-2. Auto-connect log appears after preset load.
-3. Port in auto-connect log matches preset-selected port.
+1. Startup config-selection load message appears first.
+2. Auto-connect log appears after config-selection load.
+3. Port in auto-connect log matches config-selected port.
 
 Expected Results:
-- Observable startup order is config load -> preset load -> auto-connect attempt.
-- Auto-connect target port matches the startup-selected preset.
+- Observable startup order is config load -> config-selection load -> auto-connect attempt.
+- Auto-connect target port matches the startup-selected config file.
 
 ## 4) Validate COM discovery and manual connect/disconnect
 - In a test helper (or temporary callsite), invoke `ScanComPorts()` and verify expected COM ports are listed.
@@ -123,16 +123,16 @@ Expected Results:
 Test each startup mode once:
 - `specific_preset`
 - `last_used_preset`
-- no matching preset (missing file)
+- no matching config file (missing file)
 
 Pass criteria:
-- Existing preset modes load expected preset.
-- Missing preset does not crash; app still launches.
+- Existing startup modes load expected config file.
+- Missing config selection does not crash; app still launches.
 - Auto-connect behavior follows loaded/default runtime settings.
 
 Expected Results:
-- `specific_preset` and `last_used_preset` load the intended preset when file exists.
-- Missing preset case falls back safely (no crash) and app remains usable.
+- `specific_preset` and `last_used_preset` load the intended config file when file exists.
+- Missing config-selection case falls back safely (no crash) and app remains usable.
 
 ## 8) Validate release script consistency
 From repo root in `cmd.exe`:
@@ -154,10 +154,10 @@ Expected Results:
 ## 9) Record verdict
 Mark readiness:
 - **Ready for expanded device/runtime testing** if all sections above pass.
-- **Not ready** if any blocker in build, launch, COM scan, serial receive/dispatch, parse->inject, after-send action, startup preset/auto-connect, or release script.
+- **Not ready** if any blocker in build, launch, COM scan, serial receive/dispatch, parse->inject, after-send action, startup config-selection/auto-connect, or release script.
 
 ## Known non-blocking items for this phase
-- Config/preset JSON handling uses manual string parsing.
+- Config JSON handling uses embedded lightweight parser/writer code.
 - Runtime UI is intentionally minimal (test-shell level).
 - Additional real-device serial edge-case validation is still required.
 

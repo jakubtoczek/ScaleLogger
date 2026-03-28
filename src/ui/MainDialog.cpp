@@ -4,6 +4,7 @@
 #include "app/AppController.hpp"
 #include "core/ValueParser.hpp"
 #include "ui/AboutDialog.hpp"
+#include "ui/SettingsDialogLogic.hpp"
 
 #include <CommCtrl.h>
 #include <CommDlg.h>
@@ -519,6 +520,25 @@ int CALLBACK BrowseCallbackProc(HWND hwnd, UINT msg, LPARAM, LPARAM lpData) {
   return 0;
 }
 
+settingslogic::Context BuildSettingsLogicContext() {
+  settingslogic::Context ctx{};
+  ctx.controller = g_ui.controller.get();
+  ctx.mainWindow = g_ui.mainWindow;
+  ctx.settingsWindow = g_ui.settingsWindow;
+  ctx.presetsCombo = g_ui.presetsCombo;
+  ctx.presetMap = &g_ui.presetMap;
+  ctx.portDisplayToPort = &g_ui.portDisplayToPort;
+  ctx.addLogLine = [](const std::string& m) { AddLogLine(m); };
+  ctx.toWide = [](std::string_view t) { return ToWide(t); };
+  ctx.toUtf8 = [](const std::wstring& t) { return ToUtf8(t); };
+  ctx.getControlText = [](HWND c) { return GetControlText(c); };
+  ctx.setComboToText = [](HWND c, const std::wstring& t) { SetComboToText(c, t); };
+  ctx.loadSettingsIntoControls = [](HWND h) { LoadSettingsIntoControls(h); };
+  ctx.updateCustomSequenceUiState = [](HWND h) { UpdateCustomSequenceUiState(h); };
+  ctx.updateParseControlsUiState = [](HWND h) { UpdateParseControlsUiState(h); };
+  return ctx;
+}
+
 bool BrowseForFolder(HWND owner, std::wstring& output, const std::wstring& initialPath) {
   BROWSEINFOW bi{};
   bi.hwndOwner = owner;
@@ -536,54 +556,11 @@ bool BrowseForFolder(HWND owner, std::wstring& output, const std::wstring& initi
   return true;
 }
 
-void RefreshPresetDropdown(bool keepSelection = true) {
-  std::wstring previous = keepSelection ? GetControlText(g_ui.presetsCombo) : L"";
-  SendMessageW(g_ui.presetsCombo, CB_RESETCONTENT, 0, 0);
-  SendMessageW(g_ui.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
-  g_ui.presetMap.clear();
-
-  std::size_t count = 0;
-  const auto presetDir = std::filesystem::path(g_ui.controller->Config().presetsFolder);
-  if (std::filesystem::exists(presetDir)) {
-    for (const auto& entry : std::filesystem::directory_iterator(presetDir)) {
-      if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
-      const auto name = entry.path().stem().string();
-      g_ui.presetMap[name] = entry.path();
-      SendMessageW(g_ui.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ToWide(name).c_str()));
-      ++count;
-    }
-  }
-  if (count == 0) {
-    const auto builtInDir = std::filesystem::current_path() / "presets_default";
-    if (std::filesystem::exists(builtInDir)) {
-      for (const auto& entry : std::filesystem::directory_iterator(builtInDir)) {
-        if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
-        const auto name = entry.path().stem().string() + " (built-in)";
-        g_ui.presetMap[name] = entry.path();
-        SendMessageW(g_ui.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ToWide(name).c_str()));
-        ++count;
-      }
-    }
-  }
-  if (!previous.empty()) SetComboToText(g_ui.presetsCombo, previous);
-  else SendMessageW(g_ui.presetsCombo, CB_SETCURSEL, 0, 0);
-  AddLogLine("Preset list refreshed (" + std::to_string(count) + " presets).");
+void RefreshPresetDropdown(bool keepSelection) {
+  settingslogic::RefreshPresetDropdown(BuildSettingsLogicContext(), keepSelection);
 }
 
-void ApplySelectedPreset() {
-  const auto selected = ToUtf8(GetControlText(g_ui.presetsCombo));
-  if (selected.empty() || selected == "Last used / defaults") return;
-  const auto it = g_ui.presetMap.find(selected);
-  if (it == g_ui.presetMap.end()) return;
-  const auto presetPath = it->second;
-  AppConfig nextConfig = g_ui.controller->Config();
-  nextConfig.lastUsedPresetName = presetPath.stem().string();
-  bool usedLegacyCompatibilityMapping = false;
-  g_ui.controller->ApplySettings(LoadPreset(presetPath, &usedLegacyCompatibilityMapping), nextConfig);
-  if (usedLegacyCompatibilityMapping) AddLogLine("Loaded preset with legacy compatibility mapping");
-  if (g_ui.settingsWindow) LoadSettingsIntoControls(g_ui.settingsWindow);
-  AddLogLine("Loaded preset: " + selected);
-}
+void ApplySelectedPreset() { settingslogic::ApplySelectedConfig(BuildSettingsLogicContext()); }
 
 void ShowTab(std::size_t index) {
   auto applyVisibility = [index](const std::vector<HWND>& controls, std::size_t tabIndex) {
@@ -595,255 +572,15 @@ void ShowTab(std::size_t index) {
 }
 
 void LoadSettingsIntoControls(HWND settingsHwnd) {
-  const auto& settings = g_ui.controller->Settings();
-  const auto& config = g_ui.controller->Config();
-
-  SetComboToText(GetDlgItem(settingsHwnd, kSerialPortCombo), ToWide(settings.serial.port));
-  SetComboToText(GetDlgItem(settingsHwnd, kSerialBaudCombo), ToWide(std::to_string(settings.serial.baudRate)));
-  SetComboToText(GetDlgItem(settingsHwnd, kSerialDataBitsCombo), ToWide(std::to_string(settings.serial.dataBits)));
-  SetComboToText(GetDlgItem(settingsHwnd, kSerialParityCombo), std::wstring(1, static_cast<wchar_t>(settings.serial.parity)));
-  SetComboToText(GetDlgItem(settingsHwnd, kSerialStopBitsCombo), FormatStopBits(settings.serial.stopBits));
-  SetComboToText(GetDlgItem(settingsHwnd, kSerialTimeoutCombo), FormatTimeout(settings.serial.timeoutSeconds));
-
-  if (settings.serial.eol == "\r\n") SetComboToText(GetDlgItem(settingsHwnd, kSerialEolCombo), L"\\r\\n");
-  else if (settings.serial.eol == "\n") SetComboToText(GetDlgItem(settingsHwnd, kSerialEolCombo), L"\\n");
-  else if (settings.serial.eol == "\r") SetComboToText(GetDlgItem(settingsHwnd, kSerialEolCombo), L"\\r");
-
-  SetComboToText(GetDlgItem(settingsHwnd, kOutputModeCombo), settings.parsing.mode == ParseMode::Parsed ? L"parsed" : L"raw");
-  SendMessageW(GetDlgItem(settingsHwnd, kOutputTrimCheck), BM_SETCHECK, settings.parsing.trimWhitespace ? BST_CHECKED : BST_UNCHECKED, 0);
-  SendMessageW(GetDlgItem(settingsHwnd, kOutputStripSuffixCheck), BM_SETCHECK, settings.parsing.stripSuffix ? BST_CHECKED : BST_UNCHECKED, 0);
-  SetWindowTextW(GetDlgItem(settingsHwnd, kOutputSuffixEdit), ToWide(settings.parsing.suffix).c_str());
-  SendMessageW(GetDlgItem(settingsHwnd, kOutputNormalizeCheck), BM_SETCHECK, settings.parsing.normalizeSign ? BST_CHECKED : BST_UNCHECKED, 0);
-  SendMessageW(GetDlgItem(settingsHwnd, kOutputPreservePlusCheck), BM_SETCHECK, settings.parsing.preservePlusSign ? BST_CHECKED : BST_UNCHECKED, 0);
-  SendMessageW(GetDlgItem(settingsHwnd, kOutputPreserveMinusCheck), BM_SETCHECK, settings.parsing.preserveMinusSign ? BST_CHECKED : BST_UNCHECKED, 0);
-  SendMessageW(GetDlgItem(settingsHwnd, kOutputRequireNumericCheck), BM_SETCHECK, settings.parsing.numericValidation ? BST_CHECKED : BST_UNCHECKED, 0);
-
-  std::wstring action = L"down";
-  switch (settings.output.postAction) {
-    case PostAction::Right: action = L"right"; break;
-    case PostAction::Enter: action = L"enter"; break;
-    case PostAction::Tab: action = L"tab"; break;
-    case PostAction::None: action = L"none"; break;
-    case PostAction::CustomSequence: action = L"custom_sequence"; break;
-    case PostAction::Down:
-    default: break;
-  }
-  SetComboToText(GetDlgItem(settingsHwnd, kOutputActionCombo), action);
-
-  std::wstring sequence;
-  for (std::size_t i = 0; i < settings.output.customSequence.size(); ++i) {
-    if (i) sequence += L",";
-    sequence += ToWide(settings.output.customSequence[i]);
-  }
-  SetWindowTextW(GetDlgItem(settingsHwnd, kOutputCustomSequenceEdit), sequence.c_str());
-  UpdateCustomSequenceUiState(settingsHwnd);
-  UpdateParseControlsUiState(settingsHwnd);
-
-  const auto configPathText = (std::filesystem::path(config.configFolder) / config.configFileName).wstring();
-  SetWindowTextW(GetDlgItem(settingsHwnd, kAppConfigFolderEdit), configPathText.c_str());
-  SetWindowTextW(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit), ToWide(config.presetsFolder).c_str());
-  SetWindowTextW(GetDlgItem(settingsHwnd, kAppLogsFolderEdit), ToWide(config.logsFolder).c_str());
-  const std::wstring logMode = config.logMode == LogMode::None ? L"No file logging"
-                                : (config.logMode == LogMode::SingleFile ? L"Single file" : L"New file per session");
-  SetComboToText(GetDlgItem(settingsHwnd, kAppLogModeCombo), logMode);
-  SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_SETCHECK, config.connectOnStartup ? BST_CHECKED : BST_UNCHECKED, 0);
-  auto startupCombo = GetDlgItem(settingsHwnd, kAppStartupPresetCombo);
-  SendMessageW(startupCombo, CB_RESETCONTENT, 0, 0);
-  SendMessageW(startupCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
-  for (const auto& entry : g_ui.presetMap) SendMessageW(startupCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ToWide(entry.first).c_str()));
-  SetComboToText(startupCombo, config.startupMode == "specific_preset" ? ToWide(config.startupPresetName) : L"Last used / defaults");
-
-  const std::wstring pathSummary =
-      L"Config: " + (std::filesystem::path(config.configFolder) / ToWide(config.configFileName)).wstring() +
-      L"\r\nCurrent preset: " + ToWide(config.lastUsedPresetName.empty() ? std::string("(none)") : config.lastUsedPresetName) +
-      L"\r\nLogs: " + std::filesystem::path(config.logsFolder).wstring() + L" (" +
-      (config.logMode == LogMode::None ? L"none" : (config.logMode == LogMode::SingleFile ? L"single_file" : L"per_session")) + L")" +
-      L"\r\nDark mode (experimental): " + std::wstring(config.darkMode ? L"on" : L"off") +
-      L"\r\nSerial: " + ToWide(settings.serial.port) + L" @ " + ToWide(std::to_string(settings.serial.baudRate)) + L" baud" +
-      L"\r\nOutput: " + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") + L"; action=" + action;
-  SetWindowTextW(GetDlgItem(settingsHwnd, kAppPathsLabel), pathSummary.c_str());
-  const std::wstring serialSummary = L"Port=" + ToWide(settings.serial.port) + L"; Baud=" + ToWide(std::to_string(settings.serial.baudRate)) +
-                                     L"; DataBits=" + ToWide(std::to_string(settings.serial.dataBits)) + L"; Parity=" +
-                                     std::wstring(1, static_cast<wchar_t>(settings.serial.parity)) + L"; StopBits=" + FormatStopBits(settings.serial.stopBits) +
-                                     L"; Timeout=" + FormatTimeout(settings.serial.timeoutSeconds) + L"; EOL=" + FormatEolForSummary(settings.serial.eol);
-  SetWindowTextW(GetDlgItem(settingsHwnd, kSerialSummaryEdit), serialSummary.c_str());
-  std::wstring outputSummary = std::wstring(L"Mode=") + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") +
-                               L"; Trim=" + std::wstring(settings.parsing.trimWhitespace ? L"true" : L"false") +
-                               L"; StripSuffix=" + std::wstring(settings.parsing.stripSuffix ? L"true" : L"false") +
-                               L"; NormalizeSign=" + std::wstring(settings.parsing.normalizeSign ? L"true" : L"false") +
-                               L"; PreservePlus=" + std::wstring(settings.parsing.preservePlusSign ? L"true" : L"false") +
-                               L"; PreserveMinus=" + std::wstring(settings.parsing.preserveMinusSign ? L"true" : L"false") +
-                               L"; PostAction=" + action;
-  if (settings.output.postAction == PostAction::CustomSequence) outputSummary += L"; Sequence=" + sequence;
-  SetWindowTextW(GetDlgItem(settingsHwnd, kOutputSummaryEdit), outputSummary.c_str());
-  SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_SETCHECK, config.darkMode ? BST_CHECKED : BST_UNCHECKED, 0);
+  settingslogic::LoadSettingsIntoControls(BuildSettingsLogicContext(), settingsHwnd);
 }
 
 bool ReadSerialSettingsFromControls(HWND settingsHwnd, AppSettings& settingsOut, std::string& error) {
-  settingsOut.serial.port = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kSerialPortCombo)));
-  const auto mapped = g_ui.portDisplayToPort.find(settingsOut.serial.port);
-  if (mapped != g_ui.portDisplayToPort.end()) settingsOut.serial.port = mapped->second;
-  settingsOut.serial.port = ExtractPortToken(settingsOut.serial.port);
-  if (settingsOut.serial.port.empty()) {
-    error = "Invalid serial port: value is empty.";
-    return false;
-  }
-  if (!TryParseInt(GetControlText(GetDlgItem(settingsHwnd, kSerialBaudCombo)), settingsOut.serial.baudRate) || settingsOut.serial.baudRate <= 0) {
-    error = "Invalid baud rate. Enter a positive integer.";
-    return false;
-  }
-  if (!TryParseInt(GetControlText(GetDlgItem(settingsHwnd, kSerialDataBitsCombo)), settingsOut.serial.dataBits) ||
-      (settingsOut.serial.dataBits != 5 && settingsOut.serial.dataBits != 6 && settingsOut.serial.dataBits != 7 &&
-       settingsOut.serial.dataBits != 8)) {
-    error = "Invalid data bits. Use 5, 6, 7, or 8.";
-    return false;
-  }
-  const auto parityText = GetControlText(GetDlgItem(settingsHwnd, kSerialParityCombo));
-  if (parityText.empty()) {
-    error = "Invalid parity. Use N, E, or O.";
-    return false;
-  }
-  const wchar_t parity = static_cast<wchar_t>(std::towupper(parityText[0]));
-  if (parity != L'N' && parity != L'E' && parity != L'O') {
-    error = "Invalid parity. Use N, E, or O.";
-    return false;
-  }
-  settingsOut.serial.parity = static_cast<char>(parity);
-  std::wstring stopBitsText = GetControlText(GetDlgItem(settingsHwnd, kSerialStopBitsCombo));
-  if (stopBitsText == L"1.5") settingsOut.serial.stopBits = 1.5F;
-  else if (stopBitsText == L"2" || stopBitsText == L"2.0") settingsOut.serial.stopBits = 2.0F;
-  else if (stopBitsText == L"1" || stopBitsText == L"1.0") settingsOut.serial.stopBits = 1.0F;
-  else {
-    error = "Invalid stop bits. Use 1, 1.5, or 2.";
-    return false;
-  }
-  if (!TryParseFloat(GetControlText(GetDlgItem(settingsHwnd, kSerialTimeoutCombo)), settingsOut.serial.timeoutSeconds) ||
-      settingsOut.serial.timeoutSeconds <= 0.0F) {
-    error = "Invalid timeout. Enter a positive number (seconds).";
-    return false;
-  }
-  settingsOut.serial.eol = ParseEolFromUiText(GetControlText(GetDlgItem(settingsHwnd, kSerialEolCombo)));
-  return true;
+  return settingslogic::ReadSerialSettingsFromControls(BuildSettingsLogicContext(), settingsHwnd, settingsOut, error);
 }
 
-void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested = false) {
-  AppSettings nextSettings = g_ui.controller->Settings();
-  AppConfig nextConfig = g_ui.controller->Config();
-  const auto prevSettings = nextSettings;
-  const auto prevConfig = nextConfig;
-  std::string serialError;
-  if (!ReadSerialSettingsFromControls(settingsHwnd, nextSettings, serialError)) {
-    AddLogLine("ERROR: " + serialError);
-    MessageBoxW(settingsHwnd, ToWide(serialError).c_str(), L"ScaleLogger", MB_OK | MB_ICONERROR);
-    return;
-  }
-
-  nextSettings.parsing.mode = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputModeCombo))) == "raw" ? ParseMode::Raw : ParseMode::Parsed;
-  nextSettings.parsing.trimWhitespace = SendMessageW(GetDlgItem(settingsHwnd, kOutputTrimCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
-  nextSettings.parsing.stripSuffix = SendMessageW(GetDlgItem(settingsHwnd, kOutputStripSuffixCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
-  nextSettings.parsing.suffix = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputSuffixEdit)));
-  nextSettings.parsing.normalizeSign = SendMessageW(GetDlgItem(settingsHwnd, kOutputNormalizeCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
-  nextSettings.parsing.preservePlusSign = SendMessageW(GetDlgItem(settingsHwnd, kOutputPreservePlusCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
-  nextSettings.parsing.preserveMinusSign = SendMessageW(GetDlgItem(settingsHwnd, kOutputPreserveMinusCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
-  nextSettings.parsing.numericValidation = SendMessageW(GetDlgItem(settingsHwnd, kOutputRequireNumericCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
-
-  const auto action = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputActionCombo)));
-  if (action == "right") nextSettings.output.postAction = PostAction::Right;
-  else if (action == "enter") nextSettings.output.postAction = PostAction::Enter;
-  else if (action == "tab") nextSettings.output.postAction = PostAction::Tab;
-  else if (action == "none") nextSettings.output.postAction = PostAction::None;
-  else if (action == "custom_sequence") nextSettings.output.postAction = PostAction::CustomSequence;
-  else nextSettings.output.postAction = PostAction::Down;
-
-  nextSettings.output.customSequence.clear();
-  const auto customSequenceText = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kOutputCustomSequenceEdit)));
-  std::stringstream sequenceStream(customSequenceText);
-  std::string token;
-  while (std::getline(sequenceStream, token, ',')) {
-    token.erase(std::remove_if(token.begin(), token.end(), [](unsigned char c) { return std::isspace(c) != 0; }), token.end());
-    if (!token.empty()) nextSettings.output.customSequence.push_back(token);
-  }
-
-  const auto configPathInput = std::filesystem::path(ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppConfigFolderEdit))));
-  nextConfig.configFolder = configPathInput.parent_path().string();
-  nextConfig.configFileName = configPathInput.filename().string();
-  if (nextConfig.configFileName.empty()) nextConfig.configFileName = "ScaleLogger.config.json";
-  if (nextConfig.configFolder.empty()) nextConfig.configFolder = g_ui.controller->DataRoot().string();
-  nextConfig.presetsFolder = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit)));
-  nextConfig.logsFolder = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppLogsFolderEdit)));
-  const auto logModeText = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppLogModeCombo)));
-  nextConfig.logMode = logModeText == "Single file" ? LogMode::SingleFile : (logModeText == "No file logging" ? LogMode::None : LogMode::PerSession);
-  nextConfig.connectOnStartup = SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
-  nextConfig.darkMode = SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
-
-  const auto startupPreset = ToUtf8(GetControlText(GetDlgItem(settingsHwnd, kAppStartupPresetCombo)));
-  if (startupPreset == "Last used / defaults") {
-    nextConfig.startupMode = "last_used_preset";
-    nextConfig.startupPresetName.clear();
-  } else {
-    nextConfig.startupMode = "specific_preset";
-    nextConfig.startupPresetName = startupPreset;
-  }
-
-  std::vector<std::string> changedFields;
-  auto boolText = [](bool v) -> const char* { return v ? "on" : "off"; };
-  if (prevSettings.serial.port != nextSettings.serial.port) changedFields.push_back("port: " + prevSettings.serial.port + " -> " + nextSettings.serial.port);
-  if (prevSettings.serial.baudRate != nextSettings.serial.baudRate) changedFields.push_back("baud: " + std::to_string(prevSettings.serial.baudRate) + " -> " + std::to_string(nextSettings.serial.baudRate));
-  if (prevSettings.serial.dataBits != nextSettings.serial.dataBits) changedFields.push_back("data bits: " + std::to_string(prevSettings.serial.dataBits) + " -> " + std::to_string(nextSettings.serial.dataBits));
-  if (prevSettings.serial.parity != nextSettings.serial.parity) changedFields.push_back("parity: " + std::string(1, prevSettings.serial.parity) + " -> " + std::string(1, nextSettings.serial.parity));
-  if (prevSettings.serial.stopBits != nextSettings.serial.stopBits) changedFields.push_back("stop bits: " + std::to_string(prevSettings.serial.stopBits) + " -> " + std::to_string(nextSettings.serial.stopBits));
-  if (prevSettings.serial.timeoutSeconds != nextSettings.serial.timeoutSeconds) changedFields.push_back("timeout: " + std::to_string(prevSettings.serial.timeoutSeconds) + " -> " + std::to_string(nextSettings.serial.timeoutSeconds));
-  if (prevSettings.serial.eol != nextSettings.serial.eol) changedFields.push_back("eol changed");
-  if (prevSettings.parsing.mode != nextSettings.parsing.mode) changedFields.push_back("parse mode changed");
-  if (prevSettings.parsing.trimWhitespace != nextSettings.parsing.trimWhitespace) changedFields.push_back(std::string("trim whitespace: ") + boolText(prevSettings.parsing.trimWhitespace) + " -> " + boolText(nextSettings.parsing.trimWhitespace));
-  if (prevSettings.parsing.stripSuffix != nextSettings.parsing.stripSuffix) changedFields.push_back(std::string("strip suffix: ") + boolText(prevSettings.parsing.stripSuffix) + " -> " + boolText(nextSettings.parsing.stripSuffix));
-  if (prevSettings.parsing.suffix != nextSettings.parsing.suffix) changedFields.push_back("suffix changed");
-  if (prevSettings.parsing.normalizeSign != nextSettings.parsing.normalizeSign) changedFields.push_back(std::string("normalize sign: ") + boolText(prevSettings.parsing.normalizeSign) + " -> " + boolText(nextSettings.parsing.normalizeSign));
-  if (prevSettings.parsing.preservePlusSign != nextSettings.parsing.preservePlusSign) changedFields.push_back(std::string("preserve plus: ") + boolText(prevSettings.parsing.preservePlusSign) + " -> " + boolText(nextSettings.parsing.preservePlusSign));
-  if (prevSettings.parsing.preserveMinusSign != nextSettings.parsing.preserveMinusSign) changedFields.push_back(std::string("preserve minus: ") + boolText(prevSettings.parsing.preserveMinusSign) + " -> " + boolText(nextSettings.parsing.preserveMinusSign));
-  if (prevSettings.parsing.numericValidation != nextSettings.parsing.numericValidation) changedFields.push_back(std::string("numeric validation: ") + boolText(prevSettings.parsing.numericValidation) + " -> " + boolText(nextSettings.parsing.numericValidation));
-  if (prevSettings.output.postAction != nextSettings.output.postAction) changedFields.push_back("post action changed");
-  if (prevSettings.output.customSequence != nextSettings.output.customSequence) changedFields.push_back("custom sequence changed");
-  if (prevConfig.logMode != nextConfig.logMode) changedFields.push_back("log mode changed");
-  if (prevConfig.darkMode != nextConfig.darkMode) changedFields.push_back(std::string("dark mode (experimental): ") + boolText(prevConfig.darkMode) + " -> " + boolText(nextConfig.darkMode));
-  if (prevConfig.connectOnStartup != nextConfig.connectOnStartup) changedFields.push_back(std::string("connect on startup: ") + boolText(prevConfig.connectOnStartup) + " -> " + boolText(nextConfig.connectOnStartup));
-  if (prevConfig.presetsFolder != nextConfig.presetsFolder) changedFields.push_back("presets folder changed");
-  if (prevConfig.logsFolder != nextConfig.logsFolder) changedFields.push_back("logs folder changed");
-  if (prevConfig.configFolder != nextConfig.configFolder || prevConfig.configFileName != nextConfig.configFileName) changedFields.push_back("config path changed");
-
-  g_ui.controller->ApplySettings(nextSettings, nextConfig, false);
-  LoadSettingsIntoControls(settingsHwnd);
-  if (!changedFields.empty()) {
-    std::string joined;
-    for (std::size_t i = 0; i < changedFields.size(); ++i) {
-      if (i) joined += "; ";
-      joined += changedFields[i];
-    }
-    g_ui.controller->LogMessage("Settings applied (runtime only): " + joined);
-  } else if (!saveRequested) {
-    g_ui.controller->LogMessage("Settings apply requested: no changes detected.");
-  }
-  if (saveRequested) {
-    const auto saveResult = g_ui.controller->SaveResolvedConfiguration();
-    switch (saveResult.status) {
-      case AppController::SaveConfigStatus::Created:
-        g_ui.controller->LogMessage("Configuration file created at: " + saveResult.path.string());
-        g_ui.controller->LogMessage("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
-        break;
-      case AppController::SaveConfigStatus::Updated:
-        g_ui.controller->LogMessage("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
-        break;
-      case AppController::SaveConfigStatus::Unchanged:
-        g_ui.controller->LogMessage("Configuration already up to date.");
-        break;
-      case AppController::SaveConfigStatus::Failed:
-      default:
-        g_ui.controller->LogMessage("Failed to save configuration file: " + saveResult.path.string(), true);
-        break;
-    }
-  }
-  InvalidateRect(g_ui.mainWindow, nullptr, TRUE);
-  if (g_ui.settingsWindow) InvalidateRect(g_ui.settingsWindow, nullptr, TRUE);
+void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested) {
+  settingslogic::ApplySettingsFromControls(BuildSettingsLogicContext(), settingsHwnd, saveRequested);
 }
 
 void CreateTopRow(HWND hwnd) {

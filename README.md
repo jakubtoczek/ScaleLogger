@@ -55,15 +55,15 @@ ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with
 - `log_mode` (`none`, `single_file`, `per_session`)
 - `connect_on_startup`
 - `dark_mode` (experimental; default is `false`)
-- `startup_mode` and preset name fields
+- `startup_mode` and startup config-selection name fields
 - optional serial dropdown option arrays: `baud_rates`, `data_bits_options`, `parity_options`, `stop_bits_options`
 
-To keep schema consistency, config files also carry serial/parsing/output fields (same structure used by presets), including `custom_sequence` and `eol`.
-Presets may also include app-level fields (`config_folder`, `logs_folder`, `log_mode`, etc.); unknown/extra fields remain backward-compatible.
+To keep schema consistency, config files also carry serial/parsing/output fields (same structure used by saved config selections), including `custom_sequence` and `eol`.
+Saved config selection files may also include app-level fields (`config_folder`, `logs_folder`, `log_mode`, etc.); unknown/extra fields remain backward-compatible.
 
 Precedence rule:
 1. Config provides app-level defaults and serial/output defaults.
-2. When a startup/selected preset is loaded, preset values override runtime serial/output behavior.
+2. When a startup/selected config file is loaded, its values override runtime serial/output behavior.
 
 Path rule:
 - `config_folder`, `presets_folder`, and `logs_folder` are treated as runtime-resolved filesystem paths.
@@ -71,7 +71,7 @@ Path rule:
 - Relative paths are resolved against the app data root (prefer `%USERPROFILE%\ScaleLogger` on Windows).
 
 ## Python compatibility notes
-Preset loading is backward compatible with legacy Python-era keys:
+Config loading is backward compatible with legacy Python-era keys:
 - `drop_plus_sign` maps to `preserve_plus_sign` behavior
 - `normalize_sign` is still honored
 - `eol` values `\\r\\n`, `\\n`, and `\\r` are interpreted as CRLF/LF/CR
@@ -87,7 +87,10 @@ When compatibility mapping is applied, a runtime log line indicates it.
 Runtime file logging flushes each line and emits a one-time visible error if file writes fail.
 
 Legacy note:
-- `standalone_mode` is tolerated in old config/preset files but ignored by current runtime behavior.
+- `standalone_mode` is tolerated in old config files and legacy selection files but ignored by current runtime behavior.
+
+JSON parser note:
+- The runtime uses the repository's embedded lightweight JSON parsing/writing code in `src/core/AppConfig.cpp` (no external JSON dependency).
 
 ## Portable default paths
 `default_config.json` uses `%USERPROFILE%` placeholders for folder defaults.  

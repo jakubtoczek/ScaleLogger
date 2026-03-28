@@ -1,4 +1,5 @@
 #include "app/AppController.hpp"
+#include "app/ConfigService.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -12,56 +13,8 @@
 #include <sstream>
 #include <vector>
 
-#ifdef _WIN32
-#include <Windows.h>
-#endif
-
 namespace scalelogger {
 namespace {
-std::filesystem::path ResolvePresetPath(const std::filesystem::path& presetsDir, const std::string& presetName) {
-  if (presetName.empty()) return {};
-  return presetsDir / (presetName + ".json");
-}
-
-std::wstring Utf8ToWide(const std::string& text) {
-#ifdef _WIN32
-  if (text.empty()) return {};
-  const int sizeNeeded = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.c_str(), static_cast<int>(text.size()), nullptr, 0);
-  if (sizeNeeded <= 0) return std::wstring(text.begin(), text.end());
-  std::wstring out(static_cast<std::size_t>(sizeNeeded), L'\0');
-  MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.c_str(), static_cast<int>(text.size()), out.data(), sizeNeeded);
-  return out;
-#else
-  return std::wstring(text.begin(), text.end());
-#endif
-}
-
-std::string WideToUtf8(const std::wstring& text) {
-#ifdef _WIN32
-  if (text.empty()) return {};
-  const int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
-  if (sizeNeeded <= 0) return {};
-  std::string out(static_cast<std::size_t>(sizeNeeded), '\0');
-  WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), out.data(), sizeNeeded, nullptr, nullptr);
-  return out;
-#else
-  return std::string(text.begin(), text.end());
-#endif
-}
-
-std::string ExpandPathPlaceholders(std::string value) {
-  if (value.empty()) return value;
-#ifdef _WIN32
-  const std::wstring wide = Utf8ToWide(value);
-  std::vector<wchar_t> buffer(32768, L'\0');
-  const DWORD written = ExpandEnvironmentStringsW(wide.c_str(), buffer.data(), static_cast<DWORD>(buffer.size()));
-  if (written > 0 && written < buffer.size()) {
-    value = WideToUtf8(std::wstring(buffer.data(), buffer.data() + written - 1));
-  }
-#endif
-  return value;
-}
-
 std::string EscapeForLog(const std::string& value) {
   std::string out;
   out.reserve(value.size() * 2);
@@ -88,56 +41,6 @@ std::string FormatTimeoutForLog(float value) {
   return oss.str();
 }
 
-std::filesystem::path ResolveConfiguredPath(const std::filesystem::path& root, const std::string& configuredPath) {
-  const auto expanded = ExpandPathPlaceholders(configuredPath);
-  std::filesystem::path path(expanded);
-  if (path.empty()) return root;
-  if (path.is_absolute()) return path.lexically_normal();
-  return (root / path).lexically_normal();
-}
-
-template <typename T>
-void Dedup(std::vector<T>& values) {
-  std::sort(values.begin(), values.end());
-  values.erase(std::unique(values.begin(), values.end()), values.end());
-}
-
-void SanitizeConfig(AppConfig& config) {
-  if (config.configFileName.empty()) config.configFileName = "ScaleLogger.config.json";
-  if (config.startupMode != "specific_preset" && config.startupMode != "last_used_preset") config.startupMode = "last_used_preset";
-  if (config.startupMode == "specific_preset" && config.startupPresetName.empty()) config.startupMode = "last_used_preset";
-
-  config.baudRates.erase(std::remove_if(config.baudRates.begin(), config.baudRates.end(), [](int v) { return v <= 0; }), config.baudRates.end());
-  if (config.baudRates.empty()) config.baudRates = {1200, 2400, 4800, 9600};
-  Dedup(config.baudRates);
-
-  config.dataBitsOptions.erase(std::remove_if(config.dataBitsOptions.begin(), config.dataBitsOptions.end(), [](int v) { return v < 5 || v > 8; }),
-                               config.dataBitsOptions.end());
-  if (config.dataBitsOptions.empty()) config.dataBitsOptions = {7, 8};
-  Dedup(config.dataBitsOptions);
-
-  for (auto& parity : config.parityOptions) {
-    if (!parity.empty()) parity = std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(parity[0]))));
-  }
-  config.parityOptions.erase(std::remove_if(config.parityOptions.begin(), config.parityOptions.end(), [](const std::string& p) {
-                             return !(p == "N" || p == "E" || p == "O");
-                           }),
-                           config.parityOptions.end());
-  if (config.parityOptions.empty()) config.parityOptions = {"O", "N", "E"};
-  Dedup(config.parityOptions);
-
-  config.stopBitsOptions.erase(std::remove_if(config.stopBitsOptions.begin(), config.stopBitsOptions.end(), [](const std::string& value) {
-                              return !(value == "1" || value == "1.0" || value == "1.5" || value == "2" || value == "2.0");
-                            }),
-                            config.stopBitsOptions.end());
-  for (auto& stopBits : config.stopBitsOptions) {
-    if (stopBits == "1.0") stopBits = "1";
-    if (stopBits == "2.0") stopBits = "2";
-  }
-  if (config.stopBitsOptions.empty()) config.stopBitsOptions = {"1", "1.5", "2"};
-  Dedup(config.stopBitsOptions);
-}
-
 std::string UpperAscii(std::string text) {
   for (char& ch : text) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
   return text;
@@ -145,48 +48,6 @@ std::string UpperAscii(std::string text) {
 
 bool PortNamesMatch(const std::string& lhs, const std::string& rhs) { return UpperAscii(lhs) == UpperAscii(rhs); }
 
-int CountConfigDifferences(const AppConfig& before, const AppConfig& after) {
-  int count = 0;
-  if (before.configFolder != after.configFolder) ++count;
-  if (before.configFileName != after.configFileName) ++count;
-  if (before.presetsFolder != after.presetsFolder) ++count;
-  if (before.logsFolder != after.logsFolder) ++count;
-  if (before.logFilePattern != after.logFilePattern) ++count;
-  if (before.logMode != after.logMode) ++count;
-  if (before.lineLogMode != after.lineLogMode) ++count;
-  if (before.connectOnStartup != after.connectOnStartup) ++count;
-  if (before.darkMode != after.darkMode) ++count;
-  if (before.startupMode != after.startupMode) ++count;
-  if (before.startupPresetName != after.startupPresetName) ++count;
-  if (before.lastUsedPresetName != after.lastUsedPresetName) ++count;
-  if (before.baudRates != after.baudRates) ++count;
-  if (before.dataBitsOptions != after.dataBitsOptions) ++count;
-  if (before.parityOptions != after.parityOptions) ++count;
-  if (before.stopBitsOptions != after.stopBitsOptions) ++count;
-  return count;
-}
-
-int CountSettingsDifferences(const AppSettings& before, const AppSettings& after) {
-  int count = 0;
-  if (before.serial.port != after.serial.port) ++count;
-  if (before.serial.baudRate != after.serial.baudRate) ++count;
-  if (before.serial.dataBits != after.serial.dataBits) ++count;
-  if (before.serial.parity != after.serial.parity) ++count;
-  if (before.serial.stopBits != after.serial.stopBits) ++count;
-  if (before.serial.timeoutSeconds != after.serial.timeoutSeconds) ++count;
-  if (before.serial.eol != after.serial.eol) ++count;
-  if (before.parsing.mode != after.parsing.mode) ++count;
-  if (before.parsing.trimWhitespace != after.parsing.trimWhitespace) ++count;
-  if (before.parsing.stripSuffix != after.parsing.stripSuffix) ++count;
-  if (before.parsing.suffix != after.parsing.suffix) ++count;
-  if (before.parsing.normalizeSign != after.parsing.normalizeSign) ++count;
-  if (before.parsing.preservePlusSign != after.parsing.preservePlusSign) ++count;
-  if (before.parsing.preserveMinusSign != after.parsing.preserveMinusSign) ++count;
-  if (before.parsing.numericValidation != after.parsing.numericValidation) ++count;
-  if (before.output.postAction != after.output.postAction) ++count;
-  if (before.output.customSequence != after.output.customSequence) ++count;
-  return count;
-}
 } // namespace
 
 AppController::AppController(std::filesystem::path dataRoot)
@@ -202,14 +63,14 @@ void AppController::Initialize() {
     EmitLog(hasUserConfig ? ("Startup config found: " + configPath_.string()) : ("Startup config not found: " + configPath_.string()));
 
     config_ = LoadConfig(configPath_);
-    SanitizeConfig(config_);
+    ConfigService::SanitizeConfig(config_);
     settings_ = LoadPreset(configPath_);
     EmitLog("Startup config source: " + std::string(hasUserConfig ? "disk config file" : "defaults from missing config"));
     if (!hasUserConfig) {
       const auto defaultConfigPath = std::filesystem::current_path() / "default_config.json";
       if (std::filesystem::exists(defaultConfigPath)) {
         config_ = LoadConfig(defaultConfigPath);
-        SanitizeConfig(config_);
+        ConfigService::SanitizeConfig(config_);
         settings_ = LoadPreset(defaultConfigPath);
         startupSerialSource = "built-in defaults";
         EmitLog("Startup config source: default_config.json");
@@ -228,9 +89,9 @@ void AppController::Initialize() {
     if (settings_.serial.timeoutSeconds <= 0.0F) settings_.serial.timeoutSeconds = 1.0F;
     if (settings_.serial.eol.empty()) settings_.serial.eol = "\r\n";
 
-    config_.configFolder = ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
-    config_.presetsFolder = ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
-    config_.logsFolder = ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
+    config_.configFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
+    config_.presetsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
+    config_.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
     if (config_.configFileName.empty()) config_.configFileName = "ScaleLogger.config.json";
     configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
 
@@ -257,7 +118,7 @@ void AppController::Initialize() {
     EmitLog("Startup preset name: " + (config_.startupPresetName.empty() ? "<empty>" : config_.startupPresetName));
     EmitLog("Last-used preset name: " + (config_.lastUsedPresetName.empty() ? "<empty>" : config_.lastUsedPresetName));
     if (!requestedStartupPreset.empty()) {
-      startupPresetPath = ResolvePresetPath(presetsDir, requestedStartupPreset);
+      startupPresetPath = ConfigService::ResolvePresetPath(presetsDir, requestedStartupPreset);
       std::error_code presetEc;
       const bool presetExists = std::filesystem::exists(startupPresetPath, presetEc) && !presetEc;
       EmitLog("Startup preset resolved path: " + startupPresetPath.string());
@@ -294,9 +155,9 @@ void AppController::Initialize() {
   } catch (const std::exception& ex) {
     config_ = AppConfig{};
     settings_ = AppSettings{};
-    config_.configFolder = ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
-    config_.presetsFolder = ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
-    config_.logsFolder = ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
+    config_.configFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
+    config_.presetsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
+    config_.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
     configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
     FlushBufferedFileLogs();
     EmitLog("Startup effective serial source: fallback defaults after startup-load failure");
@@ -389,10 +250,10 @@ void AppController::Disconnect() {
 
 void AppController::ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig, bool persistToDisk) {
   AppConfig resolvedConfig = nextConfig;
-  SanitizeConfig(resolvedConfig);
-  resolvedConfig.configFolder = ResolveConfiguredPath(dataRoot_, resolvedConfig.configFolder).string();
-  resolvedConfig.presetsFolder = ResolveConfiguredPath(dataRoot_, resolvedConfig.presetsFolder).string();
-  resolvedConfig.logsFolder = ResolveConfiguredPath(dataRoot_, resolvedConfig.logsFolder).string();
+  ConfigService::SanitizeConfig(resolvedConfig);
+  resolvedConfig.configFolder = ConfigService::ResolveConfiguredPath(dataRoot_, resolvedConfig.configFolder).string();
+  resolvedConfig.presetsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, resolvedConfig.presetsFolder).string();
+  resolvedConfig.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, resolvedConfig.logsFolder).string();
 
   const bool settingsChanged =
       settings_.serial.port != nextSettings.serial.port || settings_.serial.baudRate != nextSettings.serial.baudRate ||
@@ -463,7 +324,7 @@ AppController::SaveConfigResult AppController::SaveResolvedConfiguration() {
     diskConfig = LoadConfig(result.path);
     diskSettings = LoadPreset(result.path);
   }
-  result.changedFieldCount = CountConfigDifferences(diskConfig, config_) + CountSettingsDifferences(diskSettings, settings_);
+  result.changedFieldCount = ConfigService::CountConfigDifferences(diskConfig, config_) + ConfigService::CountSettingsDifferences(diskSettings, settings_);
   if (existed && result.changedFieldCount == 0) {
     result.status = SaveConfigStatus::Unchanged;
     return result;

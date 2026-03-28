@@ -20,7 +20,9 @@ if(WIN32)
   add_executable(ScaleLogger WIN32
     src/app/main.cpp
     src/app/AppController.cpp
+    src/app/ConfigService.cpp
     src/ui/MainDialog.cpp
+    src/ui/SettingsDialogLogic.cpp
     src/ui/AboutDialog.cpp
     src/serial/SerialPort.cpp
     src/serial/PortScanner.cpp
