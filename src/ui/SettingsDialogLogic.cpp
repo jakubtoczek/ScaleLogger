@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cwctype>
 #include <filesystem>
 #include <sstream>
 #include <vector>
@@ -237,7 +238,7 @@ bool ReadSerialSettingsFromControls(const Context& ctx, HWND settingsHwnd, AppSe
     error = "Invalid parity. Use N, E, or O.";
     return false;
   }
-  const wchar_t parity = static_cast<wchar_t>(std::towupper(parityText[0]));
+  const wchar_t parity = static_cast<wchar_t>(::towupper(parityText[0]));
   if (parity != L'N' && parity != L'E' && parity != L'O') {
     error = "Invalid parity. Use N, E, or O.";
     return false;

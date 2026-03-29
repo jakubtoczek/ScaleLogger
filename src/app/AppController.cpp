@@ -13,8 +13,25 @@
 #include <sstream>
 #include <vector>
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 namespace scalelogger {
 namespace {
+std::wstring Utf8ToWide(const std::string& text) {
+#ifdef _WIN32
+  if (text.empty()) return {};
+  const int sizeNeeded = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.c_str(), static_cast<int>(text.size()), nullptr, 0);
+  if (sizeNeeded <= 0) return std::wstring(text.begin(), text.end());
+  std::wstring out(static_cast<std::size_t>(sizeNeeded), L'\0');
+  MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.c_str(), static_cast<int>(text.size()), out.data(), sizeNeeded);
+  return out;
+#else
+  return std::wstring(text.begin(), text.end());
+#endif
+}
+
 std::string EscapeForLog(const std::string& value) {
   std::string out;
   out.reserve(value.size() * 2);

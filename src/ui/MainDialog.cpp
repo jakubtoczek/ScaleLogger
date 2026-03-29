@@ -644,7 +644,7 @@ void RefreshPortList(HWND settingsHwnd) {
 }
 
 void SaveAsPresetFromControls(HWND settingsHwnd) {
-  ApplySettingsFromControls(settingsHwnd);
+  ApplySettingsFromControls(settingsHwnd, false);
 
   const auto presetsFolder = g_ui.controller->DataRoot() / g_ui.controller->Config().presetsFolder;
   std::filesystem::create_directories(presetsFolder);
@@ -671,7 +671,7 @@ void SaveAsPresetFromControls(HWND settingsHwnd) {
     if (SavePreset(presetPath, g_ui.controller->Settings(), &g_ui.controller->Config())) AddLogLine("Preset saved: " + presetName);
     else AddLogLine("ERROR: Failed to save preset: " + presetPath.string());
   }
-  RefreshPresetDropdown();
+  RefreshPresetDropdown(true);
 }
 
 void RunTestReceive(HWND settingsHwnd) {
@@ -1207,7 +1207,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         }
         if (const char* delayMsText = std::getenv("SCALELOGGER_CONNECT_DELAY_MS")) {
           try {
-            const int delayMs = std::max(0, std::stoi(delayMsText));
+            const int delayMs = (std::max)(0, std::stoi(delayMsText));
             if (delayMs > 0) {
               AddLogLine("Delaying startup auto-connect by " + std::to_string(delayMs) + " ms (environment override).");
               Sleep(static_cast<DWORD>(delayMs));
@@ -1259,7 +1259,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
           if (HIWORD(wParam) == BN_CLICKED) ShowAbout(hwnd);
           return 0;
         case kBtnRefreshPresets:
-          RefreshPresetDropdown();
+          RefreshPresetDropdown(true);
           return 0;
         case kComboPresets:
           if (HIWORD(wParam) == CBN_SELCHANGE) ApplySelectedPreset();
