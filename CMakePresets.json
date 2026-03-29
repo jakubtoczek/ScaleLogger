@@ -7,6 +7,9 @@
       "displayName": "Windows VS2026 x64",
       "generator": "Visual Studio 18 2026",
       "architecture": "x64",
+      "environment": {
+        "RC": ""
+      },
       "binaryDir": "${sourceDir}/out/build/windows-vs2026-x64"
     }
   ],

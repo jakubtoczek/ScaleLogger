@@ -21,9 +21,19 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
+if defined RC (
+  echo Detected RC environment override: %RC%
+  for %%A in (0 1) do (
+    if /I "%RC%"=="%%A" (
+      echo Clearing invalid RC so CMake can use normal resource compiler discovery.
+      set "RC="
+    )
+  )
+)
+
 REM Always rebuild Release first so packaging never uses a stale executable.
 echo Configuring (windows-vs2026-x64)...
-cmake --preset windows-vs2026-x64
+cmake --preset windows-vs2026-x64 -U CMAKE_RC_COMPILER
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 echo Building (windows-release)...

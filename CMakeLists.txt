@@ -1,4 +1,11 @@
 cmake_minimum_required(VERSION 3.24)
+
+# Must run before project() because compiler detection can consume ENV{RC}.
+if(WIN32 AND DEFINED ENV{RC} AND "$ENV{RC}" MATCHES "^[0-9]+$")
+  message(WARNING "Detected invalid RC environment override before project(): '$ENV{RC}'. Clearing RC for normal discovery.")
+  unset(ENV{RC})
+endif()
+
 project(ScaleLoggerNative VERSION 0.97 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -17,13 +24,9 @@ add_library(scalelogger_core
 target_include_directories(scalelogger_core PUBLIC src)
 
 if(WIN32)
-  # Some environments export RC as numeric placeholders (for example "0"),
-  # which breaks CMake resource compiler discovery.
-  if(DEFINED ENV{RC} AND "$ENV{RC}" MATCHES "^[0-9]+$")
-    message(WARNING "Ignoring invalid RC environment override: '$ENV{RC}'. Falling back to normal RC discovery.")
-    unset(ENV{RC})
-  endif()
+  # Keep one cache-level guard for stale configure caches.
   if(DEFINED CMAKE_RC_COMPILER AND CMAKE_RC_COMPILER MATCHES "^[0-9]+$")
+    message(WARNING "Clearing invalid cached CMAKE_RC_COMPILER='${CMAKE_RC_COMPILER}'.")
     unset(CMAKE_RC_COMPILER CACHE)
   endif()
 

@@ -41,3 +41,4 @@ After successful build/test, run the focused manual runtime checklist:
 ## Notes
 - The repository no longer uses Python/PySide6/Nuitka for the main build/release path.
 - The migration document is kept for behavior reference: `docs/migration_from_current_implementation.md`.
+- If your shell exports `RC=0`/`RC=1`, clear it before configure (`set RC=`). The release script and configure preset now do this defensively.
