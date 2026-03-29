@@ -1,7 +1,6 @@
 {
   "config_folder": "%USERPROFILE%\\ScaleLogger",
   "config_file_name": "ScaleLogger.config.json",
-  "presets_folder": "%USERPROFILE%\\ScaleLogger\\presets",
   "logs_folder": "%USERPROFILE%\\ScaleLogger\\logs",
   "log_file_pattern": "ScaleLogger_%Y%m%d_%H%M%S.log",
   "log_mode": "per_session",
@@ -13,9 +12,6 @@
   "connect_on_startup": true,
   "dark_mode": false,
   "debug_combo_logging": false,
-  "startup_mode": "last_used_preset",
-  "startup_preset_name": "",
-  "last_used_preset_name": "",
   "port": "COM6",
   "baudrate": 1200,
   "databits": 7,

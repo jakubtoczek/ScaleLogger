@@ -76,15 +76,8 @@ std::filesystem::path ConfigService::ResolveConfiguredPath(const std::filesystem
   return (root / path).lexically_normal();
 }
 
-std::filesystem::path ConfigService::ResolvePresetPath(const std::filesystem::path& presetsDir, const std::string& presetName) {
-  if (presetName.empty()) return {};
-  return presetsDir / (presetName + ".json");
-}
-
 void ConfigService::SanitizeConfig(AppConfig& config) {
   if (config.configFileName.empty()) config.configFileName = "ScaleLogger.config.json";
-  if (config.startupMode != "specific_preset" && config.startupMode != "last_used_preset") config.startupMode = "last_used_preset";
-  if (config.startupMode == "specific_preset" && config.startupPresetName.empty()) config.startupMode = "last_used_preset";
 
   config.baudRates.erase(std::remove_if(config.baudRates.begin(), config.baudRates.end(), [](int v) { return v <= 0; }), config.baudRates.end());
   if (config.baudRates.empty()) config.baudRates = {1200, 2400, 4800, 9600};
@@ -121,16 +114,12 @@ int ConfigService::CountConfigDifferences(const AppConfig& before, const AppConf
   int count = 0;
   if (before.configFolder != after.configFolder) ++count;
   if (before.configFileName != after.configFileName) ++count;
-  if (before.presetsFolder != after.presetsFolder) ++count;
   if (before.logsFolder != after.logsFolder) ++count;
   if (before.logFilePattern != after.logFilePattern) ++count;
   if (before.logMode != after.logMode) ++count;
   if (before.lineLogMode != after.lineLogMode) ++count;
   if (before.connectOnStartup != after.connectOnStartup) ++count;
   if (before.darkMode != after.darkMode) ++count;
-  if (before.startupMode != after.startupMode) ++count;
-  if (before.startupPresetName != after.startupPresetName) ++count;
-  if (before.lastUsedPresetName != after.lastUsedPresetName) ++count;
   if (before.baudRates != after.baudRates) ++count;
   if (before.dataBitsOptions != after.dataBitsOptions) ++count;
   if (before.parityOptions != after.parityOptions) ++count;

@@ -2,12 +2,14 @@
 
 ## 0.97 - 2026-03-29
 
-- fixed Windows configure robustness when `RC` is exported as invalid numeric values (`0`/`1`) by clearing override paths before compiler detection and in release/preset entry points
+- fixed Windows configure robustness when `RC` is exported as invalid numeric values (`0`/`1`) by clearing override paths before compiler detection and in release entry points
 - switched resource version metadata to a configured RC template sourced from CMake project version
 - split config and settings dialog logic into `ConfigService` and `SettingsDialogLogic`, and restored user-facing settings apply/save/no-change logging
-- tightened serial settings sanitization after startup config-selection load and during runtime apply to prevent invalid timeout values from persisting as `0.00`
+- tightened serial settings sanitization during startup config load and runtime apply to prevent invalid timeout values from persisting as `0.00`
 - made startup fallback `default_config.json` resolution deterministic by reading from the executable directory instead of process working directory
 - fixed editable settings-combo focus/click behavior so fields no longer remain fully blue-selected after activation
+- removed preset/config-selection runtime overlay behavior and consolidated to a single full-configuration runtime model
+- removed startup preset-mode keys (`startup_mode`, `startup_preset_name`, `last_used_preset_name`) and `presets_folder` from active config schema/examples
 
 ## 0.96 - 2026-03-24
 

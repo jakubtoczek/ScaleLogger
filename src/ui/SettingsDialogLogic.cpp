@@ -32,11 +32,9 @@ constexpr int kOutputRequireNumericCheck = 406;
 constexpr int kOutputActionCombo = 407;
 constexpr int kOutputCustomSequenceEdit = 408;
 constexpr int kOutputPreserveMinusCheck = 412;
-constexpr int kAppPresetsFolderEdit = 500;
 constexpr int kAppLogsFolderEdit = 501;
 constexpr int kAppLogModeCombo = 502;
 constexpr int kAppConnectStartupCheck = 503;
-constexpr int kAppStartupPresetCombo = 504;
 constexpr int kAppPathsLabel = 505;
 constexpr int kAppConfigFolderEdit = 508;
 constexpr int kAppDarkModeCheck = 511;
@@ -195,10 +193,6 @@ std::string BuildChangeSummary(const AppSettings& beforeSettings, const AppSetti
   if (beforeConfig.connectOnStartup != afterConfig.connectOnStartup) {
     pushChange(changes, "connect_on_startup", boolText(beforeConfig.connectOnStartup), boolText(afterConfig.connectOnStartup));
   }
-  if (beforeConfig.startupMode != afterConfig.startupMode) pushChange(changes, "startup_mode", beforeConfig.startupMode, afterConfig.startupMode);
-  if (beforeConfig.startupPresetName != afterConfig.startupPresetName) {
-    pushChange(changes, "startup_name", beforeConfig.startupPresetName, afterConfig.startupPresetName);
-  }
   if (beforeConfig.logMode != afterConfig.logMode) pushChange(changes, "log_mode", logModeText(beforeConfig.logMode), logModeText(afterConfig.logMode));
   if (beforeConfig.logsFolder != afterConfig.logsFolder) pushChange(changes, "logs_folder", beforeConfig.logsFolder, afterConfig.logsFolder);
 
@@ -216,44 +210,6 @@ std::string BuildChangeSummary(const AppSettings& beforeSettings, const AppSetti
 }
 
 } // namespace
-
-void RefreshPresetDropdown(const Context& ctx, bool keepSelection) {
-  std::wstring previous = keepSelection ? ctx.getControlText(ctx.presetsCombo) : L"";
-  SendMessageW(ctx.presetsCombo, CB_RESETCONTENT, 0, 0);
-  SendMessageW(ctx.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
-  ctx.presetMap->clear();
-
-  std::size_t count = 0;
-  const auto presetDir = std::filesystem::path(ctx.controller->Config().presetsFolder);
-  if (std::filesystem::exists(presetDir)) {
-    for (const auto& entry : std::filesystem::directory_iterator(presetDir)) {
-      if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
-      const auto name = entry.path().stem().string();
-      (*ctx.presetMap)[name] = entry.path();
-      SendMessageW(ctx.presetsCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ctx.toWide(name).c_str()));
-      ++count;
-    }
-  }
-
-  if (!previous.empty()) ctx.setComboToText(ctx.presetsCombo, previous);
-  else SendMessageW(ctx.presetsCombo, CB_SETCURSEL, 0, 0);
-  ctx.addLogLine("Config list refreshed (" + std::to_string(count) + " entries).");
-}
-
-void ApplySelectedConfig(const Context& ctx) {
-  const auto selected = ctx.toUtf8(ctx.getControlText(ctx.presetsCombo));
-  if (selected.empty() || selected == "Last used / defaults") return;
-  const auto it = ctx.presetMap->find(selected);
-  if (it == ctx.presetMap->end()) return;
-  const auto configPath = it->second;
-  AppConfig nextConfig = ctx.controller->Config();
-  nextConfig.lastUsedPresetName = configPath.stem().string();
-  bool usedLegacyCompatibilityMapping = false;
-  ctx.controller->ApplySettings(LoadPreset(configPath, &usedLegacyCompatibilityMapping), nextConfig);
-  if (usedLegacyCompatibilityMapping) ctx.addLogLine("Loaded config with legacy compatibility mapping");
-  if (ctx.settingsWindow) ctx.loadSettingsIntoControls(ctx.settingsWindow);
-  ctx.addLogLine("Loaded config: " + selected);
-}
 
 void LoadSettingsIntoControls(const Context& ctx, HWND settingsHwnd) {
   const auto& settings = ctx.controller->Settings();
@@ -301,21 +257,13 @@ void LoadSettingsIntoControls(const Context& ctx, HWND settingsHwnd) {
 
   const auto configPathText = (std::filesystem::path(config.configFolder) / config.configFileName).wstring();
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppConfigFolderEdit), configPathText.c_str());
-  SetWindowTextW(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit), ctx.toWide(config.presetsFolder).c_str());
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppLogsFolderEdit), ctx.toWide(config.logsFolder).c_str());
   const std::wstring logMode = config.logMode == LogMode::None ? L"No file logging"
                                 : (config.logMode == LogMode::SingleFile ? L"Single file" : L"New file per session");
   ctx.setComboToText(GetDlgItem(settingsHwnd, kAppLogModeCombo), logMode);
   SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_SETCHECK, config.connectOnStartup ? BST_CHECKED : BST_UNCHECKED, 0);
-  auto startupCombo = GetDlgItem(settingsHwnd, kAppStartupPresetCombo);
-  SendMessageW(startupCombo, CB_RESETCONTENT, 0, 0);
-  SendMessageW(startupCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Last used / defaults"));
-  for (const auto& entry : *ctx.presetMap) SendMessageW(startupCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ctx.toWide(entry.first).c_str()));
-  ctx.setComboToText(startupCombo, config.startupMode == "specific_preset" ? ctx.toWide(config.startupPresetName) : L"Last used / defaults");
-
   const std::wstring pathSummary =
       L"Config: " + (std::filesystem::path(config.configFolder) / ctx.toWide(config.configFileName)).wstring() +
-      L"\r\nCurrent config: " + ctx.toWide(config.lastUsedPresetName.empty() ? std::string("(none)") : config.lastUsedPresetName) +
       L"\r\nLogs: " + std::filesystem::path(config.logsFolder).wstring() + L" (" +
       (config.logMode == LogMode::None ? L"none" : (config.logMode == LogMode::SingleFile ? L"single_file" : L"per_session")) + L")" +
       L"\r\nDark mode (experimental): " + std::wstring(config.darkMode ? L"on" : L"off") +
@@ -412,7 +360,6 @@ void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveR
   else if (action == "custom_sequence") nextSettings.output.postAction = PostAction::CustomSequence;
   else nextSettings.output.postAction = PostAction::Down;
 
-  nextConfig.presetsFolder = ctx.toUtf8(ctx.getControlText(GetDlgItem(settingsHwnd, kAppPresetsFolderEdit)));
   nextConfig.logsFolder = ctx.toUtf8(ctx.getControlText(GetDlgItem(settingsHwnd, kAppLogsFolderEdit)));
   nextConfig.connectOnStartup = SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
   nextConfig.darkMode = SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;

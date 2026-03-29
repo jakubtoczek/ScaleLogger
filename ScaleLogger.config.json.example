@@ -9,9 +9,5 @@
   "data_bits_options": [7, 8],
   "parity_options": ["O", "N", "E"],
   "stop_bits_options": ["1", "1.5", "2"],
-  "logs_folder": "logs",
-  "presets_folder": "presets",
-  "startup_mode": "last_used_preset",
-  "startup_preset_name": "",
-  "last_used_preset_name": ""
+  "logs_folder": "logs"
 }

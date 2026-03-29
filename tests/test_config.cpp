@@ -19,23 +19,23 @@ int RunConfigTests() {
   b.timeoutSeconds = 2.0F;
   assert(SerialSettingsRequireReconnect(a, b));
 
-  const auto presetPath = std::filesystem::temp_directory_path() / "scalelogger_preset_test.json";
+  const auto configSettingsPath = std::filesystem::temp_directory_path() / "scalelogger_settings_test.json";
   {
-    std::ofstream preset(presetPath);
-    preset << "{\n"
-           << "  \"eol\": \"\\\\r\\\\n\",\n"
-           << "  \"drop_plus_sign\": false,\n"
-           << "  \"custom_sequence\": [\"down\", \"right\"],\n"
-           << "  \"post_action\": \"custom_sequence\"\n"
-           << "}\n";
+    std::ofstream cfgSettings(configSettingsPath);
+    cfgSettings << "{\n"
+                << "  \"eol\": \"\\\\r\\\\n\",\n"
+                << "  \"drop_plus_sign\": false,\n"
+                << "  \"custom_sequence\": [\"down\", \"right\"],\n"
+                << "  \"post_action\": \"custom_sequence\"\n"
+                << "}\n";
   }
   bool usedLegacyCompatibilityMapping = false;
-  const auto presetSettings = LoadPreset(presetPath, &usedLegacyCompatibilityMapping);
-  assert(presetSettings.serial.eol == "\r\n");
+  const auto loadedSettings = LoadConfigSettings(configSettingsPath, &usedLegacyCompatibilityMapping);
+  assert(loadedSettings.serial.eol == "\r\n");
   assert(usedLegacyCompatibilityMapping);
-  assert(presetSettings.output.customSequence.size() == 2);
-  assert(presetSettings.output.customSequence[0] == "down");
-  assert(presetSettings.output.customSequence[1] == "right");
+  assert(loadedSettings.output.customSequence.size() == 2);
+  assert(loadedSettings.output.customSequence[0] == "down");
+  assert(loadedSettings.output.customSequence[1] == "right");
 
   const auto malformedPath = std::filesystem::temp_directory_path() / "scalelogger_malformed_config_test.json";
   {
@@ -55,7 +55,7 @@ int RunConfigTests() {
   assert(malformedLoaded.parityOptions.size() == 2);
 
   std::filesystem::remove(path);
-  std::filesystem::remove(presetPath);
+  std::filesystem::remove(configSettingsPath);
   std::filesystem::remove(malformedPath);
   return 0;
 }

@@ -4,7 +4,6 @@
 The prior implementation behavior was derived from:
 - `app/parser.py`
 - `app/config.py`
-- `app/presets.py`
 - `app/serial_manager.py`
 - `app/output_sender.py`
 - `app/ui/main_window.py`
@@ -37,11 +36,9 @@ The prior implementation behavior was derived from:
 - Full production-complete Win32 dialogs/event wiring from Python parity are scaffolded and documented, with the core parser/config/sequence logic implemented and tested.
 - Native startup now emits early forensic traces to `%TEMP%\ScaleLogger_fatal.log` before the main UI log is available, including fatal crash breadcrumbs from the unhandled-exception filter.
 
-## Config and preset compatibility notes
-- Config schema keeps keys:
-  `presets_folder`, `logs_folder`, `log_mode`, `line_log_mode`, `connect_on_startup`, `startup_mode`, `startup_preset_name`, `last_used_preset_name`.
-- Preset flat schema loading keeps the existing serial/parsing fields (`port`, `baudrate`, `databits`, `parity`, `stopbits`, `timeout`, `eol`, etc.).
-- Sign-handling examples should use `preserve_plus_sign` / `preserve_minus_sign`; legacy `drop_plus_sign` is still tolerated only for backward compatibility.
+## Config compatibility notes
+- Runtime now uses one full config model (`ScaleLogger.config.json`) for app-level + serial/parsing/output settings.
+- Legacy sign key `drop_plus_sign` is still tolerated as backward compatibility input and mapped to preserve-style behavior.
 
 ## Release/tooling direction
 - CMake + VS2026 x64 presets.

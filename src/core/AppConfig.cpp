@@ -215,7 +215,6 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   if (!std::filesystem::exists(path)) return cfg;
   const auto text = ReadAll(path);
   if (text.empty() || text.find('{') == std::string::npos) return cfg;
-  cfg.presetsFolder = ExtractString(text, "presets_folder", cfg.presetsFolder);
   cfg.logsFolder = ExtractString(text, "logs_folder", cfg.logsFolder);
   cfg.configFolder = ExtractString(text, "config_folder", cfg.configFolder);
   cfg.configFileName = ExtractString(text, "config_file_name", cfg.configFileName);
@@ -223,9 +222,6 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   cfg.connectOnStartup = ExtractBool(text, "connect_on_startup", cfg.connectOnStartup);
   cfg.darkMode = ExtractBool(text, "dark_mode", cfg.darkMode);
   cfg.debugComboLogging = ExtractBool(text, "debug_combo_logging", cfg.debugComboLogging);
-  cfg.startupMode = ExtractString(text, "startup_mode", cfg.startupMode);
-  cfg.startupPresetName = ExtractString(text, "startup_preset_name", "");
-  cfg.lastUsedPresetName = ExtractString(text, "last_used_preset_name", "");
   (void)ExtractBool(text, "standalone_mode", false); // legacy key ignored
   const auto baudRates = ExtractIntArray(text, "baud_rates");
   if (!baudRates.empty()) cfg.baudRates = baudRates;
@@ -248,7 +244,6 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, cons
   std::ofstream ofs(path);
   if (!ofs) return false;
   ofs << "{\n"
-      << "  \"presets_folder\": \"" << JsonEscape(config.presetsFolder) << "\",\n"
       << "  \"logs_folder\": \"" << JsonEscape(config.logsFolder) << "\",\n"
       << "  \"config_folder\": \"" << JsonEscape(config.configFolder) << "\",\n"
       << "  \"config_file_name\": \"" << JsonEscape(config.configFileName) << "\",\n"
@@ -259,9 +254,6 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, cons
       << "  \"connect_on_startup\": " << (config.connectOnStartup ? "true" : "false") << ",\n"
       << "  \"dark_mode\": " << (config.darkMode ? "true" : "false") << ",\n"
       << "  \"debug_combo_logging\": " << (config.debugComboLogging ? "true" : "false") << ",\n"
-      << "  \"startup_mode\": \"" << JsonEscape(config.startupMode) << "\",\n"
-      << "  \"startup_preset_name\": \"" << JsonEscape(config.startupPresetName) << "\",\n"
-      << "  \"last_used_preset_name\": \"" << JsonEscape(config.lastUsedPresetName) << "\",\n"
       << "  \"baud_rates\": [";
   for (std::size_t i = 0; i < config.baudRates.size(); ++i) {
     if (i) ofs << ", ";
@@ -330,7 +322,7 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, cons
   return static_cast<bool>(ofs);
 }
 
-AppSettings LoadPreset(const std::filesystem::path& path, bool* usedLegacyCompatibilityMapping) {
+AppSettings LoadConfigSettings(const std::filesystem::path& path, bool* usedLegacyCompatibilityMapping) {
   AppSettings s{};
   if (usedLegacyCompatibilityMapping) *usedLegacyCompatibilityMapping = false;
   if (!std::filesystem::exists(path)) return s;
@@ -364,7 +356,7 @@ AppSettings LoadPreset(const std::filesystem::path& path, bool* usedLegacyCompat
   return s;
 }
 
-bool SavePreset(const std::filesystem::path& path, const AppSettings& settings, const AppConfig* config) {
+bool SaveConfigSettings(const std::filesystem::path& path, const AppSettings& settings, const AppConfig* config) {
   std::error_code ec;
   std::filesystem::create_directories(path.parent_path(), ec);
   if (ec) return false;
@@ -415,7 +407,6 @@ bool SavePreset(const std::filesystem::path& path, const AppSettings& settings, 
     ofs << ",\n"
         << "  \"config_folder\": \"" << JsonEscape(config->configFolder) << "\",\n"
         << "  \"config_file_name\": \"" << JsonEscape(config->configFileName) << "\",\n"
-        << "  \"presets_folder\": \"" << JsonEscape(config->presetsFolder) << "\",\n"
         << "  \"logs_folder\": \"" << JsonEscape(config->logsFolder) << "\",\n"
         << "  \"log_file_pattern\": \"" << JsonEscape(config->logFilePattern) << "\",\n"
         << "  \"log_mode\": \""
@@ -423,10 +414,7 @@ bool SavePreset(const std::filesystem::path& path, const AppSettings& settings, 
         << "  \"line_log_mode\": \"" << (config->lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
         << "  \"connect_on_startup\": " << (config->connectOnStartup ? "true" : "false") << ",\n"
         << "  \"dark_mode\": " << (config->darkMode ? "true" : "false") << ",\n"
-        << "  \"debug_combo_logging\": " << (config->debugComboLogging ? "true" : "false") << ",\n"
-        << "  \"startup_mode\": \"" << JsonEscape(config->startupMode) << "\",\n"
-        << "  \"startup_preset_name\": \"" << JsonEscape(config->startupPresetName) << "\",\n"
-        << "  \"last_used_preset_name\": \"" << JsonEscape(config->lastUsedPresetName) << '"';
+        << "  \"debug_combo_logging\": " << (config->debugComboLogging ? "true" : "false");
   }
   ofs << "\n}\n";
   return static_cast<bool>(ofs);

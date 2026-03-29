@@ -92,14 +92,14 @@ void AppController::Initialize() {
 
     config_ = LoadConfig(configPath_);
     ConfigService::SanitizeConfig(config_);
-    settings_ = LoadPreset(configPath_);
+    settings_ = LoadConfigSettings(configPath_);
     EmitLog("Startup config source: " + std::string(hasUserConfig ? "disk config file" : "defaults from missing config"));
     if (!hasUserConfig) {
       const auto defaultConfigPath = ConfigService::ResolveDefaultConfigPath(dataRoot_);
       if (std::filesystem::exists(defaultConfigPath)) {
         config_ = LoadConfig(defaultConfigPath);
         ConfigService::SanitizeConfig(config_);
-        settings_ = LoadPreset(defaultConfigPath);
+        settings_ = LoadConfigSettings(defaultConfigPath);
         startupSerialSource = "built-in defaults";
         EmitLog("Startup config source: " + defaultConfigPath.string());
       } else {
@@ -111,7 +111,6 @@ void AppController::Initialize() {
     SanitizeSerialSettings(settings_);
 
     config_.configFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
-    config_.presetsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
     config_.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
     if (config_.configFileName.empty()) config_.configFileName = "ScaleLogger.config.json";
     configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
@@ -119,50 +118,7 @@ void AppController::Initialize() {
     std::error_code ec;
     std::filesystem::create_directories(std::filesystem::path(config_.logsFolder), ec);
     if (ec) EmitLog("WARN: Failed to create logs directory: " + std::filesystem::path(config_.logsFolder).string(), true);
-    ec.clear();
-    std::filesystem::create_directories(std::filesystem::path(config_.presetsFolder), ec);
-    if (ec) EmitLog("WARN: Failed to create presets directory: " + std::filesystem::path(config_.presetsFolder).string(), true);
     FlushBufferedFileLogs();
-
-    const auto presetsDir = std::filesystem::path(config_.presetsFolder);
-    std::filesystem::path startupPresetPath;
-    std::string startupPresetSource;
-    std::string requestedStartupPreset;
-    if (config_.startupMode == "specific_preset") {
-      startupPresetSource = "startup preset";
-      requestedStartupPreset = config_.startupPresetName;
-    } else if (config_.startupMode == "last_used_preset") {
-      startupPresetSource = "last-used preset";
-      requestedStartupPreset = config_.lastUsedPresetName;
-    }
-    EmitLog("Startup mode: " + config_.startupMode);
-    EmitLog("Startup preset name: " + (config_.startupPresetName.empty() ? "<empty>" : config_.startupPresetName));
-    EmitLog("Last-used preset name: " + (config_.lastUsedPresetName.empty() ? "<empty>" : config_.lastUsedPresetName));
-    if (!requestedStartupPreset.empty()) {
-      startupPresetPath = ConfigService::ResolvePresetPath(presetsDir, requestedStartupPreset);
-      std::error_code presetEc;
-      const bool presetExists = std::filesystem::exists(startupPresetPath, presetEc) && !presetEc;
-      EmitLog("Startup preset resolved path: " + startupPresetPath.string());
-      EmitLog("Startup preset file exists: " + std::string(presetExists ? "yes" : "no"));
-      if (presetExists) {
-        try {
-          bool usedLegacyCompatibilityMapping = false;
-          settings_ = LoadPreset(startupPresetPath, &usedLegacyCompatibilityMapping);
-          SanitizeSerialSettings(settings_);
-          startupSerialSource = startupPresetSource + " '" + requestedStartupPreset + "'";
-          EmitLog("Loaded startup preset: " + startupPresetPath.filename().string());
-          if (usedLegacyCompatibilityMapping) {
-            EmitLog("Loaded preset with legacy compatibility mapping");
-          }
-        } catch (const std::exception& presetEx) {
-          EmitLog("WARN: Startup preset load failed: " + std::string(presetEx.what()), true);
-        }
-      } else {
-        EmitLog("WARN: Startup preset missing or invalid: " + startupPresetPath.string(), true);
-      }
-    } else if (config_.startupMode == "specific_preset" || config_.startupMode == "last_used_preset") {
-      EmitLog("Startup preset not requested: no preset name resolved.");
-    }
 
     EmitLog("Startup effective serial source: " + startupSerialSource);
     EmitLog("Startup effective serial: port=" + settings_.serial.port + "; baudrate=" + std::to_string(settings_.serial.baudRate) +
@@ -178,12 +134,11 @@ void AppController::Initialize() {
     config_ = AppConfig{};
     settings_ = AppSettings{};
     config_.configFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
-    config_.presetsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
     config_.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
     configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
     FlushBufferedFileLogs();
     EmitLog("Startup effective serial source: fallback defaults after startup-load failure");
-    EmitLog(std::string("ERROR: Startup config/preset load failed. Using defaults. ") + ex.what(), true);
+    EmitLog(std::string("ERROR: Startup config load failed. Using defaults. ") + ex.what(), true);
   }
   EmitLog("Initialize end");
   EmitLog("Application start");
@@ -276,7 +231,6 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
   AppConfig resolvedConfig = nextConfig;
   ConfigService::SanitizeConfig(resolvedConfig);
   resolvedConfig.configFolder = ConfigService::ResolveConfiguredPath(dataRoot_, resolvedConfig.configFolder).string();
-  resolvedConfig.presetsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, resolvedConfig.presetsFolder).string();
   resolvedConfig.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, resolvedConfig.logsFolder).string();
 
   const bool settingsChanged =
@@ -293,12 +247,10 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
       settings_.output.postAction != resolvedSettings.output.postAction || settings_.output.customSequence != resolvedSettings.output.customSequence;
   const bool configChanged =
       config_.configFolder != resolvedConfig.configFolder || config_.configFileName != resolvedConfig.configFileName ||
-      config_.presetsFolder != resolvedConfig.presetsFolder || config_.logsFolder != resolvedConfig.logsFolder ||
+      config_.logsFolder != resolvedConfig.logsFolder ||
       config_.logFilePattern != resolvedConfig.logFilePattern ||
       config_.logMode != resolvedConfig.logMode || config_.lineLogMode != resolvedConfig.lineLogMode ||
-      config_.connectOnStartup != resolvedConfig.connectOnStartup || config_.darkMode != resolvedConfig.darkMode ||
-      config_.startupMode != resolvedConfig.startupMode ||
-      config_.startupPresetName != resolvedConfig.startupPresetName || config_.lastUsedPresetName != resolvedConfig.lastUsedPresetName;
+      config_.connectOnStartup != resolvedConfig.connectOnStartup || config_.darkMode != resolvedConfig.darkMode;
   if (!settingsChanged && !configChanged) return;
 
   const bool reconnect = serial_.IsConnected() && SerialSettingsRequireReconnect(settings_.serial, resolvedSettings.serial);
@@ -323,42 +275,6 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
     Disconnect();
     Connect();
   }
-}
-
-bool AppController::SaveCurrentSettingsAsPreset(const std::string& presetName) {
-  if (presetName.empty()) return false;
-  const auto presetPath = std::filesystem::path(config_.presetsFolder) / (presetName + ".json");
-  if (!SavePreset(presetPath, settings_, &config_)) {
-    EmitLog("ERROR: Failed to save preset: " + presetPath.string(), true);
-    return false;
-  }
-  config_.lastUsedPresetName = presetName;
-  if (!SaveConfig(configPath_, config_, &settings_)) EmitLog("ERROR: Failed to save configuration: " + configPath_.string(), true);
-  EmitLog("Preset saved: " + presetName);
-  return true;
-}
-
-AppController::SaveConfigResult AppController::SaveResolvedConfiguration() {
-  SaveConfigResult result{};
-  result.path = configPath_;
-  const bool existed = std::filesystem::exists(result.path);
-  AppConfig diskConfig{};
-  AppSettings diskSettings{};
-  if (existed) {
-    diskConfig = LoadConfig(result.path);
-    diskSettings = LoadPreset(result.path);
-  }
-  result.changedFieldCount = ConfigService::CountConfigDifferences(diskConfig, config_) + ConfigService::CountSettingsDifferences(diskSettings, settings_);
-  if (existed && result.changedFieldCount == 0) {
-    result.status = SaveConfigStatus::Unchanged;
-    return result;
-  }
-  if (!SaveConfig(result.path, config_, &settings_)) {
-    result.status = SaveConfigStatus::Failed;
-    return result;
-  }
-  result.status = existed ? SaveConfigStatus::Updated : SaveConfigStatus::Created;
-  return result;
 }
 
 std::vector<std::string> AppController::ScanPorts() const { return ScanComPorts(); }

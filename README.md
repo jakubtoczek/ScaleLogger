@@ -50,24 +50,19 @@ The wrapper always configures/builds/tests in Release first, then produces:
 ## Configuration JSON format
 ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with fields such as:
 - `config_folder`, `config_file_name`
-- `presets_folder`, `logs_folder`
+- `logs_folder`
 - `log_file_pattern`
 - `log_mode` (`none`, `single_file`, `per_session`)
 - `connect_on_startup`
 - `dark_mode` (experimental; default is `false`)
 - `debug_combo_logging` (optional diagnostics; default is `false`)
-- `startup_mode` and startup config-selection name fields
 - optional serial dropdown option arrays: `baud_rates`, `data_bits_options`, `parity_options`, `stop_bits_options`
 
 To keep schema consistency, config files also carry serial/parsing/output fields (same structure used by saved config selections), including `custom_sequence` and `eol`.
-Saved config selection files may also include app-level fields (`config_folder`, `logs_folder`, `log_mode`, etc.); unknown/extra fields remain backward-compatible.
-
-Precedence rule:
-1. Config provides app-level defaults and serial/output defaults.
-2. When a startup/selected config file is loaded, its values override runtime serial/output behavior.
+The single configuration file is the runtime source of truth for app-level and serial/parsing/output behavior.
 
 Path rule:
-- `config_folder`, `presets_folder`, and `logs_folder` are treated as runtime-resolved filesystem paths.
+- `config_folder` and `logs_folder` are treated as runtime-resolved filesystem paths.
 - Absolute paths are used as-is.
 - Relative paths are resolved against the app data root (prefer `%USERPROFILE%\ScaleLogger` on Windows).
 - If user config is missing, startup fallback `default_config.json` is resolved from the executable directory (not from the process working directory).
@@ -95,7 +90,7 @@ Runtime file logging flushes each line and emits a one-time visible error if fil
 - These forensic lines are separate from normal runtime/session logging.
 
 Legacy note:
-- `standalone_mode` is tolerated in old config files and legacy selection files but ignored by current runtime behavior.
+- `standalone_mode` is tolerated in old config files but ignored by current runtime behavior.
 
 JSON parser note:
 - The runtime uses the repository's embedded lightweight JSON parsing/writing code in `src/core/AppConfig.cpp` (no external JSON dependency).

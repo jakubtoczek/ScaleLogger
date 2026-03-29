@@ -10,7 +10,7 @@ Validate these paths end-to-end:
 - serial connect + receive + line dispatch
 - parse -> inject
 - after-send action (including custom sequence)
-- startup config-selection loading before auto-connect
+- startup full-config load before auto-connect
 - release script consistency
 
 ## Prerequisites
@@ -43,22 +43,17 @@ Runtime data lives under:
 
 Ensure these exist (create if missing):
 - `%USERPROFILE%\ScaleLogger\ScaleLogger.config.json`
-- `%USERPROFILE%\ScaleLogger\presets\`
-
-Use a config selection file in `presets\` that matches your device serial parameters and parse/output settings.
 If `%USERPROFILE%\\ScaleLogger\\ScaleLogger.config.json` is missing, startup fallback `default_config.json` is resolved from the executable directory.
 
 Expected Results:
-- Config and config-selection folder are present under `%USERPROFILE%\ScaleLogger`.
-- Preset file is readable and uses the intended serial/parsing/output values for this test run.
+- Config file is present under `%USERPROFILE%\ScaleLogger` and uses the intended serial/parsing/output values for this test run.
 
 For early startup crashes before UI logging appears, inspect `%TEMP%\ScaleLogger_fatal.log`.
 
-## 3) Validate startup config-selection load before auto-connect
+## 3) Validate startup full-config load before auto-connect
 In `ScaleLogger.config.json`, set:
 - `connect_on_startup: true`
-- `startup_mode: "specific_preset"` (or `"last_used_preset"`)
-- matching config-selection name field (`startup_preset_name` or `last_used_preset_name`)
+- required serial/parsing/output values for your target device
 
 Run app from terminal:
 
@@ -67,13 +62,13 @@ out/build/windows-vs2026-x64/Release/ScaleLogger.exe
 ```
 
 Pass criteria (terminal log order):
-1. Startup config-selection load message appears first.
-2. Auto-connect log appears after config-selection load.
-3. Port in auto-connect log matches config-selected port.
+1. Startup config load message appears first.
+2. Auto-connect log appears after config load.
+3. Port in auto-connect log matches configured port.
 
 Expected Results:
-- Observable startup order is config load -> config-selection load -> auto-connect attempt.
-- Auto-connect target port matches the startup-selected config file.
+- Observable startup order is config load -> auto-connect attempt.
+- Auto-connect target port matches the startup config file.
 
 ## 4) Validate COM discovery and manual connect/disconnect
 - In a test helper (or temporary callsite), invoke `ScanComPorts()` and verify expected COM ports are listed.
@@ -122,22 +117,7 @@ Expected Results:
 - `none` injects text without additional key movement.
 - `custom_sequence` applies tokens in order, including correct behavior for `F10/F11/F12`.
 
-## 7) Validate startup mode variants
-Test each startup mode once:
-- `specific_preset`
-- `last_used_preset`
-- no matching config file (missing file)
-
-Pass criteria:
-- Existing startup modes load expected config file.
-- Missing config selection does not crash; app still launches.
-- Auto-connect behavior follows loaded/default runtime settings.
-
-Expected Results:
-- `specific_preset` and `last_used_preset` load the intended config file when file exists.
-- Missing config-selection case falls back safely (no crash) and app remains usable.
-
-## 8) Validate release script consistency
+## 7) Validate release script consistency
 From repo root in `cmd.exe`:
 
 ```bat
@@ -155,10 +135,10 @@ Expected Results:
 - Release script completes end-to-end without manual intervention.
 - Release folder contains executable, checksum file, and versioned manifest with expected names.
 
-## 9) Record verdict
+## 8) Record verdict
 Mark readiness:
 - **Ready for expanded device/runtime testing** if all sections above pass.
-- **Not ready** if any blocker in build, launch, COM scan, serial receive/dispatch, parse->inject, after-send action, startup config-selection/auto-connect, or release script.
+- **Not ready** if any blocker in build, launch, COM scan, serial receive/dispatch, parse->inject, after-send action, startup config/auto-connect, or release script.
 - If failure happens before normal UI logging initializes, attach `%TEMP%\ScaleLogger_fatal.log` to the test notes.
 
 ## Known non-blocking items for this phase

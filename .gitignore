@@ -7,7 +7,6 @@ __pycache__/
 logs/
 ScaleLogger.config.json
 presets/*.json
-!presets/*.json.example
 build/
 out/build/
 release/**

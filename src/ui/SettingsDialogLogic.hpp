@@ -18,8 +18,6 @@ struct Context {
   AppController* controller{nullptr};
   HWND mainWindow{nullptr};
   HWND settingsWindow{nullptr};
-  HWND presetsCombo{nullptr};
-  std::unordered_map<std::string, std::filesystem::path>* presetMap{nullptr};
   std::unordered_map<std::string, std::string>* portDisplayToPort{nullptr};
 
   std::function<void(const std::string&)> addLogLine;
@@ -32,8 +30,6 @@ struct Context {
   std::function<void(HWND)> updateParseControlsUiState;
 };
 
-void RefreshPresetDropdown(const Context& ctx, bool keepSelection = true);
-void ApplySelectedConfig(const Context& ctx);
 void LoadSettingsIntoControls(const Context& ctx, HWND settingsHwnd);
 bool ReadSerialSettingsFromControls(const Context& ctx, HWND settingsHwnd, AppSettings& settingsOut, std::string& error);
 void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveRequested = false);
