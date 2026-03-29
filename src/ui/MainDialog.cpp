@@ -391,17 +391,21 @@ void PopulateComboWithValues(HWND combo, const std::vector<std::wstring>& values
 
 void SetComboToText(HWND combo, const std::wstring& text) {
   if (text.empty()) return;
+  const LONG_PTR style = GetWindowLongPtrW(combo, GWL_STYLE);
+  if ((style & CBS_DROPDOWNLIST) == 0) {
+    SetWindowTextW(combo, text.c_str());
+    COMBOBOXINFO info{};
+    info.cbSize = sizeof(COMBOBOXINFO);
+    if (GetComboBoxInfo(combo, &info) && info.hwndItem) {
+      const int length = static_cast<int>(text.size());
+      SendMessageW(info.hwndItem, EM_SETSEL, length, length);
+    }
+    return;
+  }
   const LRESULT idx = SendMessageW(combo, CB_FINDSTRINGEXACT, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(text.c_str()));
   if (idx != CB_ERR) {
     SendMessageW(combo, CB_SETCURSEL, idx, 0);
   } else {
-    const LONG_PTR style = GetWindowLongPtrW(combo, GWL_STYLE);
-    if ((style & CBS_DROPDOWNLIST) == 0) {
-      SetWindowTextW(combo, text.c_str());
-      const int length = static_cast<int>(text.size());
-      SendMessageW(combo, CB_SETEDITSEL, 0, MAKELPARAM(length, length));
-      return;
-    }
     const LRESULT count = SendMessageW(combo, CB_GETCOUNT, 0, 0);
     if (count > 0) SendMessageW(combo, CB_SETCURSEL, 0, 0);
   }
