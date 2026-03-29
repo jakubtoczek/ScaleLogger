@@ -4,6 +4,7 @@
   "log_mode": "per_session",
   "line_log_mode": "compact",
   "connect_on_startup": true,
+  "debug_combo_logging": false,
   "logs_folder": "logs",
   "presets_folder": "presets",
   "startup_mode": "last_used_preset",

@@ -52,6 +52,7 @@ struct AppConfig {
   LineLogMode lineLogMode{LineLogMode::Compact};
   bool connectOnStartup{true};
   bool darkMode{false};
+  bool debugComboLogging{false};
   std::string startupMode{"last_used_preset"};
   std::string startupPresetName{};
   std::string lastUsedPresetName{};

@@ -12,6 +12,7 @@
   "stop_bits_options": ["1", "1.5", "2"],
   "connect_on_startup": true,
   "dark_mode": false,
+  "debug_combo_logging": false,
   "startup_mode": "last_used_preset",
   "startup_preset_name": "",
   "last_used_preset_name": "",

@@ -121,6 +121,10 @@ void LoadSettingsIntoControls(HWND settingsHwnd);
 std::wstring GetControlText(HWND control);
 void AddLogLine(const std::string& text);
 
+bool IsComboDebugLoggingEnabled() {
+  return g_ui.controller && g_ui.controller->Config().debugComboLogging;
+}
+
 LRESULT CALLBACK EditableComboEditSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
   auto comboNameFromId = [](int id) -> const char* {
     switch (id) {
@@ -135,6 +139,7 @@ LRESULT CALLBACK EditableComboEditSubclassProc(HWND hwnd, UINT msg, WPARAM wPara
     }
   };
   auto logComboState = [&](const char* phase, const char* messageName) {
+    if (!IsComboDebugLoggingEnabled()) return;
     HWND combo = GetParent(hwnd);
     const int comboId = combo ? GetDlgCtrlID(combo) : 0;
     DWORD start = 0;
@@ -155,6 +160,9 @@ LRESULT CALLBACK EditableComboEditSubclassProc(HWND hwnd, UINT msg, WPARAM wPara
     const int length = GetWindowTextLengthW(hwnd);
     if (length > 0 && start == 0 && static_cast<int>(end) == length) {
       SendMessageW(hwnd, EM_SETSEL, length, length);
+      RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
+      HWND combo = GetParent(hwnd);
+      if (combo) RedrawWindow(combo, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
     }
   };
 
@@ -472,7 +480,7 @@ void SetComboToText(HWND combo, const std::wstring& text) {
       default: return "Other";
     }
   };
-  {
+  if (IsComboDebugLoggingEnabled()) {
     std::ostringstream oss;
     oss << "DEBUG_COMBO: field=" << comboNameFromId(GetDlgCtrlID(combo)) << "; phase=CALL; msg=SetComboToText"
         << "; combo_hwnd=0x" << std::hex << reinterpret_cast<std::uintptr_t>(combo) << std::dec
@@ -530,11 +538,14 @@ void FinalizeEditableComboFirstPaint(HWND settingsHwnd) {
     info.cbSize = sizeof(COMBOBOXINFO);
     if (!GetComboBoxInfo(combo, &info) || !info.hwndItem) continue;
     SetWindowSubclass(info.hwndItem, EditableComboEditSubclassProc, 1, 0);
-    std::ostringstream oss;
-    oss << "DEBUG_COMBO: field_id=" << comboId << "; phase=CALL; msg=SetWindowSubclass"
-        << "; combo_hwnd=0x" << std::hex << reinterpret_cast<std::uintptr_t>(combo)
-        << "; edit_hwnd=0x" << reinterpret_cast<std::uintptr_t>(info.hwndItem) << std::dec;
-    AddLogLine(oss.str());
+    PostMessageW(info.hwndItem, kMsgComboEditNormalizeSelection, 0, 0);
+    if (IsComboDebugLoggingEnabled()) {
+      std::ostringstream oss;
+      oss << "DEBUG_COMBO: field_id=" << comboId << "; phase=CALL; msg=SetWindowSubclass"
+          << "; combo_hwnd=0x" << std::hex << reinterpret_cast<std::uintptr_t>(combo)
+          << "; edit_hwnd=0x" << reinterpret_cast<std::uintptr_t>(info.hwndItem) << std::dec;
+      AddLogLine(oss.str());
+    }
   }
 }
 
@@ -1082,7 +1093,8 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       const WORD notifyCode = HIWORD(wParam);
       if (commandId == kSerialPortCombo || commandId == kSerialBaudCombo || commandId == kSerialDataBitsCombo || commandId == kSerialParityCombo ||
           commandId == kSerialStopBitsCombo || commandId == kSerialTimeoutCombo || commandId == kSerialEolCombo) {
-        if (notifyCode == CBN_SETFOCUS || notifyCode == CBN_KILLFOCUS || notifyCode == CBN_EDITCHANGE || notifyCode == CBN_SELCHANGE) {
+        if (IsComboDebugLoggingEnabled() &&
+            (notifyCode == CBN_SETFOCUS || notifyCode == CBN_KILLFOCUS || notifyCode == CBN_EDITCHANGE || notifyCode == CBN_SELCHANGE)) {
           std::ostringstream oss;
           const char* notifyName = notifyCode == CBN_SETFOCUS   ? "CBN_SETFOCUS"
                                    : notifyCode == CBN_KILLFOCUS ? "CBN_KILLFOCUS"

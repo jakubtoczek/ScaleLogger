@@ -222,6 +222,7 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   cfg.logFilePattern = ExtractString(text, "log_file_pattern", cfg.logFilePattern);
   cfg.connectOnStartup = ExtractBool(text, "connect_on_startup", cfg.connectOnStartup);
   cfg.darkMode = ExtractBool(text, "dark_mode", cfg.darkMode);
+  cfg.debugComboLogging = ExtractBool(text, "debug_combo_logging", cfg.debugComboLogging);
   cfg.startupMode = ExtractString(text, "startup_mode", cfg.startupMode);
   cfg.startupPresetName = ExtractString(text, "startup_preset_name", "");
   cfg.lastUsedPresetName = ExtractString(text, "last_used_preset_name", "");
@@ -257,6 +258,7 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, cons
       << "  \"line_log_mode\": \"" << (config.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
       << "  \"connect_on_startup\": " << (config.connectOnStartup ? "true" : "false") << ",\n"
       << "  \"dark_mode\": " << (config.darkMode ? "true" : "false") << ",\n"
+      << "  \"debug_combo_logging\": " << (config.debugComboLogging ? "true" : "false") << ",\n"
       << "  \"startup_mode\": \"" << JsonEscape(config.startupMode) << "\",\n"
       << "  \"startup_preset_name\": \"" << JsonEscape(config.startupPresetName) << "\",\n"
       << "  \"last_used_preset_name\": \"" << JsonEscape(config.lastUsedPresetName) << "\",\n"
@@ -421,6 +423,7 @@ bool SavePreset(const std::filesystem::path& path, const AppSettings& settings, 
         << "  \"line_log_mode\": \"" << (config->lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
         << "  \"connect_on_startup\": " << (config->connectOnStartup ? "true" : "false") << ",\n"
         << "  \"dark_mode\": " << (config->darkMode ? "true" : "false") << ",\n"
+        << "  \"debug_combo_logging\": " << (config->debugComboLogging ? "true" : "false") << ",\n"
         << "  \"startup_mode\": \"" << JsonEscape(config->startupMode) << "\",\n"
         << "  \"startup_preset_name\": \"" << JsonEscape(config->startupPresetName) << "\",\n"
         << "  \"last_used_preset_name\": \"" << JsonEscape(config->lastUsedPresetName) << '"';
