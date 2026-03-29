@@ -43,6 +43,7 @@ constexpr UINT kMsgUiConnectionState = WM_APP + 2;
 constexpr UINT kMsgStartupAutoConnect = WM_APP + 3;
 constexpr UINT kMsgSettingsFinalizeCombos = WM_APP + 4;
 constexpr UINT kMsgSettingsFinalizeDisplay = WM_APP + 5;
+constexpr UINT kMsgComboEditNormalizeSelection = WM_APP + 6;
 
 constexpr int kSettingsTab = 200;
 constexpr int kSettingsApply = 201;
@@ -131,16 +132,13 @@ LRESULT CALLBACK EditableComboEditSubclassProc(HWND hwnd, UINT msg, WPARAM wPara
   };
 
   switch (msg) {
-    case WM_SETFOCUS: {
-      const LRESULT result = DefSubclassProc(hwnd, msg, wParam, lParam);
+    case WM_SETFOCUS:
+    case WM_LBUTTONUP:
+      PostMessageW(hwnd, kMsgComboEditNormalizeSelection, 0, 0);
+      break;
+    case kMsgComboEditNormalizeSelection:
       normalizeIfFullySelected();
-      return result;
-    }
-    case WM_LBUTTONUP: {
-      const LRESULT result = DefSubclassProc(hwnd, msg, wParam, lParam);
-      normalizeIfFullySelected();
-      return result;
-    }
+      return 0;
     case WM_NCDESTROY:
       RemoveWindowSubclass(hwnd, EditableComboEditSubclassProc, 1);
       break;
@@ -424,12 +422,6 @@ void SetComboToText(HWND combo, const std::wstring& text) {
   const LONG_PTR style = GetWindowLongPtrW(combo, GWL_STYLE);
   if ((style & CBS_DROPDOWNLIST) == 0) {
     SetWindowTextW(combo, text.c_str());
-    COMBOBOXINFO info{};
-    info.cbSize = sizeof(COMBOBOXINFO);
-    if (GetComboBoxInfo(combo, &info) && info.hwndItem) {
-      const int length = static_cast<int>(text.size());
-      SendMessageW(info.hwndItem, EM_SETSEL, length, length);
-    }
     return;
   }
   const LRESULT idx = SendMessageW(combo, CB_FINDSTRINGEXACT, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(text.c_str()));
@@ -478,25 +470,12 @@ void FinalizeEditableComboFirstPaint(HWND settingsHwnd) {
     info.cbSize = sizeof(COMBOBOXINFO);
     if (!GetComboBoxInfo(combo, &info) || !info.hwndItem) continue;
     SetWindowSubclass(info.hwndItem, EditableComboEditSubclassProc, 1, 0);
-    const int length = GetWindowTextLengthW(info.hwndItem);
-    SendMessageW(info.hwndItem, EM_SETSEL, length, length);
-    RedrawWindow(combo, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
   }
 }
 
 void FinalizeSettingsDisplay(HWND settingsHwnd) {
   LayoutSettingsWindow(settingsHwnd);
   if (g_ui.settingsNormalizeFocusPending) {
-    for (int comboId : {kSerialPortCombo, kSerialBaudCombo, kSerialDataBitsCombo, kSerialParityCombo, kSerialStopBitsCombo, kSerialTimeoutCombo,
-                        kSerialEolCombo}) {
-      HWND combo = GetDlgItem(settingsHwnd, comboId);
-      if (!combo) continue;
-      COMBOBOXINFO info{};
-      info.cbSize = sizeof(COMBOBOXINFO);
-      if (!GetComboBoxInfo(combo, &info) || !info.hwndItem) continue;
-      const int length = GetWindowTextLengthW(info.hwndItem);
-      SendMessageW(info.hwndItem, EM_SETSEL, length, length);
-    }
     HWND applyButton = GetDlgItem(settingsHwnd, kSettingsApply);
     if (applyButton) SetFocus(applyButton);
     g_ui.settingsNormalizeFocusPending = false;

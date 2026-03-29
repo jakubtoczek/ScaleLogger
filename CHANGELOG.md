@@ -6,6 +6,8 @@
 - switched resource version metadata to a configured RC template sourced from CMake project version
 - split config and settings dialog logic into `ConfigService` and `SettingsDialogLogic`, and restored user-facing settings apply/save/no-change logging
 - tightened serial settings sanitization after startup config-selection load and during runtime apply to prevent invalid timeout values from persisting as `0.00`
+- made startup fallback `default_config.json` resolution deterministic by reading from the executable directory instead of process working directory
+- fixed editable settings-combo focus/click behavior so fields no longer remain fully blue-selected after activation
 
 ## 0.96 - 2026-03-24
 

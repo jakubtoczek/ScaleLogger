@@ -46,6 +46,7 @@ Ensure these exist (create if missing):
 - `%USERPROFILE%\ScaleLogger\presets\`
 
 Use a config selection file in `presets\` that matches your device serial parameters and parse/output settings.
+If `%USERPROFILE%\\ScaleLogger\\ScaleLogger.config.json` is missing, startup fallback `default_config.json` is resolved from the executable directory.
 
 Expected Results:
 - Config and config-selection folder are present under `%USERPROFILE%\ScaleLogger`.
