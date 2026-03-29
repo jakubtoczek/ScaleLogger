@@ -119,6 +119,36 @@ HBRUSH g_darkBrush = CreateSolidBrush(RGB(32, 32, 32));
 void LoadSettingsIntoControls(HWND settingsHwnd);
 std::wstring GetControlText(HWND control);
 
+LRESULT CALLBACK EditableComboEditSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
+  const auto normalizeIfFullySelected = [hwnd]() {
+    DWORD start = 0;
+    DWORD end = 0;
+    SendMessageW(hwnd, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
+    const int length = GetWindowTextLengthW(hwnd);
+    if (length > 0 && start == 0 && static_cast<int>(end) == length) {
+      SendMessageW(hwnd, EM_SETSEL, length, length);
+    }
+  };
+
+  switch (msg) {
+    case WM_SETFOCUS: {
+      const LRESULT result = DefSubclassProc(hwnd, msg, wParam, lParam);
+      normalizeIfFullySelected();
+      return result;
+    }
+    case WM_LBUTTONUP: {
+      const LRESULT result = DefSubclassProc(hwnd, msg, wParam, lParam);
+      normalizeIfFullySelected();
+      return result;
+    }
+    case WM_NCDESTROY:
+      RemoveWindowSubclass(hwnd, EditableComboEditSubclassProc, 1);
+      break;
+    default: break;
+  }
+  return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
 std::wstring ToWide(std::string_view text) {
   if (text.empty()) return {};
   const int sizeNeeded = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
@@ -447,6 +477,7 @@ void FinalizeEditableComboFirstPaint(HWND settingsHwnd) {
     COMBOBOXINFO info{};
     info.cbSize = sizeof(COMBOBOXINFO);
     if (!GetComboBoxInfo(combo, &info) || !info.hwndItem) continue;
+    SetWindowSubclass(info.hwndItem, EditableComboEditSubclassProc, 1, 0);
     const int length = GetWindowTextLengthW(info.hwndItem);
     SendMessageW(info.hwndItem, EM_SETSEL, length, length);
     RedrawWindow(combo, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME);
