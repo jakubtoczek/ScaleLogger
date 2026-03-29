@@ -1,5 +1,5 @@
 param(
-  [string]$Version = "0.96",
+  [string]$Version = "",
   [string]$OutputExe = "ScaleLogger.exe",
   [string]$ChecksumFile = "SHA256SUMS.txt",
   [string]$ConfigurePreset = "windows-vs2026-x64",
@@ -14,7 +14,20 @@ function Get-FirstLine {
   return $Lines[0].ToString().Trim()
 }
 
+function Get-VersionFromCMake {
+  if (-not (Test-Path "CMakeLists.txt")) { return "unknown" }
+  try {
+    $cmakeText = Get-Content -Raw -Path "CMakeLists.txt"
+    $m = [regex]::Match($cmakeText, 'project\([^\)]*VERSION\s+([0-9]+(?:\.[0-9]+){1,3})', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($m.Success) { return $m.Groups[1].Value }
+  } catch {}
+  return "unknown"
+}
+
 $utcNow = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
+if ([string]::IsNullOrWhiteSpace($Version)) {
+  $Version = Get-VersionFromCMake
+}
 
 $gitBranch = "unknown"
 $gitCommit = "unknown"
@@ -81,9 +94,15 @@ if (Test-Path "default_config.json") {
       "    line_log_mode=$($cfg.line_log_mode)",
       "    connect_on_startup=$($cfg.connect_on_startup)",
       "    dark_mode=$($cfg.dark_mode)",
+      "    debug_combo_logging=$($cfg.debug_combo_logging)",
       "    startup_mode=$($cfg.startup_mode)",
       "    startup_preset_name=$($cfg.startup_preset_name)",
       "    last_used_preset_name=$($cfg.last_used_preset_name)",
+      "  Runtime combo option arrays:",
+      "    baud_rates=$([string]::Join(',', $cfg.baud_rates))",
+      "    data_bits_options=$([string]::Join(',', $cfg.data_bits_options))",
+      "    parity_options=$([string]::Join(',', $cfg.parity_options))",
+      "    stop_bits_options=$([string]::Join(',', $cfg.stop_bits_options))",
       "  Serial:",
       "    port=$($cfg.port)",
       "    baudrate=$($cfg.baudrate)",

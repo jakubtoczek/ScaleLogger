@@ -41,6 +41,7 @@ The prior implementation behavior was derived from:
 - Config schema keeps keys:
   `presets_folder`, `logs_folder`, `log_mode`, `line_log_mode`, `connect_on_startup`, `startup_mode`, `startup_preset_name`, `last_used_preset_name`.
 - Preset flat schema loading keeps the existing serial/parsing fields (`port`, `baudrate`, `databits`, `parity`, `stopbits`, `timeout`, `eol`, etc.).
+- Sign-handling examples should use `preserve_plus_sign` / `preserve_minus_sign`; legacy `drop_plus_sign` is still tolerated only for backward compatibility.
 
 ## Release/tooling direction
 - CMake + VS2026 x64 presets.

@@ -7,19 +7,28 @@ REM Purpose: configure, build, test, package exe, checksum, and build manifest.
 REM Output: release\ScaleLogger.exe, release\SHA256SUMS.txt, release\BUILD_MANIFEST_<version>.txt
 REM ---------------------------------------------------------------------------
 
-set "APP_VERSION=0.97"
+set "APP_VERSION="
 set "RELEASE_DIR=release"
 set "BUILD_DIR=out\build\windows-vs2026-x64"
 set "SOURCE_EXE=%BUILD_DIR%\Release\ScaleLogger.exe"
 set "OUTPUT_EXE=%RELEASE_DIR%\ScaleLogger.exe"
 set "CHECKSUM_FILE=%RELEASE_DIR%\SHA256SUMS.txt"
-set "MANIFEST_FILE=%RELEASE_DIR%\BUILD_MANIFEST_%APP_VERSION%.txt"
+set "MANIFEST_FILE="
 
 where cmake >nul 2>nul
 if %errorlevel% neq 0 (
   echo CMake was not found in PATH.
   exit /b 1
 )
+
+for /f "usebackq delims=" %%V in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$t=Get-Content -Raw 'CMakeLists.txt'; $m=[regex]::Match($t,'project\([^\)]*VERSION\s+([0-9]+(?:\.[0-9]+){1,3})','IgnoreCase'); if($m.Success){$m.Groups[1].Value}"`) do (
+  set "APP_VERSION=%%V"
+)
+if not defined APP_VERSION (
+  echo Failed to derive app version from CMakeLists.txt.
+  exit /b 1
+)
+set "MANIFEST_FILE=%RELEASE_DIR%\BUILD_MANIFEST_%APP_VERSION%.txt"
 
 if defined RC (
   echo Detected RC environment override: %RC%
@@ -63,7 +72,6 @@ call generate_sha256.bat "%OUTPUT_EXE%" "%CHECKSUM_FILE%"
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\build_manifest.ps1 ^
-  -Version "%APP_VERSION%" ^
   -OutputExe "ScaleLogger.exe" ^
   -ChecksumFile "%CHECKSUM_FILE%" ^
   -ConfigurePreset "windows-vs2026-x64" ^

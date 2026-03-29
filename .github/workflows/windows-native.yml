@@ -2,7 +2,7 @@ name: windows-native
 on:
   workflow_dispatch:
   push:
-    branches: [ work ]
+    branches: [ main, work ]
 
 jobs:
   build:

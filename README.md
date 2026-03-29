@@ -55,6 +55,7 @@ ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with
 - `log_mode` (`none`, `single_file`, `per_session`)
 - `connect_on_startup`
 - `dark_mode` (experimental; default is `false`)
+- `debug_combo_logging` (optional diagnostics; default is `false`)
 - `startup_mode` and startup config-selection name fields
 - optional serial dropdown option arrays: `baud_rates`, `data_bits_options`, `parity_options`, `stop_bits_options`
 
@@ -107,7 +108,13 @@ At runtime these placeholders are expanded to the active user profile location s
 Use `ScaleLogger_build_release.bat` to create a native release folder with:
 - `ScaleLogger.exe`
 - `SHA256SUMS.txt`
-- `BUILD_MANIFEST_0.97.txt`
+- `BUILD_MANIFEST_<version>.txt` (version derived from `CMakeLists.txt`)
+
+Release manifest includes runtime combo option arrays sourced from `default_config.json`:
+- `baud_rates`
+- `data_bits_options`
+- `parity_options`
+- `stop_bits_options`
 
 ## First runtime validation
 Use [docs/first_windows_runtime_test_checklist.md](docs/first_windows_runtime_test_checklist.md) for the exact first real Windows runtime test pass (build -> launch -> COM/serial -> parse/inject -> after-send actions -> release script).

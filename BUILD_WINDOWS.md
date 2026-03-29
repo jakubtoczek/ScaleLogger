@@ -32,7 +32,7 @@ ScaleLogger_build_release.bat
 This produces:
 - `release\ScaleLogger.exe`
 - `release\SHA256SUMS.txt`
-- `release\BUILD_MANIFEST_0.97.txt`
+- `release\BUILD_MANIFEST_<version>.txt` (version comes from `CMakeLists.txt`)
 
 ## First real runtime test pass
 After successful build/test, run the focused manual runtime checklist:

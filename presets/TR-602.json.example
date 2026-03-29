@@ -12,7 +12,9 @@
   "strip_suffix": true,
   "suffix": "g",
   "normalize_sign": true,
-  "drop_plus_sign": false,
+  "preserve_plus_sign": true,
+  "preserve_minus_sign": true,
   "numeric_validation": true,
-  "post_action": "down"
+  "post_action": "down",
+  "custom_sequence": []
 }
