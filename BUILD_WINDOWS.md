@@ -43,3 +43,4 @@ After successful build/test, run the focused manual runtime checklist:
 - The migration document is kept for behavior reference: `docs/migration_from_current_implementation.md`.
 - If your shell exports `RC=0`/`RC=1`, clear it before configure (`set RC=`). The release script and configure preset now do this defensively.
 - For crashes before the UI log appears, check `%TEMP%\\ScaleLogger_fatal.log` (early startup traces + fatal exception breadcrumbs).
+- Startup fallback `default_config.json` is read from the executable directory when user config is missing.

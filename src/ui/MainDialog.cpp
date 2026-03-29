@@ -398,6 +398,8 @@ void SetComboToText(HWND combo, const std::wstring& text) {
     const LONG_PTR style = GetWindowLongPtrW(combo, GWL_STYLE);
     if ((style & CBS_DROPDOWNLIST) == 0) {
       SetWindowTextW(combo, text.c_str());
+      const int length = static_cast<int>(text.size());
+      SendMessageW(combo, CB_SETEDITSEL, 0, MAKELPARAM(length, length));
       return;
     }
     const LRESULT count = SendMessageW(combo, CB_GETCOUNT, 0, 0);

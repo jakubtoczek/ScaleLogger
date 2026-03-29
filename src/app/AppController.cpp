@@ -95,16 +95,16 @@ void AppController::Initialize() {
     settings_ = LoadPreset(configPath_);
     EmitLog("Startup config source: " + std::string(hasUserConfig ? "disk config file" : "defaults from missing config"));
     if (!hasUserConfig) {
-      const auto defaultConfigPath = std::filesystem::current_path() / "default_config.json";
+      const auto defaultConfigPath = ConfigService::ResolveDefaultConfigPath(dataRoot_);
       if (std::filesystem::exists(defaultConfigPath)) {
         config_ = LoadConfig(defaultConfigPath);
         ConfigService::SanitizeConfig(config_);
         settings_ = LoadPreset(defaultConfigPath);
         startupSerialSource = "built-in defaults";
-        EmitLog("Startup config source: default_config.json");
+        EmitLog("Startup config source: " + defaultConfigPath.string());
       } else {
         startupSerialSource = "built-in defaults";
-        EmitLog("Startup config source: built-in defaults");
+        EmitLog("Startup config source: built-in defaults (no default_config.json found near executable)");
       }
     }
 

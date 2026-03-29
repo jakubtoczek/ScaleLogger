@@ -56,6 +56,18 @@ void Dedup(std::vector<T>& values) {
 }
 } // namespace
 
+std::filesystem::path ConfigService::ResolveDefaultConfigPath(const std::filesystem::path& dataRoot) {
+#ifdef _WIN32
+  wchar_t modulePath[MAX_PATH]{};
+  const DWORD length = GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+  if (length > 0 && length < MAX_PATH) {
+    std::filesystem::path exePath(modulePath);
+    return exePath.parent_path() / "default_config.json";
+  }
+#endif
+  return dataRoot / "default_config.json";
+}
+
 std::filesystem::path ConfigService::ResolveConfiguredPath(const std::filesystem::path& root, const std::string& configuredPath) {
   const auto expanded = ExpandPathPlaceholders(configuredPath);
   std::filesystem::path path(expanded);

@@ -69,6 +69,7 @@ Path rule:
 - `config_folder`, `presets_folder`, and `logs_folder` are treated as runtime-resolved filesystem paths.
 - Absolute paths are used as-is.
 - Relative paths are resolved against the app data root (prefer `%USERPROFILE%\ScaleLogger` on Windows).
+- If user config is missing, startup fallback `default_config.json` is resolved from the executable directory (not from the process working directory).
 
 ## Python compatibility notes
 Config loading is backward compatible with legacy Python-era keys:
