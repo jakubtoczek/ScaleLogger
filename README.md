@@ -58,7 +58,7 @@ ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with
 - `debug_combo_logging` (optional diagnostics; default is `false`)
 - optional serial dropdown option arrays: `baud_rates`, `data_bits_options`, `parity_options`, `stop_bits_options`
 
-To keep schema consistency, config files also carry serial/parsing/output fields (same structure used by saved config selections), including `custom_sequence` and `eol`.
+To keep schema consistency, config files also carry serial/parsing/output fields (including `custom_sequence` and `eol`) in the same single full-config file.
 The single configuration file is the runtime source of truth for app-level and serial/parsing/output behavior.
 
 Path rule:

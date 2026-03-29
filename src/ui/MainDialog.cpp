@@ -409,6 +409,11 @@ void LayoutMainControls(HWND hwnd) {
   }
 
   int right = rc.right - margin;
+  if (showAbout) {
+    right -= 64;
+    MoveWindow(g_ui.aboutButton, right, top, 64, rowH, TRUE);
+    right -= gap;
+  }
   if (showSettings) {
     right -= 82;
     MoveWindow(g_ui.settingsButton, right, top, 82, rowH, TRUE);
@@ -417,11 +422,6 @@ void LayoutMainControls(HWND hwnd) {
   if (showConnect) {
     right -= 102;
     MoveWindow(g_ui.connectButton, right, top, 102, rowH, TRUE);
-    right -= gap;
-  }
-  if (showAbout) {
-    right -= 64;
-    MoveWindow(g_ui.aboutButton, right, top, 64, rowH, TRUE);
   }
 
   MoveWindow(g_ui.logEdit, margin, 52, rc.right - margin * 2, rc.bottom - 68, TRUE);
