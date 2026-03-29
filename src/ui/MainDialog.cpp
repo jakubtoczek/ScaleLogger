@@ -119,6 +119,7 @@ UiState g_ui;
 HBRUSH g_darkBrush = CreateSolidBrush(RGB(32, 32, 32));
 void LoadSettingsIntoControls(HWND settingsHwnd);
 std::wstring GetControlText(HWND control);
+void AddLogLine(const std::string& text);
 
 LRESULT CALLBACK EditableComboEditSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
   auto comboNameFromId = [](int id) -> const char* {
@@ -1088,7 +1089,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                                    : notifyCode == CBN_EDITCHANGE ? "CBN_EDITCHANGE"
                                                                    : "CBN_SELCHANGE";
           oss << "DEBUG_COMBO: field_id=" << commandId << "; phase=NOTIFY; msg=" << notifyName << "; control_hwnd=0x" << std::hex
-              << reinterpret_cast<std::uintptr_t>(lParam) << "; focus_hwnd=0x" << reinterpret_cast<std::uintptr_t>(GetFocus()) << std::dec;
+              << static_cast<std::uintptr_t>(lParam) << "; focus_hwnd=0x" << reinterpret_cast<std::uintptr_t>(GetFocus()) << std::dec;
           AddLogLine(oss.str());
         }
       }

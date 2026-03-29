@@ -74,7 +74,16 @@ std::string ParseEolFromUiText(const std::wstring& eolText) {
   if (eolText == L"\\r\\n") return "\r\n";
   if (eolText == L"\\n") return "\n";
   if (eolText == L"\\r") return "\r";
+#ifdef _WIN32
+  if (eolText.empty()) return {};
+  const int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, eolText.c_str(), static_cast<int>(eolText.size()), nullptr, 0, nullptr, nullptr);
+  if (sizeNeeded <= 0) return {};
+  std::string out(static_cast<std::size_t>(sizeNeeded), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, eolText.c_str(), static_cast<int>(eolText.size()), out.data(), sizeNeeded, nullptr, nullptr);
+  return out;
+#else
   return std::string(eolText.begin(), eolText.end());
+#endif
 }
 
 bool TryParseInt(const std::wstring& text, int& out) {
