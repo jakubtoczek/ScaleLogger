@@ -10,6 +10,7 @@
 #include <CommCtrl.h>
 #include <CommDlg.h>
 #include <ShlObj.h>
+#include <Uxtheme.h>
 #include <Windows.h>
 
 #include <chrono>
@@ -28,6 +29,7 @@
 #include <vector>
 
 #pragma comment(lib, "Comctl32.lib")
+#pragma comment(lib, "Uxtheme.lib")
 
 namespace scalelogger {
 namespace {
@@ -268,6 +270,9 @@ LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
 
       HBRUSH tabBrush = CreateSolidBrush(tabColor);
       FillRect(draw->hdc, &draw->rc, tabBrush);
+      HBRUSH borderBrush = CreateSolidBrush(RGB(78, 78, 78));
+      FrameRect(draw->hdc, &draw->rc, borderBrush);
+      DeleteObject(borderBrush);
       DeleteObject(tabBrush);
 
       RECT textRect = draw->rc;
@@ -288,6 +293,20 @@ LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
     }
     default: return CDRF_DODEFAULT;
   }
+}
+
+void ApplySettingsTabTheme(HWND settingsTab) {
+  if (!settingsTab) return;
+  if (IsDarkModeEnabled()) {
+    SetWindowTheme(settingsTab, L"", L"");
+    TabCtrl_SetBkColor(settingsTab, RGB(32, 32, 32));
+    TabCtrl_SetTextColor(settingsTab, RGB(235, 235, 235));
+  } else {
+    SetWindowTheme(settingsTab, nullptr, nullptr);
+    TabCtrl_SetBkColor(settingsTab, GetSysColor(COLOR_BTNFACE));
+    TabCtrl_SetTextColor(settingsTab, GetSysColor(COLOR_BTNTEXT));
+  }
+  InvalidateRect(settingsTab, nullptr, TRUE);
 }
 
 void AddLogLine(const std::string& text) {
@@ -530,6 +549,7 @@ void FinalizeEditableComboFirstPaint(HWND settingsHwnd) {
 
 void FinalizeSettingsDisplay(HWND settingsHwnd) {
   LayoutSettingsWindow(settingsHwnd);
+  ApplySettingsTabTheme(g_ui.settingsTab);
   if (g_ui.settingsNormalizeFocusPending) {
     HWND applyButton = GetDlgItem(settingsHwnd, kSettingsApply);
     if (applyButton) SetFocus(applyButton);
@@ -824,6 +844,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_CREATE: {
       g_ui.settingsTab = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS, 12, 12, 840, 500, hwnd,
                                          reinterpret_cast<HMENU>(kSettingsTab), nullptr, nullptr);
+      ApplySettingsTabTheme(g_ui.settingsTab);
       TCITEMW item{};
       item.mask = TCIF_TEXT;
       item.pszText = const_cast<LPWSTR>(L"Serial");
