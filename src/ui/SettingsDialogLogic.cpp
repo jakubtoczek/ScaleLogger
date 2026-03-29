@@ -184,6 +184,15 @@ std::string BuildChangeSummary(const AppSettings& beforeSettings, const AppSetti
   if (beforeSettings.parsing.normalizeSign != afterSettings.parsing.normalizeSign) {
     pushChange(changes, "normalize_sign", boolText(beforeSettings.parsing.normalizeSign), boolText(afterSettings.parsing.normalizeSign));
   }
+  if (beforeSettings.parsing.preservePlusSign != afterSettings.parsing.preservePlusSign) {
+    pushChange(changes, "preserve_plus_sign", boolText(beforeSettings.parsing.preservePlusSign), boolText(afterSettings.parsing.preservePlusSign));
+  }
+  if (beforeSettings.parsing.preserveMinusSign != afterSettings.parsing.preserveMinusSign) {
+    pushChange(changes, "preserve_minus_sign", boolText(beforeSettings.parsing.preserveMinusSign), boolText(afterSettings.parsing.preserveMinusSign));
+  }
+  if (beforeSettings.parsing.numericValidation != afterSettings.parsing.numericValidation) {
+    pushChange(changes, "numeric_validation", boolText(beforeSettings.parsing.numericValidation), boolText(afterSettings.parsing.numericValidation));
+  }
   if (beforeSettings.output.postAction != afterSettings.output.postAction) {
     pushChange(changes, "post_action", postActionText(beforeSettings.output.postAction), postActionText(afterSettings.output.postAction));
   }
@@ -193,8 +202,23 @@ std::string BuildChangeSummary(const AppSettings& beforeSettings, const AppSetti
   if (beforeConfig.connectOnStartup != afterConfig.connectOnStartup) {
     pushChange(changes, "connect_on_startup", boolText(beforeConfig.connectOnStartup), boolText(afterConfig.connectOnStartup));
   }
+  if (beforeConfig.darkMode != afterConfig.darkMode) pushChange(changes, "dark_mode", boolText(beforeConfig.darkMode), boolText(afterConfig.darkMode));
+  if (beforeConfig.configFolder != afterConfig.configFolder) pushChange(changes, "config_folder", beforeConfig.configFolder, afterConfig.configFolder);
+  if (beforeConfig.configFileName != afterConfig.configFileName) {
+    pushChange(changes, "config_file_name", beforeConfig.configFileName, afterConfig.configFileName);
+  }
   if (beforeConfig.logMode != afterConfig.logMode) pushChange(changes, "log_mode", logModeText(beforeConfig.logMode), logModeText(afterConfig.logMode));
+  if (beforeConfig.lineLogMode != afterConfig.lineLogMode) {
+    pushChange(changes, "line_log_mode", beforeConfig.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact",
+               afterConfig.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact");
+  }
   if (beforeConfig.logsFolder != afterConfig.logsFolder) pushChange(changes, "logs_folder", beforeConfig.logsFolder, afterConfig.logsFolder);
+  if (beforeConfig.logFilePattern != afterConfig.logFilePattern) {
+    pushChange(changes, "log_file_pattern", beforeConfig.logFilePattern, afterConfig.logFilePattern);
+  }
+  if (beforeConfig.debugComboLogging != afterConfig.debugComboLogging) {
+    pushChange(changes, "debug_combo_logging", boolText(beforeConfig.debugComboLogging), boolText(afterConfig.debugComboLogging));
+  }
 
   if (changes.empty()) return {};
   std::string summary;
@@ -379,6 +403,7 @@ void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveR
     ctx.controller->LogMessage("Settings apply requested: no changes detected.");
   }
   if (saveRequested) {
+    ctx.controller->LogMessage("Save configuration requested: validated and applied current settings before persistence.");
     const auto saveResult = ctx.controller->SaveResolvedConfiguration();
     switch (saveResult.status) {
       case AppController::SaveConfigStatus::Created:
@@ -387,11 +412,11 @@ void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveR
                                                                                     : changeSummary));
         break;
       case AppController::SaveConfigStatus::Updated:
-        ctx.controller->LogMessage("Configuration saved: " + (changeSummary.empty() ? std::to_string(saveResult.changedFieldCount) + " fields changed"
-                                                                                    : changeSummary));
+        ctx.controller->LogMessage("Configuration saved to " + saveResult.path.string() + ": " +
+                                   (changeSummary.empty() ? std::to_string(saveResult.changedFieldCount) + " fields changed" : changeSummary));
         break;
       case AppController::SaveConfigStatus::Unchanged:
-        ctx.controller->LogMessage("Configuration already up to date.");
+        ctx.controller->LogMessage("Configuration already up to date at: " + saveResult.path.string());
         break;
       case AppController::SaveConfigStatus::Failed:
       default:
