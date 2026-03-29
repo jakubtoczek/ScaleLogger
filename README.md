@@ -86,6 +86,12 @@ When compatibility mapping is applied, a runtime log line indicates it.
 
 Runtime file logging flushes each line and emits a one-time visible error if file writes fail.
 
+## Early startup / fatal forensics
+- Before UI/controller logging is fully initialized, startup traces are written to `%TEMP%\\ScaleLogger_fatal.log`.
+- This file is also used by the unhandled-exception path (`SetUnhandledExceptionFilter`) for fatal crash breadcrumbs.
+- Use this file first when the app exits or crashes before the normal in-app log window appears.
+- These forensic lines are separate from normal runtime/session logging.
+
 Legacy note:
 - `standalone_mode` is tolerated in old config files and legacy selection files but ignored by current runtime behavior.
 

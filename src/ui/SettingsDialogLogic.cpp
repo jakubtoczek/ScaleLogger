@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cwctype>
 #include <filesystem>
 #include <sstream>
@@ -94,22 +95,113 @@ bool TryParseFloat(const std::wstring& text, float& out) {
 
 std::string BuildChangeSummary(const AppSettings& beforeSettings, const AppSettings& afterSettings, const AppConfig& beforeConfig,
                                const AppConfig& afterConfig) {
+  auto boolText = [](bool value) { return value ? "true" : "false"; };
+  auto parseModeText = [](ParseMode mode) { return mode == ParseMode::Raw ? "raw" : "parsed"; };
+  auto postActionText = [](PostAction action) {
+    switch (action) {
+      case PostAction::Right: return "right";
+      case PostAction::Enter: return "enter";
+      case PostAction::Tab: return "tab";
+      case PostAction::None: return "none";
+      case PostAction::CustomSequence: return "custom_sequence";
+      case PostAction::Down:
+      default: return "down";
+    }
+  };
+  auto logModeText = [](LogMode mode) {
+    switch (mode) {
+      case LogMode::SingleFile: return "single_file";
+      case LogMode::None: return "none";
+      case LogMode::PerSession:
+      default: return "per_session";
+    }
+  };
+  auto eolText = [](const std::string& eol) {
+    if (eol == "\r\n") return std::string("\\r\\n");
+    if (eol == "\n") return std::string("\\n");
+    if (eol == "\r") return std::string("\\r");
+    return eol;
+  };
+  auto timeoutText = [](float value) {
+    char buffer[32]{};
+    std::snprintf(buffer, sizeof(buffer), "%.2f", static_cast<double>(value));
+    return std::string(buffer);
+  };
+  auto stopBitsText = [](float value) {
+    if (value == 1.5F) return std::string("1.5");
+    if (value >= 1.9F) return std::string("2");
+    return std::string("1");
+  };
+  auto sequenceText = [](const std::vector<std::string>& sequence) {
+    if (sequence.empty()) return std::string("<empty>");
+    std::string joined;
+    const std::size_t maxItems = 4;
+    for (std::size_t i = 0; i < sequence.size() && i < maxItems; ++i) {
+      if (i) joined += "|";
+      joined += sequence[i];
+    }
+    if (sequence.size() > maxItems) joined += "|...";
+    return joined;
+  };
+  auto pushChange = [](std::vector<std::string>& changes, const std::string& name, const std::string& beforeValue,
+                       const std::string& afterValue) { changes.push_back(name + ": " + beforeValue + " -> " + afterValue); };
+
   std::vector<std::string> changes;
-  if (beforeSettings.serial.port != afterSettings.serial.port) changes.push_back("port");
-  if (beforeSettings.serial.baudRate != afterSettings.serial.baudRate) changes.push_back("baud");
-  if (beforeSettings.serial.timeoutSeconds != afterSettings.serial.timeoutSeconds) changes.push_back("timeout");
-  if (beforeSettings.parsing.mode != afterSettings.parsing.mode) changes.push_back("parse mode");
-  if (beforeSettings.output.postAction != afterSettings.output.postAction) changes.push_back("post-action");
-  if (beforeConfig.connectOnStartup != afterConfig.connectOnStartup) changes.push_back("startup connect");
-  if (beforeConfig.logMode != afterConfig.logMode) changes.push_back("log mode");
-  if (beforeConfig.darkMode != afterConfig.darkMode) changes.push_back("dark mode");
-  if (beforeConfig.presetsFolder != afterConfig.presetsFolder) changes.push_back("presets folder");
-  if (beforeConfig.logsFolder != afterConfig.logsFolder) changes.push_back("logs folder");
+  if (beforeSettings.serial.port != afterSettings.serial.port) pushChange(changes, "port", beforeSettings.serial.port, afterSettings.serial.port);
+  if (beforeSettings.serial.baudRate != afterSettings.serial.baudRate) {
+    pushChange(changes, "baudrate", std::to_string(beforeSettings.serial.baudRate), std::to_string(afterSettings.serial.baudRate));
+  }
+  if (beforeSettings.serial.dataBits != afterSettings.serial.dataBits) {
+    pushChange(changes, "databits", std::to_string(beforeSettings.serial.dataBits), std::to_string(afterSettings.serial.dataBits));
+  }
+  if (beforeSettings.serial.parity != afterSettings.serial.parity) {
+    pushChange(changes, "parity", std::string(1, beforeSettings.serial.parity), std::string(1, afterSettings.serial.parity));
+  }
+  if (beforeSettings.serial.stopBits != afterSettings.serial.stopBits) {
+    pushChange(changes, "stopbits", stopBitsText(beforeSettings.serial.stopBits), stopBitsText(afterSettings.serial.stopBits));
+  }
+  if (beforeSettings.serial.timeoutSeconds != afterSettings.serial.timeoutSeconds) {
+    pushChange(changes, "timeout", timeoutText(beforeSettings.serial.timeoutSeconds), timeoutText(afterSettings.serial.timeoutSeconds));
+  }
+  if (beforeSettings.serial.eol != afterSettings.serial.eol) pushChange(changes, "eol", eolText(beforeSettings.serial.eol), eolText(afterSettings.serial.eol));
+  if (beforeSettings.parsing.mode != afterSettings.parsing.mode) {
+    pushChange(changes, "mode", parseModeText(beforeSettings.parsing.mode), parseModeText(afterSettings.parsing.mode));
+  }
+  if (beforeSettings.parsing.trimWhitespace != afterSettings.parsing.trimWhitespace) {
+    pushChange(changes, "trim_whitespace", boolText(beforeSettings.parsing.trimWhitespace), boolText(afterSettings.parsing.trimWhitespace));
+  }
+  if (beforeSettings.parsing.stripSuffix != afterSettings.parsing.stripSuffix) {
+    pushChange(changes, "strip_suffix", boolText(beforeSettings.parsing.stripSuffix), boolText(afterSettings.parsing.stripSuffix));
+  }
+  if (beforeSettings.parsing.suffix != afterSettings.parsing.suffix) pushChange(changes, "suffix", beforeSettings.parsing.suffix, afterSettings.parsing.suffix);
+  if (beforeSettings.parsing.normalizeSign != afterSettings.parsing.normalizeSign) {
+    pushChange(changes, "normalize_sign", boolText(beforeSettings.parsing.normalizeSign), boolText(afterSettings.parsing.normalizeSign));
+  }
+  if (beforeSettings.output.postAction != afterSettings.output.postAction) {
+    pushChange(changes, "post_action", postActionText(beforeSettings.output.postAction), postActionText(afterSettings.output.postAction));
+  }
+  if (beforeSettings.output.customSequence != afterSettings.output.customSequence) {
+    pushChange(changes, "custom_sequence", sequenceText(beforeSettings.output.customSequence), sequenceText(afterSettings.output.customSequence));
+  }
+  if (beforeConfig.connectOnStartup != afterConfig.connectOnStartup) {
+    pushChange(changes, "connect_on_startup", boolText(beforeConfig.connectOnStartup), boolText(afterConfig.connectOnStartup));
+  }
+  if (beforeConfig.startupMode != afterConfig.startupMode) pushChange(changes, "startup_mode", beforeConfig.startupMode, afterConfig.startupMode);
+  if (beforeConfig.startupPresetName != afterConfig.startupPresetName) {
+    pushChange(changes, "startup_name", beforeConfig.startupPresetName, afterConfig.startupPresetName);
+  }
+  if (beforeConfig.logMode != afterConfig.logMode) pushChange(changes, "log_mode", logModeText(beforeConfig.logMode), logModeText(afterConfig.logMode));
+  if (beforeConfig.logsFolder != afterConfig.logsFolder) pushChange(changes, "logs_folder", beforeConfig.logsFolder, afterConfig.logsFolder);
+
   if (changes.empty()) return {};
   std::string summary;
   for (std::size_t i = 0; i < changes.size(); ++i) {
-    if (i) summary += ", ";
+    if (i) summary += "; ";
     summary += changes[i];
+    if (summary.size() > 320) {
+      summary += " ...";
+      break;
+    }
   }
   return summary;
 }
@@ -323,8 +415,9 @@ void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveR
   ctx.controller->ApplySettings(nextSettings, nextConfig, false);
   LoadSettingsIntoControls(ctx, settingsHwnd);
   if (changedFieldCount > 0) {
-    std::string message = "Settings applied (runtime only): " + std::to_string(changedFieldCount) + " field(s) changed";
-    if (!changeSummary.empty()) message += " [" + changeSummary + "]";
+    std::string message = "Settings applied (runtime): ";
+    if (!changeSummary.empty()) message += changeSummary;
+    else message += std::to_string(changedFieldCount) + " field(s) changed";
     ctx.controller->LogMessage(message);
   } else if (!saveRequested) {
     ctx.controller->LogMessage("Settings apply requested: no changes detected.");
@@ -334,10 +427,12 @@ void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveR
     switch (saveResult.status) {
       case AppController::SaveConfigStatus::Created:
         ctx.controller->LogMessage("Configuration file created at: " + saveResult.path.string());
-        ctx.controller->LogMessage("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
+        ctx.controller->LogMessage("Configuration saved: " + (changeSummary.empty() ? std::to_string(saveResult.changedFieldCount) + " fields changed"
+                                                                                    : changeSummary));
         break;
       case AppController::SaveConfigStatus::Updated:
-        ctx.controller->LogMessage("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
+        ctx.controller->LogMessage("Configuration saved: " + (changeSummary.empty() ? std::to_string(saveResult.changedFieldCount) + " fields changed"
+                                                                                    : changeSummary));
         break;
       case AppController::SaveConfigStatus::Unchanged:
         ctx.controller->LogMessage("Configuration already up to date.");

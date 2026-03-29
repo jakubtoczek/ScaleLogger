@@ -2,6 +2,7 @@
 
 #ifdef _WIN32
 #include "app/AppController.hpp"
+#include "core/AppVersion.hpp"
 #include "core/ValueParser.hpp"
 #include "ui/AboutDialog.hpp"
 #include "ui/SettingsDialogLogic.hpp"
@@ -1325,8 +1326,8 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
   RegisterClassW(&wc);
 
-  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"ScaleLogger 0.96", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX |
-                                                                       WS_SIZEBOX,
+  const std::wstring mainWindowTitle = std::wstring(L"ScaleLogger ") + kAppVersionWide;
+  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, mainWindowTitle.c_str(), WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_SIZEBOX,
                               CW_USEDEFAULT, CW_USEDEFAULT, 930, 660, nullptr, nullptr, hInstance, nullptr);
 
   if (!hwnd) return 1;
@@ -1343,7 +1344,7 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   } else if (!cfg.lastUsedPresetName.empty()) {
     SetComboToText(g_ui.presetsCombo, ToWide(cfg.lastUsedPresetName));
   }
-  if (cfg.darkMode) AddLogLine("Dark mode is experimental in 0.96 and is disabled by default.");
+  if (cfg.darkMode) AddLogLine(std::string("Dark mode is experimental in ") + kAppVersion + " and is disabled by default.");
   const char* disableStartupConnect = std::getenv("SCALELOGGER_DISABLE_STARTUP_CONNECT");
   AddLogLine(std::string("TRACE: Env SCALELOGGER_DISABLE_STARTUP_CONNECT=") + (disableStartupConnect ? disableStartupConnect : "<unset>"));
   const bool startupConnectDisabledByEnv = disableStartupConnect && std::string(disableStartupConnect) == "1";

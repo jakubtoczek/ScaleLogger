@@ -51,6 +51,8 @@ Expected Results:
 - Config and config-selection folder are present under `%USERPROFILE%\ScaleLogger`.
 - Preset file is readable and uses the intended serial/parsing/output values for this test run.
 
+For early startup crashes before UI logging appears, inspect `%TEMP%\ScaleLogger_fatal.log`.
+
 ## 3) Validate startup config-selection load before auto-connect
 In `ScaleLogger.config.json`, set:
 - `connect_on_startup: true`
@@ -155,6 +157,7 @@ Expected Results:
 Mark readiness:
 - **Ready for expanded device/runtime testing** if all sections above pass.
 - **Not ready** if any blocker in build, launch, COM scan, serial receive/dispatch, parse->inject, after-send action, startup config-selection/auto-connect, or release script.
+- If failure happens before normal UI logging initializes, attach `%TEMP%\ScaleLogger_fatal.log` to the test notes.
 
 ## Known non-blocking items for this phase
 - Config JSON handling uses embedded lightweight parser/writer code.

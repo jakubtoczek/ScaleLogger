@@ -35,6 +35,7 @@ The prior implementation behavior was derived from:
 ## Intentional differences in this commit
 - This commit introduces a native C++ architecture baseline and core-tested modules.
 - Full production-complete Win32 dialogs/event wiring from Python parity are scaffolded and documented, with the core parser/config/sequence logic implemented and tested.
+- Native startup now emits early forensic traces to `%TEMP%\ScaleLogger_fatal.log` before the main UI log is available, including fatal crash breadcrumbs from the unhandled-exception filter.
 
 ## Config and preset compatibility notes
 - Config schema keeps keys:
