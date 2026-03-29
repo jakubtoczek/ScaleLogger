@@ -121,6 +121,32 @@ void LoadSettingsIntoControls(HWND settingsHwnd);
 std::wstring GetControlText(HWND control);
 
 LRESULT CALLBACK EditableComboEditSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
+  auto comboNameFromId = [](int id) -> const char* {
+    switch (id) {
+      case kSerialPortCombo: return "Port";
+      case kSerialBaudCombo: return "Baud";
+      case kSerialDataBitsCombo: return "DataBits";
+      case kSerialParityCombo: return "Parity";
+      case kSerialStopBitsCombo: return "StopBits";
+      case kSerialTimeoutCombo: return "Timeout";
+      case kSerialEolCombo: return "LineEnding";
+      default: return "Unknown";
+    }
+  };
+  auto logComboState = [&](const char* phase, const char* messageName) {
+    HWND combo = GetParent(hwnd);
+    const int comboId = combo ? GetDlgCtrlID(combo) : 0;
+    DWORD start = 0;
+    DWORD end = 0;
+    SendMessageW(hwnd, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
+    const int length = GetWindowTextLengthW(hwnd);
+    std::ostringstream oss;
+    oss << "DEBUG_COMBO: field=" << comboNameFromId(comboId) << "; phase=" << phase << "; msg=" << messageName
+        << "; edit_hwnd=0x" << std::hex << reinterpret_cast<std::uintptr_t>(hwnd) << "; combo_hwnd=0x"
+        << reinterpret_cast<std::uintptr_t>(combo) << "; focus_hwnd=0x" << reinterpret_cast<std::uintptr_t>(GetFocus()) << std::dec
+        << "; len=" << length << "; sel=" << start << ".." << end;
+    AddLogLine(oss.str());
+  };
   const auto normalizeIfFullySelected = [hwnd]() {
     DWORD start = 0;
     DWORD end = 0;
@@ -134,12 +160,26 @@ LRESULT CALLBACK EditableComboEditSubclassProc(HWND hwnd, UINT msg, WPARAM wPara
   switch (msg) {
     case WM_SETFOCUS:
     case WM_LBUTTONUP:
+      logComboState("PRE", msg == WM_SETFOCUS ? "WM_SETFOCUS" : "WM_LBUTTONUP");
       PostMessageW(hwnd, kMsgComboEditNormalizeSelection, 0, 0);
+      logComboState("POST", msg == WM_SETFOCUS ? "WM_SETFOCUS" : "WM_LBUTTONUP");
+      break;
+    case WM_KILLFOCUS:
+      logComboState("PRE", "WM_KILLFOCUS");
+      break;
+    case WM_LBUTTONDOWN:
+      logComboState("PRE", "WM_LBUTTONDOWN");
+      break;
+    case WM_MOUSEACTIVATE:
+      logComboState("PRE", "WM_MOUSEACTIVATE");
       break;
     case kMsgComboEditNormalizeSelection:
+      logComboState("PRE", "kMsgComboEditNormalizeSelection");
       normalizeIfFullySelected();
+      logComboState("POST", "kMsgComboEditNormalizeSelection");
       return 0;
     case WM_NCDESTROY:
+      logComboState("PRE", "WM_NCDESTROY");
       RemoveWindowSubclass(hwnd, EditableComboEditSubclassProc, 1);
       break;
     default: break;
@@ -419,6 +459,25 @@ void PopulateComboWithValues(HWND combo, const std::vector<std::wstring>& values
 
 void SetComboToText(HWND combo, const std::wstring& text) {
   if (text.empty()) return;
+  auto comboNameFromId = [](int id) -> const char* {
+    switch (id) {
+      case kSerialPortCombo: return "Port";
+      case kSerialBaudCombo: return "Baud";
+      case kSerialDataBitsCombo: return "DataBits";
+      case kSerialParityCombo: return "Parity";
+      case kSerialStopBitsCombo: return "StopBits";
+      case kSerialTimeoutCombo: return "Timeout";
+      case kSerialEolCombo: return "LineEnding";
+      default: return "Other";
+    }
+  };
+  {
+    std::ostringstream oss;
+    oss << "DEBUG_COMBO: field=" << comboNameFromId(GetDlgCtrlID(combo)) << "; phase=CALL; msg=SetComboToText"
+        << "; combo_hwnd=0x" << std::hex << reinterpret_cast<std::uintptr_t>(combo) << std::dec
+        << "; text_len=" << text.size();
+    AddLogLine(oss.str());
+  }
   const LONG_PTR style = GetWindowLongPtrW(combo, GWL_STYLE);
   if ((style & CBS_DROPDOWNLIST) == 0) {
     SetWindowTextW(combo, text.c_str());
@@ -470,6 +529,11 @@ void FinalizeEditableComboFirstPaint(HWND settingsHwnd) {
     info.cbSize = sizeof(COMBOBOXINFO);
     if (!GetComboBoxInfo(combo, &info) || !info.hwndItem) continue;
     SetWindowSubclass(info.hwndItem, EditableComboEditSubclassProc, 1, 0);
+    std::ostringstream oss;
+    oss << "DEBUG_COMBO: field_id=" << comboId << "; phase=CALL; msg=SetWindowSubclass"
+        << "; combo_hwnd=0x" << std::hex << reinterpret_cast<std::uintptr_t>(combo)
+        << "; edit_hwnd=0x" << reinterpret_cast<std::uintptr_t>(info.hwndItem) << std::dec;
+    AddLogLine(oss.str());
   }
 }
 
@@ -1013,6 +1077,21 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       return 0;
     }
     case WM_COMMAND: {
+      const WORD commandId = LOWORD(wParam);
+      const WORD notifyCode = HIWORD(wParam);
+      if (commandId == kSerialPortCombo || commandId == kSerialBaudCombo || commandId == kSerialDataBitsCombo || commandId == kSerialParityCombo ||
+          commandId == kSerialStopBitsCombo || commandId == kSerialTimeoutCombo || commandId == kSerialEolCombo) {
+        if (notifyCode == CBN_SETFOCUS || notifyCode == CBN_KILLFOCUS || notifyCode == CBN_EDITCHANGE || notifyCode == CBN_SELCHANGE) {
+          std::ostringstream oss;
+          const char* notifyName = notifyCode == CBN_SETFOCUS   ? "CBN_SETFOCUS"
+                                   : notifyCode == CBN_KILLFOCUS ? "CBN_KILLFOCUS"
+                                   : notifyCode == CBN_EDITCHANGE ? "CBN_EDITCHANGE"
+                                                                   : "CBN_SELCHANGE";
+          oss << "DEBUG_COMBO: field_id=" << commandId << "; phase=NOTIFY; msg=" << notifyName << "; control_hwnd=0x" << std::hex
+              << reinterpret_cast<std::uintptr_t>(lParam) << "; focus_hwnd=0x" << reinterpret_cast<std::uintptr_t>(GetFocus()) << std::dec;
+          AddLogLine(oss.str());
+        }
+      }
       switch (LOWORD(wParam)) {
         case kSettingsApply:
           ApplySettingsFromControls(hwnd, false);
