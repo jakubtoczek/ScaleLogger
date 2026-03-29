@@ -299,12 +299,12 @@ void ApplySettingsTabTheme(HWND settingsTab) {
   if (!settingsTab) return;
   if (IsDarkModeEnabled()) {
     SetWindowTheme(settingsTab, L"", L"");
-    TabCtrl_SetBkColor(settingsTab, RGB(32, 32, 32));
-    TabCtrl_SetTextColor(settingsTab, RGB(235, 235, 235));
+    SendMessageW(settingsTab, TCM_SETBKCOLOR, 0, static_cast<LPARAM>(RGB(32, 32, 32)));
+    SendMessageW(settingsTab, TCM_SETTEXTCOLOR, 0, static_cast<LPARAM>(RGB(235, 235, 235)));
   } else {
     SetWindowTheme(settingsTab, nullptr, nullptr);
-    TabCtrl_SetBkColor(settingsTab, GetSysColor(COLOR_BTNFACE));
-    TabCtrl_SetTextColor(settingsTab, GetSysColor(COLOR_BTNTEXT));
+    SendMessageW(settingsTab, TCM_SETBKCOLOR, 0, static_cast<LPARAM>(GetSysColor(COLOR_BTNFACE)));
+    SendMessageW(settingsTab, TCM_SETTEXTCOLOR, 0, static_cast<LPARAM>(GetSysColor(COLOR_BTNTEXT)));
   }
   InvalidateRect(settingsTab, nullptr, TRUE);
 }
