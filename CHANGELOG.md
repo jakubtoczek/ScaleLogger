@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.97 - 2026-03-29
+
+- fixed Windows configure robustness when `RC` is exported as invalid numeric values (`0`/`1`) by clearing override paths before compiler detection and in release/preset entry points
+- switched resource version metadata to a configured RC template sourced from CMake project version
+- split config and settings dialog logic into `ConfigService` and `SettingsDialogLogic`, and restored user-facing settings apply/save/no-change logging
+- tightened serial settings sanitization after startup config-selection load and during runtime apply to prevent invalid timeout values from persisting as `0.00`
+
 ## 0.96 - 2026-03-24
 
 - cleaned repository to align with the native C++20/Win32/CMake baseline

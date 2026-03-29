@@ -4,7 +4,7 @@ Use this template for native Windows release artifacts.
 
 ```text
 App name: ScaleLogger
-Version: 0.96
+Version: 0.97
 Build date/time (UTC):
 Windows version/build:
 Compiler: MSVC (Visual Studio 2026)

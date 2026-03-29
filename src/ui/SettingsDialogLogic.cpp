@@ -1,6 +1,8 @@
 #include "ui/SettingsDialogLogic.hpp"
 
 #ifdef _WIN32
+#include "app/ConfigService.hpp"
+
 #include <Windows.h>
 
 #include <algorithm>
@@ -88,6 +90,28 @@ bool TryParseFloat(const std::wstring& text, float& out) {
     out = std::stof(text, &idx);
     return idx == text.size();
   } catch (...) { return false; }
+}
+
+std::string BuildChangeSummary(const AppSettings& beforeSettings, const AppSettings& afterSettings, const AppConfig& beforeConfig,
+                               const AppConfig& afterConfig) {
+  std::vector<std::string> changes;
+  if (beforeSettings.serial.port != afterSettings.serial.port) changes.push_back("port");
+  if (beforeSettings.serial.baudRate != afterSettings.serial.baudRate) changes.push_back("baud");
+  if (beforeSettings.serial.timeoutSeconds != afterSettings.serial.timeoutSeconds) changes.push_back("timeout");
+  if (beforeSettings.parsing.mode != afterSettings.parsing.mode) changes.push_back("parse mode");
+  if (beforeSettings.output.postAction != afterSettings.output.postAction) changes.push_back("post-action");
+  if (beforeConfig.connectOnStartup != afterConfig.connectOnStartup) changes.push_back("startup connect");
+  if (beforeConfig.logMode != afterConfig.logMode) changes.push_back("log mode");
+  if (beforeConfig.darkMode != afterConfig.darkMode) changes.push_back("dark mode");
+  if (beforeConfig.presetsFolder != afterConfig.presetsFolder) changes.push_back("presets folder");
+  if (beforeConfig.logsFolder != afterConfig.logsFolder) changes.push_back("logs folder");
+  if (changes.empty()) return {};
+  std::string summary;
+  for (std::size_t i = 0; i < changes.size(); ++i) {
+    if (i) summary += ", ";
+    summary += changes[i];
+  }
+  return summary;
 }
 
 } // namespace
@@ -261,8 +285,10 @@ bool ReadSerialSettingsFromControls(const Context& ctx, HWND settingsHwnd, AppSe
 }
 
 void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveRequested) {
-  AppSettings nextSettings = ctx.controller->Settings();
-  AppConfig nextConfig = ctx.controller->Config();
+  const AppSettings beforeSettings = ctx.controller->Settings();
+  const AppConfig beforeConfig = ctx.controller->Config();
+  AppSettings nextSettings = beforeSettings;
+  AppConfig nextConfig = beforeConfig;
   std::string serialError;
   if (!ReadSerialSettingsFromControls(ctx, settingsHwnd, nextSettings, serialError)) {
     ctx.addLogLine("ERROR: " + serialError);
@@ -290,12 +316,36 @@ void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveR
   nextConfig.connectOnStartup = SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
   nextConfig.darkMode = SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
 
+  const int changedFieldCount =
+      ConfigService::CountSettingsDifferences(beforeSettings, nextSettings) + ConfigService::CountConfigDifferences(beforeConfig, nextConfig);
+  const std::string changeSummary = BuildChangeSummary(beforeSettings, nextSettings, beforeConfig, nextConfig);
+
   ctx.controller->ApplySettings(nextSettings, nextConfig, false);
   LoadSettingsIntoControls(ctx, settingsHwnd);
+  if (changedFieldCount > 0) {
+    std::string message = "Settings applied (runtime only): " + std::to_string(changedFieldCount) + " field(s) changed";
+    if (!changeSummary.empty()) message += " [" + changeSummary + "]";
+    ctx.controller->LogMessage(message);
+  } else if (!saveRequested) {
+    ctx.controller->LogMessage("Settings apply requested: no changes detected.");
+  }
   if (saveRequested) {
     const auto saveResult = ctx.controller->SaveResolvedConfiguration();
-    if (saveResult.status == AppController::SaveConfigStatus::Failed) {
-      ctx.controller->LogMessage("Failed to save configuration file: " + saveResult.path.string(), true);
+    switch (saveResult.status) {
+      case AppController::SaveConfigStatus::Created:
+        ctx.controller->LogMessage("Configuration file created at: " + saveResult.path.string());
+        ctx.controller->LogMessage("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
+        break;
+      case AppController::SaveConfigStatus::Updated:
+        ctx.controller->LogMessage("Configuration saved (" + std::to_string(saveResult.changedFieldCount) + " fields changed).");
+        break;
+      case AppController::SaveConfigStatus::Unchanged:
+        ctx.controller->LogMessage("Configuration already up to date.");
+        break;
+      case AppController::SaveConfigStatus::Failed:
+      default:
+        ctx.controller->LogMessage("Failed to save configuration file: " + saveResult.path.string(), true);
+        break;
     }
   }
   InvalidateRect(ctx.mainWindow, nullptr, TRUE);

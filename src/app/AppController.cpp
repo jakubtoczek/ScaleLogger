@@ -65,6 +65,17 @@ std::string UpperAscii(std::string text) {
 
 bool PortNamesMatch(const std::string& lhs, const std::string& rhs) { return UpperAscii(lhs) == UpperAscii(rhs); }
 
+void SanitizeSerialSettings(AppSettings& settings) {
+  if (settings.serial.port.empty()) settings.serial.port = "COM6";
+  if (settings.serial.baudRate <= 0) settings.serial.baudRate = 1200;
+  if (settings.serial.dataBits < 5 || settings.serial.dataBits > 8) settings.serial.dataBits = 7;
+  const char parity = static_cast<char>(std::toupper(static_cast<unsigned char>(settings.serial.parity)));
+  settings.serial.parity = (parity == 'N' || parity == 'E' || parity == 'O') ? parity : 'O';
+  if (!(settings.serial.stopBits == 1.0F || settings.serial.stopBits == 1.5F || settings.serial.stopBits == 2.0F)) settings.serial.stopBits = 1.0F;
+  if (settings.serial.timeoutSeconds <= 0.0F) settings.serial.timeoutSeconds = 1.0F;
+  if (settings.serial.eol.empty()) settings.serial.eol = "\r\n";
+}
+
 } // namespace
 
 AppController::AppController(std::filesystem::path dataRoot)
@@ -97,14 +108,7 @@ void AppController::Initialize() {
       }
     }
 
-    if (settings_.serial.port.empty()) settings_.serial.port = "COM6";
-    if (settings_.serial.baudRate <= 0) settings_.serial.baudRate = 1200;
-    if (settings_.serial.dataBits < 5 || settings_.serial.dataBits > 8) settings_.serial.dataBits = 7;
-    const char parity = static_cast<char>(std::toupper(static_cast<unsigned char>(settings_.serial.parity)));
-    settings_.serial.parity = (parity == 'N' || parity == 'E' || parity == 'O') ? parity : 'O';
-    if (!(settings_.serial.stopBits == 1.0F || settings_.serial.stopBits == 1.5F || settings_.serial.stopBits == 2.0F)) settings_.serial.stopBits = 1.0F;
-    if (settings_.serial.timeoutSeconds <= 0.0F) settings_.serial.timeoutSeconds = 1.0F;
-    if (settings_.serial.eol.empty()) settings_.serial.eol = "\r\n";
+    SanitizeSerialSettings(settings_);
 
     config_.configFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
     config_.presetsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.presetsFolder).string();
@@ -144,6 +148,7 @@ void AppController::Initialize() {
         try {
           bool usedLegacyCompatibilityMapping = false;
           settings_ = LoadPreset(startupPresetPath, &usedLegacyCompatibilityMapping);
+          SanitizeSerialSettings(settings_);
           startupSerialSource = startupPresetSource + " '" + requestedStartupPreset + "'";
           EmitLog("Loaded startup preset: " + startupPresetPath.filename().string());
           if (usedLegacyCompatibilityMapping) {
@@ -266,6 +271,8 @@ void AppController::Disconnect() {
 }
 
 void AppController::ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig, bool persistToDisk) {
+  AppSettings resolvedSettings = nextSettings;
+  SanitizeSerialSettings(resolvedSettings);
   AppConfig resolvedConfig = nextConfig;
   ConfigService::SanitizeConfig(resolvedConfig);
   resolvedConfig.configFolder = ConfigService::ResolveConfiguredPath(dataRoot_, resolvedConfig.configFolder).string();
@@ -273,17 +280,17 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
   resolvedConfig.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, resolvedConfig.logsFolder).string();
 
   const bool settingsChanged =
-      settings_.serial.port != nextSettings.serial.port || settings_.serial.baudRate != nextSettings.serial.baudRate ||
-      settings_.serial.dataBits != nextSettings.serial.dataBits || settings_.serial.parity != nextSettings.serial.parity ||
-      settings_.serial.stopBits != nextSettings.serial.stopBits || settings_.serial.timeoutSeconds != nextSettings.serial.timeoutSeconds ||
-      settings_.serial.eol != nextSettings.serial.eol || settings_.parsing.mode != nextSettings.parsing.mode ||
-      settings_.parsing.trimWhitespace != nextSettings.parsing.trimWhitespace ||
-      settings_.parsing.stripSuffix != nextSettings.parsing.stripSuffix || settings_.parsing.suffix != nextSettings.parsing.suffix ||
-      settings_.parsing.normalizeSign != nextSettings.parsing.normalizeSign ||
-      settings_.parsing.preservePlusSign != nextSettings.parsing.preservePlusSign ||
-      settings_.parsing.preserveMinusSign != nextSettings.parsing.preserveMinusSign ||
-      settings_.parsing.numericValidation != nextSettings.parsing.numericValidation ||
-      settings_.output.postAction != nextSettings.output.postAction || settings_.output.customSequence != nextSettings.output.customSequence;
+      settings_.serial.port != resolvedSettings.serial.port || settings_.serial.baudRate != resolvedSettings.serial.baudRate ||
+      settings_.serial.dataBits != resolvedSettings.serial.dataBits || settings_.serial.parity != resolvedSettings.serial.parity ||
+      settings_.serial.stopBits != resolvedSettings.serial.stopBits || settings_.serial.timeoutSeconds != resolvedSettings.serial.timeoutSeconds ||
+      settings_.serial.eol != resolvedSettings.serial.eol || settings_.parsing.mode != resolvedSettings.parsing.mode ||
+      settings_.parsing.trimWhitespace != resolvedSettings.parsing.trimWhitespace ||
+      settings_.parsing.stripSuffix != resolvedSettings.parsing.stripSuffix || settings_.parsing.suffix != resolvedSettings.parsing.suffix ||
+      settings_.parsing.normalizeSign != resolvedSettings.parsing.normalizeSign ||
+      settings_.parsing.preservePlusSign != resolvedSettings.parsing.preservePlusSign ||
+      settings_.parsing.preserveMinusSign != resolvedSettings.parsing.preserveMinusSign ||
+      settings_.parsing.numericValidation != resolvedSettings.parsing.numericValidation ||
+      settings_.output.postAction != resolvedSettings.output.postAction || settings_.output.customSequence != resolvedSettings.output.customSequence;
   const bool configChanged =
       config_.configFolder != resolvedConfig.configFolder || config_.configFileName != resolvedConfig.configFileName ||
       config_.presetsFolder != resolvedConfig.presetsFolder || config_.logsFolder != resolvedConfig.logsFolder ||
@@ -294,10 +301,10 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
       config_.startupPresetName != resolvedConfig.startupPresetName || config_.lastUsedPresetName != resolvedConfig.lastUsedPresetName;
   if (!settingsChanged && !configChanged) return;
 
-  const bool reconnect = serial_.IsConnected() && SerialSettingsRequireReconnect(settings_.serial, nextSettings.serial);
+  const bool reconnect = serial_.IsConnected() && SerialSettingsRequireReconnect(settings_.serial, resolvedSettings.serial);
   const bool logDestinationChanged = config_.logsFolder != resolvedConfig.logsFolder || config_.logMode != resolvedConfig.logMode ||
                                      config_.logFilePattern != resolvedConfig.logFilePattern;
-  settings_ = nextSettings;
+  settings_ = resolvedSettings;
   config_ = resolvedConfig;
   configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
   if (logDestinationChanged) {
