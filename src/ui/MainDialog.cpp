@@ -93,6 +93,7 @@ struct UiState {
   HWND settingsButton{nullptr};
   HWND aboutButton{nullptr};
   HWND connectButton{nullptr};
+  HWND connectionIndicator{nullptr};
   HWND connectionStatus{nullptr};
   HWND logEdit{nullptr};
   HWND settingsWindow{nullptr};
@@ -109,6 +110,8 @@ struct UiState {
 
 UiState g_ui;
 HBRUSH g_darkBrush = CreateSolidBrush(RGB(32, 32, 32));
+enum class ConnectionUiState { Disconnected, Connecting, Connected };
+ConnectionUiState g_connectionUiState = ConnectionUiState::Disconnected;
 void LoadSettingsIntoControls(HWND settingsHwnd);
 std::wstring GetControlText(HWND control);
 void AddLogLine(const std::string& text);
@@ -313,10 +316,20 @@ void PostConnectionStateToUiThread(bool connected) {
   PostMessageW(g_ui.mainWindow, kMsgUiConnectionState, connected ? 1 : 0, 0);
 }
 
-void UpdateConnectionUi(bool connected) {
-  if (!g_ui.connectButton || !g_ui.connectionStatus) return;
+void UpdateConnectionUi(ConnectionUiState state) {
+  if (!g_ui.connectButton || !g_ui.connectionStatus || !g_ui.connectionIndicator) return;
+  g_connectionUiState = state;
+  const bool connected = state == ConnectionUiState::Connected;
   SetWindowTextW(g_ui.connectButton, connected ? L"Disconnect" : L"Connect");
-  SetWindowTextW(g_ui.connectionStatus, connected ? L"Connected" : L"Disconnected");
+  const wchar_t* label = state == ConnectionUiState::Connected ? L"Connected"
+                        : (state == ConnectionUiState::Connecting ? L"Connecting" : L"Disconnected");
+  SetWindowTextW(g_ui.connectionStatus, label);
+  SetWindowTextW(g_ui.connectionIndicator, L"\x25CF");
+  InvalidateRect(g_ui.connectionIndicator, nullptr, TRUE);
+}
+
+void UpdateConnectionUi(bool connected) {
+  UpdateConnectionUi(connected ? ConnectionUiState::Connected : ConnectionUiState::Disconnected);
 }
 
 std::string DescribeLastErrorEnglish(DWORD error) {
@@ -343,14 +356,16 @@ void LayoutMainControls(HWND hwnd) {
   bool showAbout = true;
   bool showSettings = true;
   bool showConnect = true;
+  bool showIndicator = true;
   bool showStatus = true;
 
   auto requiredWidth = [&]() {
     int total = margin * 2;
+    if (showIndicator) total += 14 + gap;
+    if (showStatus) total += 120 + gap;
     if (showConnect) total += 102 + gap;
     if (showSettings) total += 82 + gap;
     if (showAbout) total += 64 + gap;
-    if (showStatus) total += 130 + gap;
     return total;
   };
 
@@ -371,20 +386,29 @@ void LayoutMainControls(HWND hwnd) {
       showStatus = false;
       continue;
     }
+    if (showIndicator) {
+      showIndicator = false;
+      continue;
+    }
     break;
   }
 
   ShowWindow(g_ui.connectButton, showConnect ? SW_SHOW : SW_HIDE);
   ShowWindow(g_ui.settingsButton, showSettings ? SW_SHOW : SW_HIDE);
   ShowWindow(g_ui.aboutButton, showAbout ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_ui.connectionIndicator, showIndicator ? SW_SHOW : SW_HIDE);
   ShowWindow(g_ui.connectionStatus, showStatus ? SW_SHOW : SW_HIDE);
 
-  int right = rc.right - margin;
-  if (showAbout) {
-    right -= 64;
-    MoveWindow(g_ui.aboutButton, right, top, 64, rowH, TRUE);
-    right -= gap;
+  int left = margin;
+  if (showIndicator) {
+    MoveWindow(g_ui.connectionIndicator, left, top + 5, 14, 20, TRUE);
+    left += 14 + gap;
   }
+  if (showStatus) {
+    MoveWindow(g_ui.connectionStatus, left, top + 4, 120, 22, TRUE);
+  }
+
+  int right = rc.right - margin;
   if (showSettings) {
     right -= 82;
     MoveWindow(g_ui.settingsButton, right, top, 82, rowH, TRUE);
@@ -395,9 +419,9 @@ void LayoutMainControls(HWND hwnd) {
     MoveWindow(g_ui.connectButton, right, top, 102, rowH, TRUE);
     right -= gap;
   }
-  if (showStatus) {
-    right -= 130;
-    MoveWindow(g_ui.connectionStatus, right, top + 4, 130, 22, TRUE);
+  if (showAbout) {
+    right -= 64;
+    MoveWindow(g_ui.aboutButton, right, top, 64, rowH, TRUE);
   }
 
   MoveWindow(g_ui.logEdit, margin, 52, rc.right - margin * 2, rc.bottom - 68, TRUE);
@@ -512,6 +536,7 @@ void FinalizeSettingsDisplay(HWND settingsHwnd) {
     g_ui.settingsNormalizeFocusPending = false;
   }
   RedrawWindow(settingsHwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_FRAME);
+  PostMessageW(settingsHwnd, kMsgSettingsFinalizeCombos, 0, 0);
 }
 
 std::string ParseEolFromUiText(const std::wstring& eolText) {
@@ -624,6 +649,7 @@ void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested) {
 }
 
 void CreateTopRow(HWND hwnd) {
+  g_ui.connectionIndicator = CreateWindowW(L"STATIC", L"\x25CF", WS_CHILD | WS_VISIBLE, 16, 19, 14, 20, hwnd, nullptr, nullptr, nullptr);
   g_ui.connectionStatus = CreateWindowW(L"STATIC", L"Disconnected", WS_CHILD | WS_VISIBLE, 500, 17, 120, 22, hwnd,
                                         reinterpret_cast<HMENU>(kLblConnectionStatus), nullptr, nullptr);
   g_ui.connectButton = CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 628, 14, 100, 28, hwnd,
@@ -1109,6 +1135,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       break;
     case WM_SIZE:
       LayoutSettingsWindow(hwnd);
+      PostMessageW(hwnd, kMsgSettingsFinalizeCombos, 0, 0);
       PostMessageW(hwnd, kMsgSettingsFinalizeDisplay, 0, 0);
       return 0;
     case WM_CTLCOLORSTATIC:
@@ -1259,6 +1286,15 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORLISTBOX:
     case WM_CTLCOLORBTN: {
+      if (reinterpret_cast<HWND>(lParam) == g_ui.connectionIndicator) {
+        auto* dc = reinterpret_cast<HDC>(wParam);
+        COLORREF indicatorColor = RGB(196, 64, 64);
+        if (g_connectionUiState == ConnectionUiState::Connected) indicatorColor = RGB(56, 166, 84);
+        else if (g_connectionUiState == ConnectionUiState::Connecting) indicatorColor = RGB(197, 160, 27);
+        SetTextColor(dc, indicatorColor);
+        SetBkMode(dc, TRANSPARENT);
+        return reinterpret_cast<LRESULT>(IsDarkModeEnabled() ? g_darkBrush : GetSysColorBrush(COLOR_BTNFACE));
+      }
       const auto brush = HandleDarkCtlColor(reinterpret_cast<HDC>(wParam));
       if (brush != 0) return brush;
       break;
@@ -1273,8 +1309,12 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
       const int id = LOWORD(wParam);
       switch (id) {
         case kBtnConnect:
-          if (g_ui.controller->IsConnected()) g_ui.controller->Disconnect();
-          else g_ui.controller->Connect();
+          if (g_ui.controller->IsConnected()) {
+            g_ui.controller->Disconnect();
+          } else {
+            UpdateConnectionUi(ConnectionUiState::Connecting);
+            g_ui.controller->Connect();
+          }
           return 0;
         case kBtnSettings:
           if (HIWORD(wParam) == BN_CLICKED) OpenSettingsWindow(g_ui.hInstance);
