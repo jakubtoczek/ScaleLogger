@@ -277,6 +277,52 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
   }
 }
 
+AppController::SaveConfigResult AppController::SaveResolvedConfiguration() {
+  SaveConfigResult result{};
+  result.path = configPath_;
+
+  std::error_code ec;
+  const bool existedBeforeSave = std::filesystem::exists(result.path, ec) && !ec;
+
+  AppConfig diskConfig{};
+  AppSettings diskSettings{};
+  if (existedBeforeSave) {
+    diskConfig = LoadConfig(result.path);
+    bool usedLegacyCompatibilityMapping = false;
+    diskSettings = LoadConfigSettings(result.path, &usedLegacyCompatibilityMapping);
+    ConfigService::SanitizeConfig(diskConfig);
+    SanitizeSerialSettings(diskSettings);
+  } else {
+    diskConfig = AppConfig{};
+    diskSettings = AppSettings{};
+    ConfigService::SanitizeConfig(diskConfig);
+    SanitizeSerialSettings(diskSettings);
+  }
+
+  AppConfig resolvedConfig = config_;
+  AppSettings resolvedSettings = settings_;
+  ConfigService::SanitizeConfig(resolvedConfig);
+  SanitizeSerialSettings(resolvedSettings);
+
+  result.changedFieldCount =
+      ConfigService::CountConfigDifferences(diskConfig, resolvedConfig) + ConfigService::CountSettingsDifferences(diskSettings, resolvedSettings);
+
+  if (result.changedFieldCount == 0 && existedBeforeSave) {
+    result.status = SaveConfigStatus::Unchanged;
+    return result;
+  }
+
+  if (!SaveConfig(result.path, resolvedConfig, &resolvedSettings)) {
+    result.status = SaveConfigStatus::Failed;
+    return result;
+  }
+
+  config_ = resolvedConfig;
+  settings_ = resolvedSettings;
+  result.status = existedBeforeSave ? SaveConfigStatus::Updated : SaveConfigStatus::Created;
+  return result;
+}
+
 std::vector<std::string> AppController::ScanPorts() const { return ScanComPorts(); }
 
 bool AppController::TestReceive(const SerialSettings& settings, std::string& receivedLine, std::string& errorMessage) {
