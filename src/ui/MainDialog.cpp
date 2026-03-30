@@ -1367,6 +1367,16 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 }
 } // namespace
 
+int ProbeMainDialogBasic() {
+  OutputDebugStringA("TRACE: ProbeMainDialogBasic entered\n");
+  return 101;
+}
+
+int ProbeMainDialogTraceEarly() {
+  TraceEarly("TRACE: ProbeMainDialogTraceEarly entered");
+  return 102;
+}
+
 int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   TraceEarly("TRACE: RunMainDialog function entry A");
   TraceEarly("TRACE: Before first TraceEarly self-test");
