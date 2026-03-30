@@ -12,6 +12,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(NOT DEFINED SCALELOGGER_BUILD_TAG OR SCALELOGGER_BUILD_TAG STREQUAL "")
+  set(SCALELOGGER_BUILD_TAG "unknown")
+endif()
+
 if(NOT WIN32)
   message(WARNING "ScaleLogger native app targets Windows. Parser/config tests still build cross-platform.")
 endif()
@@ -57,7 +61,7 @@ if(WIN32)
   )
   target_include_directories(ScaleLogger PRIVATE src)
   target_link_libraries(ScaleLogger PRIVATE scalelogger_core)
-  target_compile_definitions(ScaleLogger PRIVATE UNICODE _UNICODE)
+  target_compile_definitions(ScaleLogger PRIVATE UNICODE _UNICODE SCALELOGGER_BUILD_TAG="${SCALELOGGER_BUILD_TAG}")
 endif()
 
 add_executable(scalelogger_tests
