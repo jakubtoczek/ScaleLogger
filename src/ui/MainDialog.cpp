@@ -316,8 +316,12 @@ void ApplySettingsTabTheme(HWND settingsTab) {
   if (!settingsTab) return;
   if (IsDarkModeEnabled()) {
     SetWindowTheme(settingsTab, L"", L"");
+    SendMessageW(settingsTab, TCM_SETBKCOLOR, 0, static_cast<LPARAM>(RGB(32, 32, 32)));
+    SendMessageW(settingsTab, TCM_SETTEXTBKCOLOR, 0, static_cast<LPARAM>(RGB(32, 32, 32)));
   } else {
     SetWindowTheme(settingsTab, nullptr, nullptr);
+    SendMessageW(settingsTab, TCM_SETBKCOLOR, 0, static_cast<LPARAM>(GetSysColor(COLOR_BTNFACE)));
+    SendMessageW(settingsTab, TCM_SETTEXTBKCOLOR, 0, static_cast<LPARAM>(CLR_DEFAULT));
   }
   InvalidateRect(settingsTab, nullptr, TRUE);
 }
@@ -1078,13 +1082,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       RECT rc{};
       GetClientRect(hwnd, &rc);
       FillRect(reinterpret_cast<HDC>(wParam), &rc, g_darkBrush);
-      if (g_ui.settingsTab) {
-        RECT tabClient{};
-        GetWindowRect(g_ui.settingsTab, &tabClient);
-        MapWindowPoints(HWND_DESKTOP, hwnd, reinterpret_cast<LPPOINT>(&tabClient), 2);
-        TabCtrl_AdjustRect(g_ui.settingsTab, FALSE, &tabClient);
-        FillRect(reinterpret_cast<HDC>(wParam), &tabClient, g_darkBrush);
-      }
       return 1;
     }
     case WM_CTLCOLORSTATIC:
