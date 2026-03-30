@@ -316,12 +316,8 @@ void ApplySettingsTabTheme(HWND settingsTab) {
   if (!settingsTab) return;
   if (IsDarkModeEnabled()) {
     SetWindowTheme(settingsTab, L"", L"");
-    TabCtrl_SetBkColor(settingsTab, RGB(32, 32, 32));
-    TabCtrl_SetTextBkColor(settingsTab, RGB(32, 32, 32));
   } else {
     SetWindowTheme(settingsTab, nullptr, nullptr);
-    TabCtrl_SetBkColor(settingsTab, GetSysColor(COLOR_BTNFACE));
-    TabCtrl_SetTextBkColor(settingsTab, GetSysColor(COLOR_BTNFACE));
   }
   InvalidateRect(settingsTab, nullptr, TRUE);
 }
@@ -1215,22 +1211,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       PostMessageW(hwnd, kMsgSettingsFinalizeCombos, 0, 0);
       PostMessageW(hwnd, kMsgSettingsFinalizeDisplay, 0, 0);
       return 0;
-    case WM_CTLCOLORSTATIC:
-    case WM_CTLCOLOREDIT:
-    case WM_CTLCOLORLISTBOX:
-    case WM_CTLCOLORBTN: {
-      const auto brush = HandleDarkCtlColor(reinterpret_cast<HDC>(wParam));
-      if (brush != 0) return brush;
-      break;
-    }
-    case WM_ERASEBKGND:
-      if (IsDarkModeEnabled()) {
-        RECT rcBk{};
-        GetClientRect(hwnd, &rcBk);
-        FillRect(reinterpret_cast<HDC>(wParam), &rcBk, g_darkBrush);
-        return 1;
-      }
-      break;
     case WM_GETMINMAXINFO: {
       auto* mm = reinterpret_cast<MINMAXINFO*>(lParam);
       mm->ptMinTrackSize.x = 700;
