@@ -1377,7 +1377,8 @@ int ProbeMainDialogTraceEarly() {
   return 102;
 }
 
-int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
+static int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarly("TRACE: RunMainDialogImpl entered");
   TraceEarly("TRACE: RunMainDialog function entry A");
   TraceEarly("TRACE: Before first TraceEarly self-test");
   TraceEarly("TRACE: After first TraceEarly self-test");
@@ -1479,6 +1480,11 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   if (g_ui.controller) g_ui.controller->LogMessage("Session end: normal shutdown");
   g_ui.controller.reset();
   return static_cast<int>(msg.wParam);
+}
+
+int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarly("TRACE: RunMainDialog wrapper entered");
+  return RunMainDialogImpl(hInstance, nCmdShow);
 }
 
 } // namespace scalelogger

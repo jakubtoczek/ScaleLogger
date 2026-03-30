@@ -65,6 +65,28 @@ void AppendFatalLine(const std::string& message, bool isTrace) {
   OutputDebugStringA((message + "\n").c_str());
 }
 
+std::string NormalizeToWindowsNewlines(const std::string& input) {
+  std::string output;
+  output.reserve(input.size() + 16);
+  for (std::size_t i = 0; i < input.size(); ++i) {
+    const char ch = input[i];
+    if (ch == '\r') {
+      output.push_back('\r');
+      if (i + 1 < input.size() && input[i + 1] == '\n') output.push_back('\n');
+      else output.push_back('\n');
+      if (i + 1 < input.size() && input[i + 1] == '\n') ++i;
+      continue;
+    }
+    if (ch == '\n') {
+      output.push_back('\r');
+      output.push_back('\n');
+      continue;
+    }
+    output.push_back(ch);
+  }
+  return output;
+}
+
 struct CrashDialogData {
   std::string report;
   HWND editControl{nullptr};
@@ -120,7 +142,7 @@ LRESULT CALLBACK CrashDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 void ShowCrashDialog(const std::string& title, const std::string& body) {
   if (!g_fatalDiagnosticsConfig.showCrashDialog || g_fatalDialogInProgress) return;
   g_fatalDialogInProgress = true;
-  CrashDialogData data{body};
+  CrashDialogData data{NormalizeToWindowsNewlines(body)};
   WNDCLASSA wc{};
   wc.lpfnWndProc = CrashDialogWndProc;
   wc.hInstance = GetModuleHandle(nullptr);
@@ -130,7 +152,7 @@ void ShowCrashDialog(const std::string& title, const std::string& body) {
   HWND hwnd = CreateWindowExA(WS_EX_TOPMOST, wc.lpszClassName, title.c_str(), WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 632,
                               356, nullptr, nullptr, wc.hInstance, &data);
   if (!hwnd) {
-    MessageBoxA(nullptr, body.c_str(), title.c_str(), MB_OK | MB_ICONERROR | MB_TOPMOST);
+    MessageBoxA(nullptr, data.report.c_str(), title.c_str(), MB_OK | MB_ICONERROR | MB_TOPMOST);
     g_fatalDialogInProgress = false;
     return;
   }
@@ -158,7 +180,6 @@ void ReportFatalCrash(const std::string& headline, unsigned long exceptionCode, 
   if (g_fatalDiagnosticsConfig.includeTraceInCrashDialog) {
     report << "Fatal trace:\n" << g_fatalTraceBuffer << "\n";
   }
-  report << "You can copy this report and share it for troubleshooting.";
   ShowCrashDialog("ScaleLogger crash", report.str());
 }
 
