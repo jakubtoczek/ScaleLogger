@@ -235,10 +235,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     AppendFatalLine("TRACE: Calling ProbeMainDialogTouchUi", true);
     const int probeTouchUiCode = scalelogger::ProbeMainDialogTouchUi(hInstance);
     AppendFatalLine("TRACE: ProbeMainDialogTouchUi returned code=" + std::to_string(probeTouchUiCode), true);
-    AppendFatalLine("TRACE: ProbeRunMainDialogImplDirect active", true);
-    AppendFatalLine("TRACE: Calling ProbeRunMainDialogImplDirect", true);
-    const int probeRunMainDialogImplDirectCode = scalelogger::ProbeRunMainDialogImplDirect(hInstance, nCmdShow);
-    AppendFatalLine("TRACE: ProbeRunMainDialogImplDirect returned code=" + std::to_string(probeRunMainDialogImplDirectCode), true);
+    const bool enableDirectImplProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_DIRECT_IMPL_PROBE") == "1";
+    if (enableDirectImplProbe) {
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplDirect active", true);
+      AppendFatalLine("TRACE: Calling ProbeRunMainDialogImplDirect", true);
+      const int probeRunMainDialogImplDirectCode = scalelogger::ProbeRunMainDialogImplDirect(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplDirect returned code=" + std::to_string(probeRunMainDialogImplDirectCode), true);
+    } else {
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplDirect skipped (env not enabled)", true);
+    }
     AppendFatalLine("TRACE: Calling RunMainDialog", true);
     const int exitCode = scalelogger::RunMainDialog(hInstance, nCmdShow);
     AppendFatalLine("TRACE: RunMainDialog returned exit_code=" + std::to_string(exitCode), true);

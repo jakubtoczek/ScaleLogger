@@ -5,6 +5,7 @@ Use this template for native Windows release artifacts.
 ```text
 App name: ScaleLogger
 Version: (from CMake project version)
+Build tag:
 Build date/time (UTC):
 Windows version/build:
 Compiler: MSVC (Visual Studio 2026)

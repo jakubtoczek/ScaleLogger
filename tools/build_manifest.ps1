@@ -1,5 +1,6 @@
 param(
   [string]$Version = "",
+  [string]$BuildTag = "",
   [string]$OutputExe = "ScaleLogger.exe",
   [string]$ChecksumFile = "SHA256SUMS.txt",
   [string]$ConfigurePreset = "windows-vs2026-x64",
@@ -27,6 +28,18 @@ function Get-VersionFromCMake {
 $utcNow = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = Get-VersionFromCMake
+}
+if ([string]::IsNullOrWhiteSpace($BuildTag)) {
+  try {
+    $outputBaseName = [System.IO.Path]::GetFileNameWithoutExtension($OutputExe)
+    $m = [regex]::Match($outputBaseName, '^ScaleLogger[-_](.+)$')
+    if ($m.Success -and -not [string]::IsNullOrWhiteSpace($m.Groups[1].Value)) {
+      $BuildTag = $m.Groups[1].Value
+    }
+  } catch {}
+}
+if ([string]::IsNullOrWhiteSpace($BuildTag)) {
+  $BuildTag = "unknown"
 }
 
 $gitBranch = "unknown"
@@ -133,6 +146,7 @@ if (Test-Path "default_config.json") {
 ScaleLogger Build Manifest
 App name: ScaleLogger
 Version: $Version
+Build tag: $BuildTag
 Git branch: $gitBranch
 Git upstream branch: $gitUpstream
 Git commit SHA: $gitCommit
