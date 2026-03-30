@@ -52,6 +52,10 @@ struct AppConfig {
   bool connectOnStartup{true};
   bool darkMode{false};
   bool debugComboLogging{false};
+  bool enableStartupTrace{true};
+  bool enableFatalLogFile{true};
+  bool showCrashDialog{true};
+  bool includeTraceInCrashDialog{true};
   std::vector<int> baudRates{1200, 2400, 4800, 9600};
   std::vector<int> dataBitsOptions{7, 8};
   std::vector<std::string> parityOptions{"O", "N", "E"};

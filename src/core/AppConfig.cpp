@@ -222,6 +222,10 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   cfg.connectOnStartup = ExtractBool(text, "connect_on_startup", cfg.connectOnStartup);
   cfg.darkMode = ExtractBool(text, "dark_mode", cfg.darkMode);
   cfg.debugComboLogging = ExtractBool(text, "debug_combo_logging", cfg.debugComboLogging);
+  cfg.enableStartupTrace = ExtractBool(text, "enable_startup_trace", cfg.enableStartupTrace);
+  cfg.enableFatalLogFile = ExtractBool(text, "enable_fatal_log_file", cfg.enableFatalLogFile);
+  cfg.showCrashDialog = ExtractBool(text, "show_crash_dialog", cfg.showCrashDialog);
+  cfg.includeTraceInCrashDialog = ExtractBool(text, "include_trace_in_crash_dialog", cfg.includeTraceInCrashDialog);
   (void)ExtractBool(text, "standalone_mode", false); // legacy key ignored
   const auto baudRates = ExtractIntArray(text, "baud_rates");
   if (!baudRates.empty()) cfg.baudRates = baudRates;
@@ -254,6 +258,10 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, cons
       << "  \"connect_on_startup\": " << (config.connectOnStartup ? "true" : "false") << ",\n"
       << "  \"dark_mode\": " << (config.darkMode ? "true" : "false") << ",\n"
       << "  \"debug_combo_logging\": " << (config.debugComboLogging ? "true" : "false") << ",\n"
+      << "  \"enable_startup_trace\": " << (config.enableStartupTrace ? "true" : "false") << ",\n"
+      << "  \"enable_fatal_log_file\": " << (config.enableFatalLogFile ? "true" : "false") << ",\n"
+      << "  \"show_crash_dialog\": " << (config.showCrashDialog ? "true" : "false") << ",\n"
+      << "  \"include_trace_in_crash_dialog\": " << (config.includeTraceInCrashDialog ? "true" : "false") << ",\n"
       << "  \"baud_rates\": [";
   for (std::size_t i = 0; i < config.baudRates.size(); ++i) {
     if (i) ofs << ", ";
@@ -414,7 +422,11 @@ bool SaveConfigSettings(const std::filesystem::path& path, const AppSettings& se
         << "  \"line_log_mode\": \"" << (config->lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
         << "  \"connect_on_startup\": " << (config->connectOnStartup ? "true" : "false") << ",\n"
         << "  \"dark_mode\": " << (config->darkMode ? "true" : "false") << ",\n"
-        << "  \"debug_combo_logging\": " << (config->debugComboLogging ? "true" : "false");
+        << "  \"debug_combo_logging\": " << (config->debugComboLogging ? "true" : "false") << ",\n"
+        << "  \"enable_startup_trace\": " << (config->enableStartupTrace ? "true" : "false") << ",\n"
+        << "  \"enable_fatal_log_file\": " << (config->enableFatalLogFile ? "true" : "false") << ",\n"
+        << "  \"show_crash_dialog\": " << (config->showCrashDialog ? "true" : "false") << ",\n"
+        << "  \"include_trace_in_crash_dialog\": " << (config->includeTraceInCrashDialog ? "true" : "false");
   }
   ofs << "\n}\n";
   return static_cast<bool>(ofs);

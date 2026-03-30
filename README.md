@@ -56,6 +56,10 @@ ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with
 - `connect_on_startup`
 - `dark_mode` (experimental; default is `false`)
 - `debug_combo_logging` (optional diagnostics; default is `false`)
+- `enable_startup_trace` (controls early TRACE lines in fatal forensics; default `true`)
+- `enable_fatal_log_file` (controls writing `%TEMP%\\ScaleLogger_fatal.log`; default `true`)
+- `show_crash_dialog` (shows copy-friendly crash dialog on fatal crash; default `true`)
+- `include_trace_in_crash_dialog` (includes recent fatal trace text in crash dialog; default `true`)
 - optional serial dropdown option arrays: `baud_rates`, `data_bits_options`, `parity_options`, `stop_bits_options`
 
 To keep schema consistency, config files also carry serial/parsing/output fields (including `custom_sequence` and `eol`) in the same single full-config file.
@@ -88,6 +92,9 @@ Runtime file logging flushes each line and emits a one-time visible error if fil
 - This file is also used by the unhandled-exception path (`SetUnhandledExceptionFilter`) for fatal crash breadcrumbs.
 - Use this file first when the app exits or crashes before the normal in-app log window appears.
 - These forensic lines are separate from normal runtime/session logging.
+- On fatal crashes, ScaleLogger also shows a small native crash dialog with a copyable report (Copy/Close buttons). If dialog creation fails, a MessageBox fallback is shown.
+- The crash report includes exception details (when known), startup-crash indicator, `%TEMP%\\ScaleLogger_fatal.log` path, and optional recent fatal trace text.
+- You can disable verbose startup tracing later with `enable_startup_trace=false` while keeping fatal file/dialog reporting enabled.
 
 Legacy note:
 - `standalone_mode` is tolerated in old config files but ignored by current runtime behavior.

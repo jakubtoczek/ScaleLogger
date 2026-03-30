@@ -81,7 +81,7 @@ if (Test-Path "default_config.json") {
   try {
     $defaultConfigSha256 = (Get-FileHash -Algorithm SHA256 "default_config.json").Hash.ToLowerInvariant()
     $cfg = Get-Content -Raw -Path "default_config.json" | ConvertFrom-Json
-    $defaultConfigSummary = "connect_on_startup=$($cfg.connect_on_startup); startup_mode=$($cfg.startup_mode); log_mode=$($cfg.log_mode); config_file_name=$($cfg.config_file_name)"
+    $defaultConfigSummary = "connect_on_startup=$($cfg.connect_on_startup); log_mode=$($cfg.log_mode); config_file_name=$($cfg.config_file_name); enable_startup_trace=$($cfg.enable_startup_trace); enable_fatal_log_file=$($cfg.enable_fatal_log_file); show_crash_dialog=$($cfg.show_crash_dialog); include_trace_in_crash_dialog=$($cfg.include_trace_in_crash_dialog)"
     $defaultConfigDetail = @(
       "Default config values:",
       "  Application:",
@@ -95,9 +95,11 @@ if (Test-Path "default_config.json") {
       "    connect_on_startup=$($cfg.connect_on_startup)",
       "    dark_mode=$($cfg.dark_mode)",
       "    debug_combo_logging=$($cfg.debug_combo_logging)",
-      "    startup_mode=$($cfg.startup_mode)",
-      "    startup_preset_name=$($cfg.startup_preset_name)",
-      "    last_used_preset_name=$($cfg.last_used_preset_name)",
+      "  Diagnostics:",
+      "    enable_startup_trace=$($cfg.enable_startup_trace)",
+      "    enable_fatal_log_file=$($cfg.enable_fatal_log_file)",
+      "    show_crash_dialog=$($cfg.show_crash_dialog)",
+      "    include_trace_in_crash_dialog=$($cfg.include_trace_in_crash_dialog)",
       "  Runtime combo option arrays:",
       "    baud_rates=$([string]::Join(',', $cfg.baud_rates))",
       "    data_bits_options=$([string]::Join(',', $cfg.data_bits_options))",

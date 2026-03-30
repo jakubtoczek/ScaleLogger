@@ -21,6 +21,12 @@ Runtime combo option arrays:
   data_bits_options:
   parity_options:
   stop_bits_options:
+Diagnostics:
+  enable_startup_trace:
+  enable_fatal_log_file:
+  show_crash_dialog:
+  include_trace_in_crash_dialog:
+  debug_combo_logging:
 Code signing status:
 Notes:
 ```
