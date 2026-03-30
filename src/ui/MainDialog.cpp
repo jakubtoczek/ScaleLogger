@@ -34,10 +34,12 @@
 namespace scalelogger {
 namespace {
 constexpr int kLblConnectionStatus = 102;
+constexpr int kLblConnectionTitle = 107;
 constexpr int kBtnConnect = 103;
 constexpr int kBtnSettings = 104;
 constexpr int kBtnAbout = 105;
 constexpr int kEditLog = 106;
+constexpr int kLblLogTitle = 108;
 constexpr UINT kMsgUiLogLine = WM_APP + 1;
 constexpr UINT kMsgUiConnectionState = WM_APP + 2;
 constexpr UINT kMsgStartupAutoConnect = WM_APP + 3;
@@ -96,7 +98,9 @@ struct UiState {
   HWND aboutButton{nullptr};
   HWND connectButton{nullptr};
   HWND connectionIndicator{nullptr};
+  HWND connectionTitle{nullptr};
   HWND connectionStatus{nullptr};
+  HWND logTitle{nullptr};
   HWND logEdit{nullptr};
   HWND settingsWindow{nullptr};
   HWND settingsTab{nullptr};
@@ -117,6 +121,23 @@ ConnectionUiState g_connectionUiState = ConnectionUiState::Disconnected;
 void LoadSettingsIntoControls(HWND settingsHwnd);
 std::wstring GetControlText(HWND control);
 void AddLogLine(const std::string& text);
+
+namespace uilayout {
+constexpr int kMargin = 16;
+constexpr int kSectionGap = 10;
+constexpr int kTopRowY = 14;
+constexpr int kTopRowHeight = 30;
+constexpr int kStatusTitleWidth = 46;
+constexpr int kStatusStateWidth = 124;
+constexpr int kTopButtonGap = 8;
+constexpr int kTopButtonConnectWidth = 106;
+constexpr int kTopButtonSettingsWidth = 84;
+constexpr int kTopButtonAboutWidth = 68;
+constexpr int kLogLabelYGap = 8;
+constexpr int kLogLabelHeight = 20;
+constexpr int kStandardControlHeight = 24;
+constexpr int kSettingsBottomButtonHeight = 32;
+}
 
 bool IsComboDebugLoggingEnabled() {
   return g_ui.controller && g_ui.controller->Config().debugComboLogging;
@@ -363,24 +384,21 @@ void LayoutMainControls(HWND hwnd) {
   RECT rc{};
   GetClientRect(hwnd, &rc);
 
-  const int margin = 16;
-  const int top = 14;
-  const int rowH = 28;
-  const int gap = 8;
-
   bool showAbout = true;
   bool showSettings = true;
   bool showConnect = true;
   bool showIndicator = true;
+  bool showStatusTitle = true;
   bool showStatus = true;
 
   auto requiredWidth = [&]() {
-    int total = margin * 2;
-    if (showIndicator) total += 14 + gap;
-    if (showStatus) total += 120 + gap;
-    if (showConnect) total += 102 + gap;
-    if (showSettings) total += 82 + gap;
-    if (showAbout) total += 64 + gap;
+    int total = uilayout::kMargin * 2;
+    if (showIndicator) total += 14 + uilayout::kTopButtonGap;
+    if (showStatusTitle) total += uilayout::kStatusTitleWidth + uilayout::kTopButtonGap;
+    if (showStatus) total += uilayout::kStatusStateWidth + uilayout::kTopButtonGap;
+    if (showConnect) total += uilayout::kTopButtonConnectWidth + uilayout::kTopButtonGap;
+    if (showSettings) total += uilayout::kTopButtonSettingsWidth + uilayout::kTopButtonGap;
+    if (showAbout) total += uilayout::kTopButtonAboutWidth + uilayout::kTopButtonGap;
     return total;
   };
 
@@ -401,6 +419,10 @@ void LayoutMainControls(HWND hwnd) {
       showStatus = false;
       continue;
     }
+    if (showStatusTitle) {
+      showStatusTitle = false;
+      continue;
+    }
     if (showIndicator) {
       showIndicator = false;
       continue;
@@ -412,34 +434,43 @@ void LayoutMainControls(HWND hwnd) {
   ShowWindow(g_ui.settingsButton, showSettings ? SW_SHOW : SW_HIDE);
   ShowWindow(g_ui.aboutButton, showAbout ? SW_SHOW : SW_HIDE);
   ShowWindow(g_ui.connectionIndicator, showIndicator ? SW_SHOW : SW_HIDE);
+  ShowWindow(g_ui.connectionTitle, showStatusTitle ? SW_SHOW : SW_HIDE);
   ShowWindow(g_ui.connectionStatus, showStatus ? SW_SHOW : SW_HIDE);
 
-  int left = margin;
+  int left = uilayout::kMargin;
   if (showIndicator) {
-    MoveWindow(g_ui.connectionIndicator, left, top + 5, 14, 20, TRUE);
-    left += 14 + gap;
+    MoveWindow(g_ui.connectionIndicator, left, uilayout::kTopRowY + 5, 14, 20, TRUE);
+    left += 14 + uilayout::kTopButtonGap;
+  }
+  if (showStatusTitle) {
+    MoveWindow(g_ui.connectionTitle, left, uilayout::kTopRowY + 4, uilayout::kStatusTitleWidth, 22, TRUE);
+    left += uilayout::kStatusTitleWidth + 4;
   }
   if (showStatus) {
-    MoveWindow(g_ui.connectionStatus, left, top + 4, 120, 22, TRUE);
+    MoveWindow(g_ui.connectionStatus, left, uilayout::kTopRowY + 4, uilayout::kStatusStateWidth, 22, TRUE);
   }
 
-  int right = rc.right - margin;
+  int right = rc.right - uilayout::kMargin;
   if (showAbout) {
-    right -= 64;
-    MoveWindow(g_ui.aboutButton, right, top, 64, rowH, TRUE);
-    right -= gap;
+    right -= uilayout::kTopButtonAboutWidth;
+    MoveWindow(g_ui.aboutButton, right, uilayout::kTopRowY, uilayout::kTopButtonAboutWidth, uilayout::kTopRowHeight, TRUE);
+    right -= uilayout::kTopButtonGap;
   }
   if (showSettings) {
-    right -= 82;
-    MoveWindow(g_ui.settingsButton, right, top, 82, rowH, TRUE);
-    right -= gap;
+    right -= uilayout::kTopButtonSettingsWidth;
+    MoveWindow(g_ui.settingsButton, right, uilayout::kTopRowY, uilayout::kTopButtonSettingsWidth, uilayout::kTopRowHeight, TRUE);
+    right -= uilayout::kTopButtonGap;
   }
   if (showConnect) {
-    right -= 102;
-    MoveWindow(g_ui.connectButton, right, top, 102, rowH, TRUE);
+    right -= uilayout::kTopButtonConnectWidth;
+    MoveWindow(g_ui.connectButton, right, uilayout::kTopRowY, uilayout::kTopButtonConnectWidth, uilayout::kTopRowHeight, TRUE);
   }
 
-  MoveWindow(g_ui.logEdit, margin, 52, rc.right - margin * 2, rc.bottom - 68, TRUE);
+  const int logLabelY = uilayout::kTopRowY + uilayout::kTopRowHeight + uilayout::kLogLabelYGap;
+  MoveWindow(g_ui.logTitle, uilayout::kMargin, logLabelY, 180, uilayout::kLogLabelHeight, TRUE);
+  const int logTop = logLabelY + uilayout::kLogLabelHeight + 4;
+  const int logBottomMargin = uilayout::kMargin;
+  MoveWindow(g_ui.logEdit, uilayout::kMargin, logTop, rc.right - uilayout::kMargin * 2, rc.bottom - logTop - logBottomMargin, TRUE);
 }
 
 void PopulateComboWithValues(HWND combo, const std::vector<std::wstring>& values) {
@@ -665,21 +696,28 @@ void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested) {
 }
 
 void CreateTopRow(HWND hwnd) {
-  g_ui.connectionIndicator = CreateWindowW(L"STATIC", L"\x25CF", WS_CHILD | WS_VISIBLE, 16, 19, 14, 20, hwnd, nullptr, nullptr, nullptr);
-  g_ui.connectionStatus = CreateWindowW(L"STATIC", L"Disconnected", WS_CHILD | WS_VISIBLE, 500, 17, 120, 22, hwnd,
+  g_ui.connectionIndicator = CreateWindowW(L"STATIC", L"\x25CF", WS_CHILD | WS_VISIBLE, uilayout::kMargin, 19, 14, 20, hwnd, nullptr, nullptr, nullptr);
+  g_ui.connectionTitle = CreateWindowW(L"STATIC", L"Status:", WS_CHILD | WS_VISIBLE, 34, 17, uilayout::kStatusTitleWidth, 22, hwnd,
+                                       reinterpret_cast<HMENU>(kLblConnectionTitle), nullptr, nullptr);
+  g_ui.connectionStatus = CreateWindowW(L"STATIC", L"Disconnected", WS_CHILD | WS_VISIBLE, 84, 17, uilayout::kStatusStateWidth, 22, hwnd,
                                         reinterpret_cast<HMENU>(kLblConnectionStatus), nullptr, nullptr);
-  g_ui.connectButton = CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 628, 14, 100, 28, hwnd,
+  g_ui.connectButton = CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 628, uilayout::kTopRowY,
+                                     uilayout::kTopButtonConnectWidth, uilayout::kTopRowHeight, hwnd,
                                      reinterpret_cast<HMENU>(kBtnConnect), nullptr, nullptr);
-  g_ui.settingsButton = CreateWindowW(L"BUTTON", L"Settings", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 736, 14, 82, 28, hwnd,
+  g_ui.settingsButton = CreateWindowW(L"BUTTON", L"Settings", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 736, uilayout::kTopRowY,
+                                      uilayout::kTopButtonSettingsWidth, uilayout::kTopRowHeight, hwnd,
                                       reinterpret_cast<HMENU>(kBtnSettings), nullptr, nullptr);
-  g_ui.aboutButton = CreateWindowW(L"BUTTON", L"About", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 822, 14, 64, 28, hwnd,
+  g_ui.aboutButton = CreateWindowW(L"BUTTON", L"About", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 822, uilayout::kTopRowY,
+                                   uilayout::kTopButtonAboutWidth, uilayout::kTopRowHeight, hwnd,
                                    reinterpret_cast<HMENU>(kBtnAbout), nullptr, nullptr);
 }
 
 void CreateLogPane(HWND hwnd) {
+  g_ui.logTitle = CreateWindowW(L"STATIC", L"Session Log", WS_CHILD | WS_VISIBLE, uilayout::kMargin, 52, 180, uilayout::kLogLabelHeight, hwnd,
+                                reinterpret_cast<HMENU>(kLblLogTitle), nullptr, nullptr);
   g_ui.logEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL |
                                                                       ES_READONLY,
-                                 16, 52, 840, 530, hwnd, reinterpret_cast<HMENU>(kEditLog), nullptr, nullptr);
+                                 16, 76, 840, 500, hwnd, reinterpret_cast<HMENU>(kEditLog), nullptr, nullptr);
 }
 
 void AddControl(std::vector<HWND>& tabControls, HWND control) { tabControls.push_back(control); }
@@ -769,14 +807,14 @@ void RunTestReceive(HWND settingsHwnd) {
 void LayoutSettingsWindow(HWND hwnd) {
   RECT rc{};
   GetClientRect(hwnd, &rc);
-  const int margin = 12;
+  const int margin = 14;
   const int left = 26;
   const int top = 58;
-  const int labelWidth = 110;
+  const int labelWidth = 116;
   const int fieldLeft = left + labelWidth;
-  const int browseWidth = 70;
+  const int browseWidth = 76;
   const int rightPadding = 26;
-  const int buttonY = rc.bottom - 42;
+  const int buttonY = rc.bottom - 46;
   const int tabBottom = buttonY - 12;
 
   MoveWindow(g_ui.settingsTab, margin, margin, rc.right - (margin * 2), tabBottom - margin, TRUE);
@@ -787,19 +825,21 @@ void LayoutSettingsWindow(HWND hwnd) {
 
   auto moveField = [&](int id, int y, int width = -1) {
     const int fieldWidth = width < 0 ? fullFieldWidth : width;
-    MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, 24, TRUE);
+    MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, uilayout::kStandardControlHeight, TRUE);
   };
   auto moveCombo = [&](int id, int y, int width = -1) {
     const int fieldWidth = width < 0 ? fullFieldWidth : width;
     MoveWindow(GetDlgItem(hwnd, id), fieldLeft, y, fieldWidth, 220, TRUE);
   };
-  auto moveBrowse = [&](int id, int y) { MoveWindow(GetDlgItem(hwnd, id), fieldLeft + browsedFieldWidth + 5, y, browseWidth, 24, TRUE); };
+  auto moveBrowse = [&](int id, int y) {
+    MoveWindow(GetDlgItem(hwnd, id), fieldLeft + browsedFieldWidth + 6, y, browseWidth, uilayout::kStandardControlHeight, TRUE);
+  };
 
   const int serialButtonsWidth = 96 + 100 + 9;
   const int serialFieldWidth = (std::max)(150, fullFieldWidth - serialButtonsWidth);
   moveCombo(kSerialPortCombo, top, serialFieldWidth);
-  MoveWindow(GetDlgItem(hwnd, kSerialScanBtn), fieldLeft + serialFieldWidth + 5, top, 96, 24, TRUE);
-  MoveWindow(GetDlgItem(hwnd, kSerialTestBtn), fieldLeft + serialFieldWidth + 106, top, 100, 24, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSerialScanBtn), fieldLeft + serialFieldWidth + 6, top, 98, uilayout::kStandardControlHeight, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSerialTestBtn), fieldLeft + serialFieldWidth + 108, top, 102, uilayout::kStandardControlHeight, TRUE);
   moveCombo(kSerialBaudCombo, top + 36);
   moveCombo(kSerialDataBitsCombo, top + 72);
   moveCombo(kSerialParityCombo, top + 108);
@@ -815,9 +855,11 @@ void LayoutSettingsWindow(HWND hwnd) {
   const int actionGap = 12;
   const int actionBtnWidth = (std::max)(120, (fullFieldWidth - actionGap * 2) / 3);
   const int actionY = top + 314;
-  MoveWindow(GetDlgItem(hwnd, kOutputCaptureKeyBtn), fieldLeft, actionY, actionBtnWidth, 24, TRUE);
-  MoveWindow(GetDlgItem(hwnd, kOutputRemoveLastBtn), fieldLeft + actionBtnWidth + actionGap, actionY, actionBtnWidth, 24, TRUE);
-  MoveWindow(GetDlgItem(hwnd, kOutputClearBtn), fieldLeft + (actionBtnWidth + actionGap) * 2, actionY, actionBtnWidth, 24, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kOutputCaptureKeyBtn), fieldLeft, actionY, actionBtnWidth, uilayout::kStandardControlHeight, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kOutputRemoveLastBtn), fieldLeft + actionBtnWidth + actionGap, actionY, actionBtnWidth, uilayout::kStandardControlHeight,
+             TRUE);
+  MoveWindow(GetDlgItem(hwnd, kOutputClearBtn), fieldLeft + (actionBtnWidth + actionGap) * 2, actionY, actionBtnWidth, uilayout::kStandardControlHeight,
+             TRUE);
   MoveWindow(GetDlgItem(hwnd, kOutputSummaryEdit), fieldLeft, top + 346, fullFieldWidth, 56, TRUE);
 
   moveField(kAppConfigFolderEdit, top, browsedFieldWidth);
@@ -829,10 +871,10 @@ void LayoutSettingsWindow(HWND hwnd) {
   const int pathsLabelWidth = (std::max)(280, pathsLabelAvailableWidth);
   MoveWindow(GetDlgItem(hwnd, kAppPathsLabel), left + 10, top + 170, pathsLabelWidth, 132, TRUE);
 
-  MoveWindow(GetDlgItem(hwnd, kSettingsSaveConfig), 20, buttonY, 160, 32, TRUE);
-  MoveWindow(GetDlgItem(hwnd, kSettingsSaveAsConfig), 190, buttonY, 130, 32, TRUE);
-  MoveWindow(GetDlgItem(hwnd, kSettingsApply), rc.right - 170, buttonY, 70, 32, TRUE);
-  MoveWindow(GetDlgItem(hwnd, kSettingsCancel), rc.right - 90, buttonY, 70, 32, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSettingsSaveConfig), 20, buttonY, 162, uilayout::kSettingsBottomButtonHeight, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSettingsSaveAsConfig), 192, buttonY, 144, uilayout::kSettingsBottomButtonHeight, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSettingsApply), rc.right - 178, buttonY, 78, uilayout::kSettingsBottomButtonHeight, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSettingsCancel), rc.right - 92, buttonY, 78, uilayout::kSettingsBottomButtonHeight, TRUE);
 }
 
 LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -1024,7 +1066,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
       CreateWindowW(L"BUTTON", L"Save Configuration", WS_CHILD | WS_VISIBLE, 20, 520, 140, 32, hwnd,
                     reinterpret_cast<HMENU>(kSettingsSaveConfig), nullptr, nullptr);
-      CreateWindowW(L"BUTTON", L"Save As Config", WS_CHILD | WS_VISIBLE, 170, 520, 120, 32, hwnd,
+      CreateWindowW(L"BUTTON", L"Save Config As...", WS_CHILD | WS_VISIBLE, 170, 520, 130, 32, hwnd,
                     reinterpret_cast<HMENU>(kSettingsSaveAsConfig), nullptr, nullptr);
       CreateWindowW(L"BUTTON", L"Apply", WS_CHILD | WS_VISIBLE, 700, 520, 70, 32, hwnd, reinterpret_cast<HMENU>(kSettingsApply), nullptr,
                     nullptr);
