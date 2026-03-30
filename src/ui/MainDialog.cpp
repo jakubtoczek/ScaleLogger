@@ -316,12 +316,8 @@ void ApplySettingsTabTheme(HWND settingsTab) {
   if (!settingsTab) return;
   if (IsDarkModeEnabled()) {
     SetWindowTheme(settingsTab, L"", L"");
-    SendMessageW(settingsTab, TCM_SETBKCOLOR, 0, static_cast<LPARAM>(RGB(32, 32, 32)));
-    SendMessageW(settingsTab, TCM_SETTEXTBKCOLOR, 0, static_cast<LPARAM>(RGB(32, 32, 32)));
   } else {
     SetWindowTheme(settingsTab, nullptr, nullptr);
-    SendMessageW(settingsTab, TCM_SETBKCOLOR, 0, static_cast<LPARAM>(GetSysColor(COLOR_BTNFACE)));
-    SendMessageW(settingsTab, TCM_SETTEXTBKCOLOR, 0, static_cast<LPARAM>(CLR_DEFAULT));
   }
   InvalidateRect(settingsTab, nullptr, TRUE);
 }
