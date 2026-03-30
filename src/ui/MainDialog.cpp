@@ -1368,10 +1368,19 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 } // namespace
 
 int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
-  TraceEarly("TRACE: RunMainDialog entered");
+  TraceEarly("TRACE: RunMainDialog function entry A");
+  TraceEarly("TRACE: Before first TraceEarly self-test");
+  TraceEarly("TRACE: After first TraceEarly self-test");
+  TraceEarly("TRACE: Before storing hInstance");
   g_ui.hInstance = hInstance;
+  TraceEarly("TRACE: After storing hInstance");
+  TraceEarly("TRACE: Before INITCOMMONCONTROLSEX construction");
   INITCOMMONCONTROLSEX icc{sizeof(INITCOMMONCONTROLSEX), ICC_TAB_CLASSES};
-  InitCommonControlsEx(&icc);
+  TraceEarly("TRACE: After INITCOMMONCONTROLSEX construction cbSize=" + std::to_string(icc.cbSize) + " classes=" + std::to_string(icc.dwICC));
+  TraceEarly("TRACE: Before InitCommonControlsEx");
+  const BOOL initCommonControlsOk = InitCommonControlsEx(&icc);
+  const DWORD initCommonControlsGle = GetLastError();
+  TraceEarly("TRACE: After InitCommonControlsEx result=" + std::to_string(initCommonControlsOk) + " gle=" + std::to_string(initCommonControlsGle));
 
   TraceEarly("TRACE: Before data-root resolution");
   const char* userProfile = std::getenv("USERPROFILE");

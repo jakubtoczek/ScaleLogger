@@ -37,7 +37,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   SetUnhandledExceptionFilter(FatalSehHandler);
   WriteFatalStartupLog("TRACE: UnhandledExceptionFilter installed");
   try {
-    WriteFatalStartupLog("TRACE: Before RunMainDialog");
+    WriteFatalStartupLog("TRACE: Calling RunMainDialog");
     const int exitCode = scalelogger::RunMainDialog(hInstance, nCmdShow);
     WriteFatalStartupLog("TRACE: RunMainDialog returned exit_code=" + std::to_string(exitCode));
     return exitCode;
