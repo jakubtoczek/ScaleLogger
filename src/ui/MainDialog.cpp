@@ -39,7 +39,6 @@ constexpr int kBtnConnect = 103;
 constexpr int kBtnSettings = 104;
 constexpr int kBtnAbout = 105;
 constexpr int kEditLog = 106;
-constexpr int kLblLogTitle = 108;
 constexpr UINT kMsgUiLogLine = WM_APP + 1;
 constexpr UINT kMsgUiConnectionState = WM_APP + 2;
 constexpr UINT kMsgStartupAutoConnect = WM_APP + 3;
@@ -100,7 +99,6 @@ struct UiState {
   HWND connectionIndicator{nullptr};
   HWND connectionTitle{nullptr};
   HWND connectionStatus{nullptr};
-  HWND logTitle{nullptr};
   HWND logEdit{nullptr};
   HWND settingsWindow{nullptr};
   HWND settingsTab{nullptr};
@@ -123,18 +121,16 @@ std::wstring GetControlText(HWND control);
 void AddLogLine(const std::string& text);
 
 namespace uilayout {
-constexpr int kMargin = 16;
-constexpr int kSectionGap = 10;
+constexpr int kMargin = 12;
 constexpr int kTopRowY = 14;
-constexpr int kTopRowHeight = 30;
+constexpr int kTopRowHeight = 28;
 constexpr int kStatusTitleWidth = 46;
 constexpr int kStatusStateWidth = 124;
 constexpr int kTopButtonGap = 8;
 constexpr int kTopButtonConnectWidth = 106;
 constexpr int kTopButtonSettingsWidth = 84;
 constexpr int kTopButtonAboutWidth = 68;
-constexpr int kLogLabelYGap = 8;
-constexpr int kLogLabelHeight = 20;
+constexpr int kLogTopY = 50;
 constexpr int kStandardControlHeight = 24;
 constexpr int kSettingsBottomButtonHeight = 32;
 }
@@ -320,8 +316,12 @@ void ApplySettingsTabTheme(HWND settingsTab) {
   if (!settingsTab) return;
   if (IsDarkModeEnabled()) {
     SetWindowTheme(settingsTab, L"", L"");
+    TabCtrl_SetBkColor(settingsTab, RGB(32, 32, 32));
+    TabCtrl_SetTextBkColor(settingsTab, RGB(32, 32, 32));
   } else {
     SetWindowTheme(settingsTab, nullptr, nullptr);
+    TabCtrl_SetBkColor(settingsTab, GetSysColor(COLOR_BTNFACE));
+    TabCtrl_SetTextBkColor(settingsTab, GetSysColor(COLOR_BTNFACE));
   }
   InvalidateRect(settingsTab, nullptr, TRUE);
 }
@@ -466,9 +466,7 @@ void LayoutMainControls(HWND hwnd) {
     MoveWindow(g_ui.connectButton, right, uilayout::kTopRowY, uilayout::kTopButtonConnectWidth, uilayout::kTopRowHeight, TRUE);
   }
 
-  const int logLabelY = uilayout::kTopRowY + uilayout::kTopRowHeight + uilayout::kLogLabelYGap;
-  MoveWindow(g_ui.logTitle, uilayout::kMargin, logLabelY, 180, uilayout::kLogLabelHeight, TRUE);
-  const int logTop = logLabelY + uilayout::kLogLabelHeight + 4;
+  const int logTop = uilayout::kLogTopY;
   const int logBottomMargin = uilayout::kMargin;
   MoveWindow(g_ui.logEdit, uilayout::kMargin, logTop, rc.right - uilayout::kMargin * 2, rc.bottom - logTop - logBottomMargin, TRUE);
 }
@@ -713,11 +711,9 @@ void CreateTopRow(HWND hwnd) {
 }
 
 void CreateLogPane(HWND hwnd) {
-  g_ui.logTitle = CreateWindowW(L"STATIC", L"Session Log", WS_CHILD | WS_VISIBLE, uilayout::kMargin, 52, 180, uilayout::kLogLabelHeight, hwnd,
-                                reinterpret_cast<HMENU>(kLblLogTitle), nullptr, nullptr);
   g_ui.logEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL |
                                                                       ES_READONLY,
-                                 16, 76, 840, 500, hwnd, reinterpret_cast<HMENU>(kEditLog), nullptr, nullptr);
+                                 uilayout::kMargin, uilayout::kLogTopY, 840, 500, hwnd, reinterpret_cast<HMENU>(kEditLog), nullptr, nullptr);
 }
 
 void AddControl(std::vector<HWND>& tabControls, HWND control) { tabControls.push_back(control); }
@@ -846,7 +842,7 @@ void LayoutSettingsWindow(HWND hwnd) {
   moveCombo(kSerialStopBitsCombo, top + 144);
   moveCombo(kSerialTimeoutCombo, top + 180);
   moveCombo(kSerialEolCombo, top + 216);
-  MoveWindow(GetDlgItem(hwnd, kSerialSummaryEdit), fieldLeft, top + 252, fullFieldWidth, 56, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kSerialSummaryEdit), fieldLeft, top + 252, fullFieldWidth, 46, TRUE);
 
   moveCombo(kOutputModeCombo, top + 8);
   moveField(kOutputSuffixEdit, top + 100);
@@ -860,7 +856,7 @@ void LayoutSettingsWindow(HWND hwnd) {
              TRUE);
   MoveWindow(GetDlgItem(hwnd, kOutputClearBtn), fieldLeft + (actionBtnWidth + actionGap) * 2, actionY, actionBtnWidth, uilayout::kStandardControlHeight,
              TRUE);
-  MoveWindow(GetDlgItem(hwnd, kOutputSummaryEdit), fieldLeft, top + 346, fullFieldWidth, 56, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kOutputSummaryEdit), fieldLeft, top + 346, fullFieldWidth, 46, TRUE);
 
   moveField(kAppConfigFolderEdit, top, browsedFieldWidth);
   moveBrowse(kAppConfigBrowseBtn, top);
@@ -869,7 +865,7 @@ void LayoutSettingsWindow(HWND hwnd) {
   moveCombo(kAppLogModeCombo, top + 80);
   const int pathsLabelAvailableWidth = static_cast<int>(rc.right) - (left + rightPadding + 10);
   const int pathsLabelWidth = (std::max)(280, pathsLabelAvailableWidth);
-  MoveWindow(GetDlgItem(hwnd, kAppPathsLabel), left + 10, top + 170, pathsLabelWidth, 132, TRUE);
+  MoveWindow(GetDlgItem(hwnd, kAppPathsLabel), left + 10, top + 170, pathsLabelWidth, 104, TRUE);
 
   MoveWindow(GetDlgItem(hwnd, kSettingsSaveConfig), 20, buttonY, 162, uilayout::kSettingsBottomButtonHeight, TRUE);
   MoveWindow(GetDlgItem(hwnd, kSettingsSaveAsConfig), 192, buttonY, 144, uilayout::kSettingsBottomButtonHeight, TRUE);
@@ -988,7 +984,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       for (const wchar_t* value : {L"\\r\\n", L"\\n", L"\\r"}) SendMessageW(eol, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
       AddControl(g_ui.serialTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-                                 fieldLeft, top + 252, 645, 56, hwnd, reinterpret_cast<HMENU>(kSerialSummaryEdit), nullptr, nullptr));
+                                 fieldLeft, top + 252, 645, 46, hwnd, reinterpret_cast<HMENU>(kSerialSummaryEdit), nullptr, nullptr));
 
       label(L"Mode", top + 10, g_ui.outputTabControls);
       HWND mode = combo(kOutputModeCombo, top + 8, 645, g_ui.outputTabControls);
@@ -1028,7 +1024,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                                reinterpret_cast<HMENU>(kOutputClearBtn), nullptr, nullptr));
       AddControl(g_ui.outputTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-                                 fieldLeft, top + 346, 645, 56, hwnd, reinterpret_cast<HMENU>(kOutputSummaryEdit), nullptr, nullptr));
+                                 fieldLeft, top + 346, 645, 46, hwnd, reinterpret_cast<HMENU>(kOutputSummaryEdit), nullptr, nullptr));
 
       label(L"Config path", top + 2, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
@@ -1057,7 +1053,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-                                 left + 10, top + 170, 760, 132, hwnd, reinterpret_cast<HMENU>(kAppPathsLabel), nullptr, nullptr));
+                                 left + 10, top + 170, 760, 104, hwnd, reinterpret_cast<HMENU>(kAppPathsLabel), nullptr, nullptr));
 
       for (int comboId : {kSerialPortCombo, kSerialBaudCombo, kSerialDataBitsCombo, kSerialParityCombo, kSerialStopBitsCombo, kSerialTimeoutCombo,
                           kSerialEolCombo, kOutputModeCombo, kOutputActionCombo, kAppLogModeCombo}) {
@@ -1080,6 +1076,28 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       PostMessageW(hwnd, kMsgSettingsFinalizeCombos, 0, 0);
       PostMessageW(hwnd, kMsgSettingsFinalizeDisplay, 0, 0);
       return 0;
+    }
+    case WM_ERASEBKGND: {
+      if (!IsDarkModeEnabled()) break;
+      RECT rc{};
+      GetClientRect(hwnd, &rc);
+      FillRect(reinterpret_cast<HDC>(wParam), &rc, g_darkBrush);
+      if (g_ui.settingsTab) {
+        RECT tabClient{};
+        GetWindowRect(g_ui.settingsTab, &tabClient);
+        MapWindowPoints(HWND_DESKTOP, hwnd, reinterpret_cast<LPPOINT>(&tabClient), 2);
+        TabCtrl_AdjustRect(g_ui.settingsTab, FALSE, &tabClient);
+        FillRect(reinterpret_cast<HDC>(wParam), &tabClient, g_darkBrush);
+      }
+      return 1;
+    }
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+    case WM_CTLCOLORBTN: {
+      const auto brush = HandleDarkCtlColor(reinterpret_cast<HDC>(wParam));
+      if (brush != 0) return brush;
+      break;
     }
     case kMsgSettingsFinalizeCombos:
       FinalizeEditableComboFirstPaint(hwnd);
@@ -1542,7 +1560,7 @@ static SCALELOGGER_NOINLINE int RunMainDialogImpl(HINSTANCE hInstance, int nCmdS
   const std::wstring mainWindowTitle = std::wstring(L"ScaleLogger ") + kAppVersionWide;
   TraceEarly("TRACE: Before CreateWindowExW");
   HWND hwnd = CreateWindowExW(0, wc.lpszClassName, mainWindowTitle.c_str(), WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_SIZEBOX,
-                              CW_USEDEFAULT, CW_USEDEFAULT, 930, 660, nullptr, nullptr, hInstance, nullptr);
+                              CW_USEDEFAULT, CW_USEDEFAULT, 860, 600, nullptr, nullptr, hInstance, nullptr);
 
   if (!hwnd) {
     TraceEarly("ERROR: CreateWindowExW failed, gle=" + std::to_string(GetLastError()));
