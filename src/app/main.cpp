@@ -1,5 +1,6 @@
 #ifdef _WIN32
 #include "core/AppConfig.hpp"
+#include "core/AppVersion.hpp"
 #include "ui/MainDialog.hpp"
 
 #include <Windows.h>
@@ -23,6 +24,7 @@ struct FatalDiagnosticsConfig {
 FatalDiagnosticsConfig g_fatalDiagnosticsConfig{};
 std::string g_fatalTraceBuffer;
 bool g_fatalDialogInProgress = false;
+constexpr const char* kDiagnosticBuildTag = "diag-20260330-next";
 
 std::string GetFatalLogPath() {
   char tempPath[MAX_PATH]{};
@@ -37,6 +39,17 @@ std::filesystem::path ResolveUserConfigPath() {
                                          : localAppData ? std::filesystem::path(localAppData) / "ScaleLogger"
                                                         : (std::filesystem::temp_directory_path() / "ScaleLogger");
   return dataRoot / "ScaleLogger.config.json";
+}
+
+std::string GetEnvOrUnset(const char* name) {
+  const char* value = std::getenv(name);
+  return value ? std::string(value) : std::string("<unset>");
+}
+
+std::string GetExecutablePath() {
+  char path[MAX_PATH]{};
+  const DWORD len = GetModuleFileNameA(nullptr, path, MAX_PATH);
+  return (len > 0 && len < MAX_PATH) ? std::string(path, len) : std::string("<unknown>");
 }
 
 void LoadFatalDiagnosticsConfig() {
@@ -170,6 +183,11 @@ void ReportFatalCrash(const std::string& headline, unsigned long exceptionCode, 
   AppendFatalLine(headline, false);
   std::ostringstream report;
   report << "ScaleLogger crash\n\n";
+  report << "Version: " << scalelogger::kAppVersion << "\n";
+  report << "Diagnostic build tag: " << kDiagnosticBuildTag << "\n";
+  report << "Executable path: " << GetExecutablePath() << "\n";
+  report << "SCALELOGGER_RUNMAIN_STAGE_LIMIT: " << GetEnvOrUnset("SCALELOGGER_RUNMAIN_STAGE_LIMIT") << "\n";
+  report << "SCALELOGGER_FORCE_NO_SERIAL: " << GetEnvOrUnset("SCALELOGGER_FORCE_NO_SERIAL") << "\n\n";
   if (hasExceptionCode) {
     report << "Exception code: 0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << exceptionCode << "\n";
   } else {
@@ -196,6 +214,12 @@ LONG WINAPI FatalSehHandler(EXCEPTION_POINTERS* exceptionInfo) {
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   LoadFatalDiagnosticsConfig();
+  AppendFatalLine("===== ScaleLogger fatal session start =====", false);
+  AppendFatalLine("TRACE: ScaleLogger version: " + std::string(scalelogger::kAppVersion), true);
+  AppendFatalLine("TRACE: Diagnostic build tag: " + std::string(kDiagnosticBuildTag), true);
+  AppendFatalLine("TRACE: Executable path: " + GetExecutablePath(), true);
+  AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_STAGE_LIMIT=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_STAGE_LIMIT"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_FORCE_NO_SERIAL=" + GetEnvOrUnset("SCALELOGGER_FORCE_NO_SERIAL"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
   SetUnhandledExceptionFilter(FatalSehHandler);
   AppendFatalLine("TRACE: UnhandledExceptionFilter installed", true);
