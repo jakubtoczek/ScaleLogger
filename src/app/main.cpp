@@ -4,6 +4,8 @@
 #include <Windows.h>
 #include <exception>
 #include <fstream>
+#include <iomanip>
+#include <sstream>
 #include <string>
 
 namespace {
@@ -21,7 +23,10 @@ void WriteFatalStartupLog(const std::string& message) {
 
 LONG WINAPI FatalSehHandler(EXCEPTION_POINTERS* exceptionInfo) {
   const auto code = exceptionInfo && exceptionInfo->ExceptionRecord ? exceptionInfo->ExceptionRecord->ExceptionCode : 0;
-  WriteFatalStartupLog("FATAL: SEH exception occurred. code=0x" + std::to_string(static_cast<unsigned long>(code)));
+  std::ostringstream oss;
+  oss << "FATAL: SEH exception occurred. code=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0')
+      << static_cast<unsigned long>(code);
+  WriteFatalStartupLog(oss.str());
   WriteFatalStartupLog("Session end: crash (fatal exception)");
   return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -33,7 +38,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   WriteFatalStartupLog("TRACE: UnhandledExceptionFilter installed");
   try {
     WriteFatalStartupLog("TRACE: Before RunMainDialog");
-    return scalelogger::RunMainDialog(hInstance, nCmdShow);
+    const int exitCode = scalelogger::RunMainDialog(hInstance, nCmdShow);
+    WriteFatalStartupLog("TRACE: RunMainDialog returned exit_code=" + std::to_string(exitCode));
+    return exitCode;
   } catch (const std::exception& ex) {
     WriteFatalStartupLog(std::string("FATAL: unhandled exception reached main: ") + ex.what());
     WriteFatalStartupLog("Session end: crash (fatal exception)");

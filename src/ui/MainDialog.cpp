@@ -1379,6 +1379,7 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   std::filesystem::path dataRoot = userProfile     ? std::filesystem::path(userProfile) / "ScaleLogger"
                                    : localAppData ? std::filesystem::path(localAppData) / "ScaleLogger"
                                                   : (std::filesystem::temp_directory_path() / "ScaleLogger");
+  TraceEarly("TRACE: After data-root resolution path=" + dataRoot.string());
   TraceEarly("TRACE: Before creating data/log directories");
   std::error_code ec;
   std::filesystem::create_directories(dataRoot, ec);
@@ -1387,10 +1388,14 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   std::filesystem::create_directories(dataRoot / "logs", ec);
   if (ec) TraceEarly("WARN: Failed to create logs directory: " + (dataRoot / "logs").string() + " error=" + std::to_string(ec.value()));
   TraceEarly("TRACE: After creating data/log directories");
+  TraceEarly("TRACE: Before AppController construction");
   g_ui.controller = std::make_unique<AppController>(dataRoot);
+  TraceEarly("TRACE: After AppController construction");
 
+  TraceEarly("TRACE: Before log/connection sink hookup");
   g_ui.controller->SetLogSink([](const std::string& message, bool isError) { PostLogLineToUiThread((isError ? "ERROR: " : "") + message); });
   g_ui.controller->SetConnectionStateSink([](bool connected) { PostConnectionStateToUiThread(connected); });
+  TraceEarly("TRACE: After log/connection sink hookup");
 
   WNDCLASSW wc{};
   wc.lpfnWndProc = MainWndProc;
@@ -1398,23 +1403,35 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   wc.lpszClassName = L"ScaleLoggerMainWindow";
   wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
   wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
+  TraceEarly("TRACE: Before RegisterClassW");
   RegisterClassW(&wc);
+  TraceEarly("TRACE: After RegisterClassW success");
 
   const std::wstring mainWindowTitle = std::wstring(L"ScaleLogger ") + kAppVersionWide;
+  TraceEarly("TRACE: Before CreateWindowExW");
   HWND hwnd = CreateWindowExW(0, wc.lpszClassName, mainWindowTitle.c_str(), WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_SIZEBOX,
                               CW_USEDEFAULT, CW_USEDEFAULT, 930, 660, nullptr, nullptr, hInstance, nullptr);
 
-  if (!hwnd) return 1;
+  if (!hwnd) {
+    TraceEarly("ERROR: CreateWindowExW failed, gle=" + std::to_string(GetLastError()));
+    return 1;
+  }
+  TraceEarly("TRACE: After CreateWindowExW success");
 
+  TraceEarly("TRACE: Before ShowWindow");
   ShowWindow(hwnd, nCmdShow);
   UpdateWindow(hwnd);
+  TraceEarly("TRACE: After ShowWindow/UpdateWindow");
 
+  TraceEarly("TRACE: Before g_ui.controller->Initialize()");
   g_ui.controller->Initialize();
+  TraceEarly("TRACE: After g_ui.controller->Initialize()");
   UpdateConnectionUi(g_ui.controller->IsConnected());
   const auto& cfg = g_ui.controller->Config();
   if (cfg.darkMode) AddLogLine(std::string("Dark mode is experimental in ") + kAppVersion + " and is disabled by default.");
   const char* disableStartupConnect = std::getenv("SCALELOGGER_DISABLE_STARTUP_CONNECT");
   AddLogLine(std::string("TRACE: Env SCALELOGGER_DISABLE_STARTUP_CONNECT=") + (disableStartupConnect ? disableStartupConnect : "<unset>"));
+  TraceEarly("TRACE: Before startup auto-connect decision");
   const bool startupConnectDisabledByEnv = disableStartupConnect && std::string(disableStartupConnect) == "1";
   if (cfg.connectOnStartup && startupConnectDisabledByEnv) {
     AddLogLine("TRACE: Startup auto-connect DISABLED by env override");
@@ -1423,6 +1440,7 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
     AddLogLine("Posting deferred startup auto-connect.");
     PostMessageW(hwnd, kMsgStartupAutoConnect, 0, 0);
   }
+  TraceEarly("TRACE: After startup auto-connect decision path");
 
   AddLogLine("Scanning serial ports...");
   const auto ports = g_ui.controller->ScanPorts();
