@@ -24,7 +24,6 @@ struct FatalDiagnosticsConfig {
 FatalDiagnosticsConfig g_fatalDiagnosticsConfig{};
 std::string g_fatalTraceBuffer;
 bool g_fatalDialogInProgress = false;
-constexpr const char* kDiagnosticBuildTag = "diag-20260330-next";
 
 std::string GetFatalLogPath() {
   char tempPath[MAX_PATH]{};
@@ -184,7 +183,7 @@ void ReportFatalCrash(const std::string& headline, unsigned long exceptionCode, 
   std::ostringstream report;
   report << "ScaleLogger crash\n\n";
   report << "Version: " << scalelogger::kAppVersion << "\n";
-  report << "Diagnostic build tag: " << kDiagnosticBuildTag << "\n";
+  report << "Build tag: " << scalelogger::GetBuildTag() << "\n";
   report << "Executable path: " << GetExecutablePath() << "\n";
   report << "SCALELOGGER_RUNMAIN_STAGE_LIMIT: " << GetEnvOrUnset("SCALELOGGER_RUNMAIN_STAGE_LIMIT") << "\n";
   report << "SCALELOGGER_FORCE_NO_SERIAL: " << GetEnvOrUnset("SCALELOGGER_FORCE_NO_SERIAL") << "\n\n";
@@ -216,7 +215,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   LoadFatalDiagnosticsConfig();
   AppendFatalLine("===== ScaleLogger fatal session start =====", false);
   AppendFatalLine("TRACE: ScaleLogger version: " + std::string(scalelogger::kAppVersion), true);
-  AppendFatalLine("TRACE: Diagnostic build tag: " + std::string(kDiagnosticBuildTag), true);
+  AppendFatalLine("TRACE: Build tag: " + std::string(scalelogger::GetBuildTag()), true);
   AppendFatalLine("TRACE: Executable path: " + GetExecutablePath(), true);
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_STAGE_LIMIT=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_STAGE_LIMIT"), true);
   AppendFatalLine("TRACE: SCALELOGGER_FORCE_NO_SERIAL=" + GetEnvOrUnset("SCALELOGGER_FORCE_NO_SERIAL"), true);
