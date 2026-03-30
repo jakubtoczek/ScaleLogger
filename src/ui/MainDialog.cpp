@@ -1373,6 +1373,19 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 #define SCALELOGGER_NOINLINE __attribute__((noinline))
 #endif
 
+int GetRunMainStageLimit() {
+  const char* raw = std::getenv("SCALELOGGER_RUNMAIN_STAGE_LIMIT");
+  if (!raw || !*raw) return -1;
+  char* end = nullptr;
+  const long parsed = std::strtol(raw, &end, 10);
+  if (end == raw || (end && *end != '\0') || parsed < 0 || parsed > 1000) return -1;
+  return static_cast<int>(parsed);
+}
+
+bool ShouldReturnAtStage(int stageLimit, int stage) {
+  return stageLimit >= 0 && stageLimit == stage;
+}
+
 int ProbeMainDialogBasic() {
   OutputDebugStringA("TRACE: ProbeMainDialogBasic entered\n");
   return 101;
@@ -1396,20 +1409,52 @@ SCALELOGGER_NOINLINE int ProbeMainDialogTouchUi(HINSTANCE hInstance) {
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow) {
+  const int stageLimit = GetRunMainStageLimit();
+  TraceEarly("TRACE: RunMainDialogImpl stage 0 entered");
+  if (ShouldReturnAtStage(stageLimit, 0)) {
+    TraceEarly("TRACE: RunMainDialogImpl early return at stage 0");
+    return 200;
+  }
   TraceEarly("TRACE: RunMainDialogImpl entered");
   TraceEarly("TRACE: RunMainDialog function entry A");
   TraceEarly("TRACE: Before first TraceEarly self-test");
   TraceEarly("TRACE: After first TraceEarly self-test");
+  TraceEarly("TRACE: RunMainDialogImpl stage 1 after first local/setup");
+  if (ShouldReturnAtStage(stageLimit, 1)) {
+    TraceEarly("TRACE: RunMainDialogImpl early return at stage 1");
+    return 201;
+  }
   TraceEarly("TRACE: Before storing hInstance");
   g_ui.hInstance = hInstance;
   TraceEarly("TRACE: After storing hInstance");
+  TraceEarly("TRACE: RunMainDialogImpl stage 2 after g_ui assignment");
+  if (ShouldReturnAtStage(stageLimit, 2)) {
+    TraceEarly("TRACE: RunMainDialogImpl early return at stage 2");
+    return 202;
+  }
   TraceEarly("TRACE: Before INITCOMMONCONTROLSEX construction");
   INITCOMMONCONTROLSEX icc{sizeof(INITCOMMONCONTROLSEX), ICC_TAB_CLASSES};
   TraceEarly("TRACE: After INITCOMMONCONTROLSEX construction cbSize=" + std::to_string(icc.dwSize) + " classes=" + std::to_string(icc.dwICC));
+  TraceEarly("TRACE: RunMainDialogImpl stage 3 after INITCOMMONCONTROLSEX construction");
+  if (ShouldReturnAtStage(stageLimit, 3)) {
+    TraceEarly("TRACE: RunMainDialogImpl early return at stage 3");
+    return 203;
+  }
   TraceEarly("TRACE: Before InitCommonControlsEx");
   const BOOL initCommonControlsOk = InitCommonControlsEx(&icc);
   const DWORD initCommonControlsGle = GetLastError();
   TraceEarly("TRACE: After InitCommonControlsEx result=" + std::to_string(initCommonControlsOk) + " gle=" + std::to_string(initCommonControlsGle));
+  TraceEarly("TRACE: RunMainDialogImpl stage 4 after InitCommonControlsEx result=" + std::to_string(initCommonControlsOk) +
+             " gle=" + std::to_string(initCommonControlsGle));
+  if (ShouldReturnAtStage(stageLimit, 4)) {
+    TraceEarly("TRACE: RunMainDialogImpl early return at stage 4");
+    return 204;
+  }
+  TraceEarly("TRACE: RunMainDialogImpl stage 5 before next real startup step");
+  if (ShouldReturnAtStage(stageLimit, 5)) {
+    TraceEarly("TRACE: RunMainDialogImpl early return at stage 5");
+    return 205;
+  }
 
   TraceEarly("TRACE: Before data-root resolution");
   const char* userProfile = std::getenv("USERPROFILE");
