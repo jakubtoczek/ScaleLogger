@@ -1376,7 +1376,7 @@ int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   TraceEarly("TRACE: After storing hInstance");
   TraceEarly("TRACE: Before INITCOMMONCONTROLSEX construction");
   INITCOMMONCONTROLSEX icc{sizeof(INITCOMMONCONTROLSEX), ICC_TAB_CLASSES};
-  TraceEarly("TRACE: After INITCOMMONCONTROLSEX construction cbSize=" + std::to_string(icc.cbSize) + " classes=" + std::to_string(icc.dwICC));
+  TraceEarly("TRACE: After INITCOMMONCONTROLSEX construction cbSize=" + std::to_string(icc.dwSize) + " classes=" + std::to_string(icc.dwICC));
   TraceEarly("TRACE: Before InitCommonControlsEx");
   const BOOL initCommonControlsOk = InitCommonControlsEx(&icc);
   const DWORD initCommonControlsGle = GetLastError();
