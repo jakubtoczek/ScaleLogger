@@ -1386,6 +1386,8 @@ bool ShouldReturnAtStage(int stageLimit, int stage) {
   return stageLimit >= 0 && stageLimit == stage;
 }
 
+static int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow);
+
 int ProbeMainDialogBasic() {
   OutputDebugStringA("TRACE: ProbeMainDialogBasic entered\n");
   return 101;
@@ -1406,6 +1408,11 @@ SCALELOGGER_NOINLINE int ProbeMainDialogTouchUi(HINSTANCE hInstance) {
   g_ui.hInstance = hInstance;
   TraceEarly("TRACE: ProbeMainDialogTouchUi after g_ui write");
   return 104;
+}
+
+SCALELOGGER_NOINLINE int ProbeRunMainDialogImplDirect(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarly("TRACE: ProbeRunMainDialogImplDirect entered");
+  return RunMainDialogImpl(hInstance, nCmdShow);
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow) {
