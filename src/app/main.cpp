@@ -206,6 +206,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     AppendFatalLine("TRACE: Calling ProbeMainDialogTraceEarly", true);
     const int probeTraceEarlyCode = scalelogger::ProbeMainDialogTraceEarly();
     AppendFatalLine("TRACE: ProbeMainDialogTraceEarly returned code=" + std::to_string(probeTraceEarlyCode), true);
+    AppendFatalLine("TRACE: Calling ProbeMainDialogWithArgs", true);
+    const int probeWithArgsCode = scalelogger::ProbeMainDialogWithArgs(hInstance, nCmdShow);
+    AppendFatalLine("TRACE: ProbeMainDialogWithArgs returned code=" + std::to_string(probeWithArgsCode), true);
+    AppendFatalLine("TRACE: Calling ProbeMainDialogTouchUi", true);
+    const int probeTouchUiCode = scalelogger::ProbeMainDialogTouchUi(hInstance);
+    AppendFatalLine("TRACE: ProbeMainDialogTouchUi returned code=" + std::to_string(probeTouchUiCode), true);
     AppendFatalLine("TRACE: Calling RunMainDialog", true);
     const int exitCode = scalelogger::RunMainDialog(hInstance, nCmdShow);
     AppendFatalLine("TRACE: RunMainDialog returned exit_code=" + std::to_string(exitCode), true);

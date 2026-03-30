@@ -1367,6 +1367,12 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 }
 } // namespace
 
+#if defined(_MSC_VER)
+#define SCALELOGGER_NOINLINE __declspec(noinline)
+#else
+#define SCALELOGGER_NOINLINE __attribute__((noinline))
+#endif
+
 int ProbeMainDialogBasic() {
   OutputDebugStringA("TRACE: ProbeMainDialogBasic entered\n");
   return 101;
@@ -1377,7 +1383,19 @@ int ProbeMainDialogTraceEarly() {
   return 102;
 }
 
-static int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow) {
+SCALELOGGER_NOINLINE int ProbeMainDialogWithArgs(HINSTANCE, int nCmdShow) {
+  TraceEarly("TRACE: ProbeMainDialogWithArgs entered nCmdShow=" + std::to_string(nCmdShow));
+  return 103;
+}
+
+SCALELOGGER_NOINLINE int ProbeMainDialogTouchUi(HINSTANCE hInstance) {
+  TraceEarly("TRACE: ProbeMainDialogTouchUi before g_ui write");
+  g_ui.hInstance = hInstance;
+  TraceEarly("TRACE: ProbeMainDialogTouchUi after g_ui write");
+  return 104;
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow) {
   TraceEarly("TRACE: RunMainDialogImpl entered");
   TraceEarly("TRACE: RunMainDialog function entry A");
   TraceEarly("TRACE: Before first TraceEarly self-test");
@@ -1482,7 +1500,7 @@ static int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow) {
   return static_cast<int>(msg.wParam);
 }
 
-int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
+SCALELOGGER_NOINLINE int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   TraceEarly("TRACE: RunMainDialog wrapper entered");
   return RunMainDialogImpl(hInstance, nCmdShow);
 }
