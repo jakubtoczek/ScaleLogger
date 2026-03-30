@@ -278,7 +278,7 @@ LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
   switch (draw->dwDrawStage) {
     case CDDS_PREPAINT: {
       FillRect(draw->hdc, &draw->rc, g_darkBrush);
-      return CDRF_NOTIFYITEMDRAW;
+      return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
     }
     case CDDS_ITEMPREPAINT: {
       const int tabIndex = static_cast<int>(draw->dwItemSpec);
@@ -307,6 +307,12 @@ LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
         DrawTextW(draw->hdc, text, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
       }
       return CDRF_SKIPDEFAULT;
+    }
+    case CDDS_POSTPAINT: {
+      RECT tabClient = draw->rc;
+      TabCtrl_AdjustRect(draw->hdr.hwndFrom, FALSE, &tabClient);
+      FillRect(draw->hdc, &tabClient, g_darkBrush);
+      return CDRF_DODEFAULT;
     }
     default: return CDRF_DODEFAULT;
   }
