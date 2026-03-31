@@ -1489,38 +1489,6 @@ static_assert(std::is_same_v<decltype(&RunMainDialog), RunMainDialogFn>, "RunMai
 static_assert(std::is_same_v<decltype(&ProbeRunMainDialogImplDirect), RunMainDialogFn>, "ProbeRunMainDialogImplDirect signature mismatch");
 static_assert(std::is_same_v<decltype(&RunMainDialogImpl), RunMainDialogFn>, "RunMainDialogImpl signature mismatch");
 
-struct DirectImplProbeSehContext {
-  RunMainDialogFn fn;
-  HINSTANCE hInstance;
-  int nCmdShow;
-  int code;
-  unsigned long trappedCode;
-  int phase;
-};
-
-static SCALELOGGER_NOINLINE int ExecuteDirectImplProbeDispatch(DirectImplProbeSehContext* ctx) {
-  ctx->phase = 1;
-  const int code = ctx->fn(ctx->hInstance, ctx->nCmdShow);
-  ctx->code = code;
-  ctx->phase = 2;
-  return code;
-}
-
-static SCALELOGGER_NOINLINE int ExecuteDirectImplProbeDispatchWithSeh(DirectImplProbeSehContext* ctx) {
-#if defined(_MSC_VER)
-  __try {
-    ctx->trappedCode = 0;
-    return ExecuteDirectImplProbeDispatch(ctx);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    ctx->trappedCode = GetExceptionCode();
-    return -701;
-  }
-#else
-  ctx->trappedCode = 0;
-  return ExecuteDirectImplProbeDispatch(ctx);
-#endif
-}
-
 int ProbeMainDialogBasic() {
   OutputDebugStringA("TRACE: ProbeMainDialogBasic entered\n");
   return 101;
@@ -1544,18 +1512,11 @@ SCALELOGGER_NOINLINE int ProbeMainDialogTouchUi(HINSTANCE hInstance) {
 }
 
 SCALELOGGER_NOINLINE int ProbeRunMainDialogImplDirect(HINSTANCE hInstance, int nCmdShow) {
+  // Local SEH guard intentionally removed; caller-side SEH capture in main.cpp is the active diagnostic path.
   TraceEarly("TRACE: ProbeRunMainDialogImplDirect entered");
-  TraceEarly("TRACE: ProbeRunMainDialogImplDirect before guarded impl invoke");
-  DirectImplProbeSehContext ctx{&RunMainDialogImpl, hInstance, nCmdShow, -701, 0, 0};
-  const int code = ExecuteDirectImplProbeDispatchWithSeh(&ctx);
-  if (ctx.trappedCode != 0) {
-    std::ostringstream oss;
-    oss << "TRACE: SEH trapped in guarded direct-impl probe code=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0')
-        << ctx.trappedCode;
-    TraceEarly(oss.str());
-    return code;
-  }
-  TraceEarly("TRACE: ProbeRunMainDialogImplDirect after guarded impl invoke code=" + std::to_string(code));
+  TraceEarly("TRACE: ProbeRunMainDialogImplDirect before direct impl invoke");
+  const int code = RunMainDialogImpl(hInstance, nCmdShow);
+  TraceEarly("TRACE: ProbeRunMainDialogImplDirect after direct impl invoke code=" + std::to_string(code));
   return code;
 }
 
