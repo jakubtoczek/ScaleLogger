@@ -249,51 +249,68 @@ void LogFunctionVirtualMemoryInfo(const char* symbolName, const void* ptr) {
 }
 
 struct MainCallContext {
+  int modeId{0};
+  int sehReturnCode{0};
   HINSTANCE hInstance{nullptr};
   int nCmdShow{0};
   scalelogger::RunMainDialogFn fn{nullptr};
 };
 
-static int InvokeRunMainDirect(void* ctxRaw) {
-  auto* ctx = reinterpret_cast<MainCallContext*>(ctxRaw);
-  return scalelogger::RunMainDialog(ctx->hInstance, ctx->nCmdShow);
+enum MainCallModeId {
+  kMainCallRunMainDirect = 1,
+  kMainCallRunMainFn = 2,
+  kMainCallRunMainThunk = 3,
+  kMainCallWrapperProbe = 4,
+  kMainCallImplProbe = 5,
+};
+
+static const char* MainCallModeLabel(int modeId) {
+  switch (modeId) {
+    case kMainCallRunMainDirect: return "runmain-direct";
+    case kMainCallRunMainFn: return "runmain-fn";
+    case kMainCallRunMainThunk: return "runmain-mainthunk";
+    case kMainCallWrapperProbe: return "wrapper-probe";
+    case kMainCallImplProbe: return "impl-probe";
+    default: return "unknown";
+  }
 }
 
-static int InvokeRunMainFn(void* ctxRaw) {
-  auto* ctx = reinterpret_cast<MainCallContext*>(ctxRaw);
-  return ctx->fn(ctx->hInstance, ctx->nCmdShow);
+static int DispatchMainCall(MainCallContext* ctx) {
+  switch (ctx->modeId) {
+    case kMainCallRunMainDirect: return scalelogger::RunMainDialog(ctx->hInstance, ctx->nCmdShow);
+    case kMainCallRunMainFn: return ctx->fn(ctx->hInstance, ctx->nCmdShow);
+    case kMainCallRunMainThunk: return CallRunMainFromMainThunk(ctx->fn, ctx->hInstance, ctx->nCmdShow);
+    case kMainCallWrapperProbe: return scalelogger::ProbeRunMainDialogWrapper(ctx->hInstance, ctx->nCmdShow);
+    case kMainCallImplProbe: return scalelogger::ProbeRunMainDialogImplDirect(ctx->hInstance, ctx->nCmdShow);
+    default: return ctx->sehReturnCode;
+  }
 }
 
-static int InvokeRunMainMainThunk(void* ctxRaw) {
-  auto* ctx = reinterpret_cast<MainCallContext*>(ctxRaw);
-  return CallRunMainFromMainThunk(ctx->fn, ctx->hInstance, ctx->nCmdShow);
-}
-
-static int InvokeWrapperProbe(void* ctxRaw) {
-  auto* ctx = reinterpret_cast<MainCallContext*>(ctxRaw);
-  return scalelogger::ProbeRunMainDialogWrapper(ctx->hInstance, ctx->nCmdShow);
-}
-
-static int InvokeImplProbe(void* ctxRaw) {
-  auto* ctx = reinterpret_cast<MainCallContext*>(ctxRaw);
-  return scalelogger::ProbeRunMainDialogImplDirect(ctx->hInstance, ctx->nCmdShow);
+static SCALELOGGER_MAIN_NOINLINE int ExecuteMainCallWithSeh(MainCallContext* ctx, unsigned long* trappedCodeOut) {
+  __try {
+    *trappedCodeOut = 0;
+    return DispatchMainCall(ctx);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    *trappedCodeOut = static_cast<unsigned long>(GetExceptionCode());
+    return ctx->sehReturnCode;
+  }
 }
 
 // Caller-side SEH guards are diagnostics-only to localize crash boundary behavior; not production crash-handling design.
-static SCALELOGGER_MAIN_NOINLINE int CallWithSehGuard(const char* label, int sehReturnCode, int (*invoke)(void*), void* ctxRaw) {
+static int CallWithSehGuard(MainCallContext* ctx) {
+  const char* label = MainCallModeLabel(ctx->modeId);
   AppendFatalLine(std::string("TRACE: CallWithSehGuard entered label=") + label, true);
   AppendFatalLine(std::string("TRACE: CallWithSehGuard before guarded invoke label=") + label, true);
-  __try {
-    const int code = invoke(ctxRaw);
-    AppendFatalLine(std::string("TRACE: CallWithSehGuard after guarded invoke label=") + label + " code=" + std::to_string(code), true);
-    return code;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  unsigned long trappedCode = 0;
+  const int code = ExecuteMainCallWithSeh(ctx, &trappedCode);
+  if (trappedCode != 0) {
     std::ostringstream oss;
-    oss << "TRACE: SEH trapped in " << label << " code=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0')
-        << static_cast<unsigned long>(GetExceptionCode());
+    oss << "TRACE: SEH trapped in " << label << " code=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << trappedCode;
     AppendFatalLine(oss.str(), true);
-    return sehReturnCode;
+  } else {
+    AppendFatalLine(std::string("TRACE: CallWithSehGuard after guarded invoke label=") + label + " code=" + std::to_string(code), true);
   }
+  return code;
 }
 } // namespace
 
@@ -369,23 +386,33 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     if (GetEnvOrUnset("SCALELOGGER_RUNMAIN_MATRIX") == "1") {
       AppendFatalLine("TRACE: Final call branch=matrix mode", true);
       AppendFatalLine("TRACE: Matrix step 1 begin target=impl-probe", true);
-      int matrixCode = CallWithSehGuard("impl-probe", 245, InvokeImplProbe, &mainCtx);
+      mainCtx.modeId = kMainCallImplProbe;
+      mainCtx.sehReturnCode = 245;
+      int matrixCode = CallWithSehGuard(&mainCtx);
       AppendFatalLine("TRACE: Matrix step 1 end target=impl-probe code=" + std::to_string(matrixCode), true);
 
       AppendFatalLine("TRACE: Matrix step 2 begin target=wrapper-probe", true);
-      matrixCode = CallWithSehGuard("wrapper-probe", 244, InvokeWrapperProbe, &mainCtx);
+      mainCtx.modeId = kMainCallWrapperProbe;
+      mainCtx.sehReturnCode = 244;
+      matrixCode = CallWithSehGuard(&mainCtx);
       AppendFatalLine("TRACE: Matrix step 2 end target=wrapper-probe code=" + std::to_string(matrixCode), true);
 
       AppendFatalLine("TRACE: Matrix step 3 begin target=runmain-fn", true);
-      matrixCode = CallWithSehGuard("runmain-fn", 242, InvokeRunMainFn, &mainCtx);
+      mainCtx.modeId = kMainCallRunMainFn;
+      mainCtx.sehReturnCode = 242;
+      matrixCode = CallWithSehGuard(&mainCtx);
       AppendFatalLine("TRACE: Matrix step 3 end target=runmain-fn code=" + std::to_string(matrixCode), true);
 
       AppendFatalLine("TRACE: Matrix step 4 begin target=runmain-mainthunk", true);
-      matrixCode = CallWithSehGuard("runmain-mainthunk", 243, InvokeRunMainMainThunk, &mainCtx);
+      mainCtx.modeId = kMainCallRunMainThunk;
+      mainCtx.sehReturnCode = 243;
+      matrixCode = CallWithSehGuard(&mainCtx);
       AppendFatalLine("TRACE: Matrix step 4 end target=runmain-mainthunk code=" + std::to_string(matrixCode), true);
 
       AppendFatalLine("TRACE: Matrix step 5 begin target=runmain-direct", true);
-      matrixCode = CallWithSehGuard("runmain-direct", 241, InvokeRunMainDirect, &mainCtx);
+      mainCtx.modeId = kMainCallRunMainDirect;
+      mainCtx.sehReturnCode = 241;
+      matrixCode = CallWithSehGuard(&mainCtx);
       AppendFatalLine("TRACE: Matrix step 5 end target=runmain-direct code=" + std::to_string(matrixCode), true);
       AppendFatalLine("TRACE: Matrix mode complete returning code=130", true);
       return 130;
@@ -402,7 +429,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     if (mainCallTarget == "runmain-direct") {
       AppendFatalLine("TRACE: Selected main call target=runmain-direct", true);
       AppendFatalLine("TRACE: Before final call path runmain-direct", true);
-      exitCode = CallWithSehGuard("runmain-direct", 241, InvokeRunMainDirect, &mainCtx);
+      mainCtx.modeId = kMainCallRunMainDirect;
+      mainCtx.sehReturnCode = 241;
+      exitCode = CallWithSehGuard(&mainCtx);
       AppendFatalLine("TRACE: After final call path runmain-direct code=" + std::to_string(exitCode), true);
       return exitCode;
     }
@@ -412,7 +441,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
       mainCtx.fn = &scalelogger::RunMainDialog;
       AppendFatalLine("TRACE: runmain-fn after binding function pointer fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)), true);
       AppendFatalLine("TRACE: Before final call path runmain-fn", true);
-      exitCode = CallWithSehGuard("runmain-fn", 242, InvokeRunMainFn, &mainCtx);
+      mainCtx.modeId = kMainCallRunMainFn;
+      mainCtx.sehReturnCode = 242;
+      exitCode = CallWithSehGuard(&mainCtx);
       AppendFatalLine("TRACE: After final call path runmain-fn code=" + std::to_string(exitCode), true);
       return exitCode;
     }
@@ -422,27 +453,35 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
       mainCtx.fn = &scalelogger::RunMainDialog;
       AppendFatalLine("TRACE: runmain-mainthunk after binding function pointer fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)), true);
       AppendFatalLine("TRACE: Before final call path runmain-mainthunk", true);
-      exitCode = CallWithSehGuard("runmain-mainthunk", 243, InvokeRunMainMainThunk, &mainCtx);
+      mainCtx.modeId = kMainCallRunMainThunk;
+      mainCtx.sehReturnCode = 243;
+      exitCode = CallWithSehGuard(&mainCtx);
       AppendFatalLine("TRACE: After final call path runmain-mainthunk code=" + std::to_string(exitCode), true);
       return exitCode;
     }
     if (mainCallTarget == "wrapper-probe") {
       AppendFatalLine("TRACE: Selected main call target=wrapper-probe", true);
       AppendFatalLine("TRACE: Before final call path wrapper-probe", true);
-      exitCode = CallWithSehGuard("wrapper-probe", 244, InvokeWrapperProbe, &mainCtx);
+      mainCtx.modeId = kMainCallWrapperProbe;
+      mainCtx.sehReturnCode = 244;
+      exitCode = CallWithSehGuard(&mainCtx);
       AppendFatalLine("TRACE: After final call path wrapper-probe code=" + std::to_string(exitCode), true);
       return exitCode;
     }
     if (mainCallTarget == "impl-probe") {
       AppendFatalLine("TRACE: Selected main call target=impl-probe", true);
       AppendFatalLine("TRACE: Before final call path impl-probe", true);
-      exitCode = CallWithSehGuard("impl-probe", 245, InvokeImplProbe, &mainCtx);
+      mainCtx.modeId = kMainCallImplProbe;
+      mainCtx.sehReturnCode = 245;
+      exitCode = CallWithSehGuard(&mainCtx);
       AppendFatalLine("TRACE: After final call path impl-probe code=" + std::to_string(exitCode), true);
       return exitCode;
     }
     AppendFatalLine("TRACE: Invalid main call target '" + mainCallTarget + "', falling back to runmain-direct", true);
     AppendFatalLine("TRACE: Before final call path runmain-direct", true);
-    exitCode = CallWithSehGuard("runmain-direct", 241, InvokeRunMainDirect, &mainCtx);
+    mainCtx.modeId = kMainCallRunMainDirect;
+    mainCtx.sehReturnCode = 241;
+    exitCode = CallWithSehGuard(&mainCtx);
     AppendFatalLine("TRACE: After final call path runmain-direct code=" + std::to_string(exitCode), true);
     return exitCode;
   } catch (const std::exception& ex) {
