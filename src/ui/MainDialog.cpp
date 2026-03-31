@@ -1496,12 +1496,18 @@ static int RunMainDialogImplBody(HINSTANCE hInstance, int nCmdShow, int stageLim
 static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANCE hInstance, int nCmdShow);
 static int __cdecl CallProbeRunMainDialogImplDirectTrampoline(HINSTANCE hInstance, int nCmdShow);
 static int __cdecl CallProbeRunMainDialogWrapperTrampoline(HINSTANCE hInstance, int nCmdShow);
+static SCALELOGGER_NOINLINE int MainDialogSentinelA();
+static SCALELOGGER_NOINLINE int MainDialogSentinelB();
+static SCALELOGGER_NOINLINE int MainDialogSentinelC();
+static SCALELOGGER_NOINLINE int MainDialogSentinelWithArgs(HINSTANCE hInstance, int nCmdShow);
 
 using RunMainDialogConcreteFn = int (*)(HINSTANCE, int);
 static_assert(std::is_same_v<decltype(&RunMainDialog), RunMainDialogConcreteFn>, "RunMainDialog signature mismatch");
 static_assert(std::is_same_v<decltype(&ProbeRunMainDialogWrapper), RunMainDialogConcreteFn>, "ProbeRunMainDialogWrapper signature mismatch");
 static_assert(std::is_same_v<decltype(&ProbeRunMainDialogImplDirect), RunMainDialogConcreteFn>, "ProbeRunMainDialogImplDirect signature mismatch");
 static_assert(std::is_same_v<decltype(&RunMainDialogImpl), RunMainDialogConcreteFn>, "RunMainDialogImpl signature mismatch");
+static_assert(std::is_same_v<decltype(&ProbeMainDialogSentinelWithArgs), RunMainDialogConcreteFn>, "ProbeMainDialogSentinelWithArgs signature mismatch");
+static_assert(std::is_same_v<decltype(&ProbeMainDialogSentinelA), int (*)()>, "ProbeMainDialogSentinelA signature mismatch");
 
 int ProbeMainDialogBasic() {
   OutputDebugStringA("TRACE: ProbeMainDialogBasic entered\n");
@@ -1566,6 +1572,45 @@ SCALELOGGER_NOINLINE int ProbeRunMainDialogWrapperViaTrampoline(HINSTANCE hInsta
   TraceEarly("TRACE: ProbeRunMainDialogWrapperViaTrampoline before trampoline");
   const int code = CallProbeRunMainDialogWrapperTrampoline(hInstance, nCmdShow);
   TraceEarly("TRACE: ProbeRunMainDialogWrapperViaTrampoline after trampoline code=" + std::to_string(code));
+  return code;
+}
+
+static SCALELOGGER_NOINLINE int MainDialogSentinelA() {
+  TraceEarlyLiteral("TRACE: RAW entered MainDialogSentinelA");
+  return 901;
+}
+
+static SCALELOGGER_NOINLINE int MainDialogSentinelB() {
+  TraceEarlyLiteral("TRACE: RAW entered MainDialogSentinelB");
+  (void)MainDialogSentinelA();
+  TraceEarlyLiteral("TRACE: RAW returned MainDialogSentinelB");
+  return 902;
+}
+
+static SCALELOGGER_NOINLINE int MainDialogSentinelC() {
+  TraceEarlyLiteral("TRACE: RAW entered MainDialogSentinelC");
+  (void)MainDialogSentinelB();
+  TraceEarlyLiteral("TRACE: RAW returned MainDialogSentinelC");
+  return 903;
+}
+
+static SCALELOGGER_NOINLINE int MainDialogSentinelWithArgs(HINSTANCE, int) {
+  TraceEarlyLiteral("TRACE: RAW entered MainDialogSentinelWithArgs");
+  TraceEarlyLiteral("TRACE: RAW passed first line MainDialogSentinelWithArgs");
+  return 904;
+}
+
+SCALELOGGER_NOINLINE int ProbeMainDialogSentinelA() {
+  TraceEarly("TRACE: ProbeMainDialogSentinelA before call");
+  const int code = MainDialogSentinelC();
+  TraceEarly("TRACE: ProbeMainDialogSentinelA after call code=" + std::to_string(code));
+  return code;
+}
+
+SCALELOGGER_NOINLINE int ProbeMainDialogSentinelWithArgs(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarly("TRACE: ProbeMainDialogSentinelWithArgs before call");
+  const int code = MainDialogSentinelWithArgs(hInstance, nCmdShow);
+  TraceEarly("TRACE: ProbeMainDialogSentinelWithArgs after call code=" + std::to_string(code));
   return code;
 }
 

@@ -360,6 +360,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: SCALELOGGER_FORCE_NO_SERIAL=" + GetEnvOrUnset("SCALELOGGER_FORCE_NO_SERIAL"), true);
   AppendFatalLine("TRACE: SCALELOGGER_ENABLE_DIRECT_IMPL_TRAMPOLINE_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_DIRECT_IMPL_TRAMPOLINE_PROBE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_ENABLE_WRAPPER_TRAMPOLINE_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_WRAPPER_TRAMPOLINE_PROBE"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_ENABLE_MAINDIALOG_SENTINEL_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_MAINDIALOG_SENTINEL_PROBE"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_ENABLE_MAINDIALOG_SENTINEL_ARGS_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_MAINDIALOG_SENTINEL_ARGS_PROBE"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
   SetUnhandledExceptionFilter(FatalSehHandler);
   AppendFatalLine("TRACE: UnhandledExceptionFilter installed", true);
@@ -413,6 +415,24 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                       true);
     } else {
       AppendFatalLine("TRACE: ProbeRunMainDialogWrapperViaTrampoline skipped (env not enabled)", true);
+    }
+    const bool enableMainDialogSentinelProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_MAINDIALOG_SENTINEL_PROBE") == "1";
+    if (enableMainDialogSentinelProbe) {
+      AppendFatalLine("TRACE: ProbeMainDialogSentinelA active", true);
+      AppendFatalLine("TRACE: Calling ProbeMainDialogSentinelA", true);
+      const int probeMainDialogSentinelACode = scalelogger::ProbeMainDialogSentinelA();
+      AppendFatalLine("TRACE: ProbeMainDialogSentinelA returned code=" + std::to_string(probeMainDialogSentinelACode), true);
+    } else {
+      AppendFatalLine("TRACE: ProbeMainDialogSentinelA skipped (env not enabled)", true);
+    }
+    const bool enableMainDialogSentinelArgsProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_MAINDIALOG_SENTINEL_ARGS_PROBE") == "1";
+    if (enableMainDialogSentinelArgsProbe) {
+      AppendFatalLine("TRACE: ProbeMainDialogSentinelWithArgs active", true);
+      AppendFatalLine("TRACE: Calling ProbeMainDialogSentinelWithArgs", true);
+      const int probeMainDialogSentinelWithArgsCode = scalelogger::ProbeMainDialogSentinelWithArgs(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: ProbeMainDialogSentinelWithArgs returned code=" + std::to_string(probeMainDialogSentinelWithArgsCode), true);
+    } else {
+      AppendFatalLine("TRACE: ProbeMainDialogSentinelWithArgs skipped (env not enabled)", true);
     }
 
     AppendFatalLine("TRACE: Address RunMainDialog=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::RunMainDialog)), true);
