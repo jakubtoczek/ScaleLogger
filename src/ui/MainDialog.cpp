@@ -1494,6 +1494,15 @@ bool ShouldReturnAtStage(int stageLimit, int stage) {
 static int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow);
 static int RunMainDialogImplBody(HINSTANCE hInstance, int nCmdShow, int stageLimit);
 static int RunMainDialogFreshBody(HINSTANCE hInstance, int nCmdShow);
+struct FreshStartupContext;
+static int GetFreshStageLimit();
+static bool ShouldStopAtFreshStage(const FreshStartupContext& ctx, int stage, int code);
+static int RunMainDialogStage0_Entry(FreshStartupContext* ctx);
+static int RunMainDialogStage1_InitializeUi(FreshStartupContext* ctx);
+static int RunMainDialogStage2_CreateController(FreshStartupContext* ctx);
+static int RunMainDialogStage3_CreateMainWindow(FreshStartupContext* ctx);
+static int RunMainDialogStage4_PostCreate(FreshStartupContext* ctx);
+static int RunMainDialogStage5_MessageLoop(FreshStartupContext* ctx);
 static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANCE hInstance, int nCmdShow);
 static int __cdecl CallProbeRunMainDialogImplDirectTrampoline(HINSTANCE hInstance, int nCmdShow);
 static int __cdecl CallProbeRunMainDialogWrapperTrampoline(HINSTANCE hInstance, int nCmdShow);
@@ -1699,10 +1708,123 @@ static SCALELOGGER_NOINLINE int RunMainDialogImpl(HINSTANCE hInstance, int nCmdS
   return RunMainDialogImplBody(hInstance, nCmdShow, stageLimit);
 }
 
+struct FreshStartupContext {
+  HINSTANCE hInstance{nullptr};
+  int nCmdShow{0};
+  int stageLimit{-1};
+  std::filesystem::path dataRoot;
+  HWND hwnd{nullptr};
+};
+
+static int GetFreshStageLimit() {
+  const char* raw = std::getenv("SCALELOGGER_FRESH_STAGE_LIMIT");
+  if (!raw || !*raw) return -1;
+  char* end = nullptr;
+  const long parsed = std::strtol(raw, &end, 10);
+  if (end == raw || (end && *end != '\0') || parsed < 0 || parsed > 1000) return -1;
+  return static_cast<int>(parsed);
+}
+
+static bool ShouldStopAtFreshStage(const FreshStartupContext& ctx, int stage, int code) {
+  if (ctx.stageLimit != stage) return false;
+  TraceEarly("TRACE: Fresh stage-limit stop at stage=" + std::to_string(stage) + " code=" + std::to_string(code));
+  return true;
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage0_Entry(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE0 entered");
+  ctx->stageLimit = GetFreshStageLimit();
+  TraceEarly("TRACE: STAGE0 fresh stage-limit value=" + std::to_string(ctx->stageLimit));
+  if (ShouldStopAtFreshStage(*ctx, 0, 300)) return 300;
+  return RunMainDialogStage1_InitializeUi(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage1_InitializeUi(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE1 entered");
+  g_ui.hInstance = ctx->hInstance;
+  INITCOMMONCONTROLSEX icc{sizeof(INITCOMMONCONTROLSEX), ICC_TAB_CLASSES};
+  const BOOL initOk = InitCommonControlsEx(&icc);
+  TraceEarly("TRACE: STAGE1 InitCommonControlsEx result=" + std::to_string(initOk));
+  if (ShouldStopAtFreshStage(*ctx, 1, 301)) return 301;
+  return RunMainDialogStage2_CreateController(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage2_CreateController(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE2 entered");
+  const char* userProfile = std::getenv("USERPROFILE");
+  const char* localAppData = std::getenv("LOCALAPPDATA");
+  ctx->dataRoot = userProfile     ? std::filesystem::path(userProfile) / "ScaleLogger"
+                  : localAppData ? std::filesystem::path(localAppData) / "ScaleLogger"
+                                 : (std::filesystem::temp_directory_path() / "ScaleLogger");
+  std::error_code ec;
+  std::filesystem::create_directories(ctx->dataRoot, ec);
+  ec.clear();
+  std::filesystem::create_directories(ctx->dataRoot / "logs", ec);
+  g_ui.controller = std::make_unique<AppController>(ctx->dataRoot);
+  g_ui.controller->SetLogSink([](const std::string& message, bool isError) { PostLogLineToUiThread((isError ? "ERROR: " : "") + message); });
+  g_ui.controller->SetConnectionStateSink([](bool connected) { PostConnectionStateToUiThread(connected); });
+  if (ShouldStopAtFreshStage(*ctx, 2, 302)) return 302;
+  return RunMainDialogStage3_CreateMainWindow(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage3_CreateMainWindow(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE3 entered");
+  WNDCLASSW wc{};
+  wc.lpfnWndProc = MainWndProc;
+  wc.hInstance = ctx->hInstance;
+  wc.lpszClassName = L"ScaleLoggerMainWindow";
+  wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+  wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
+  RegisterClassW(&wc);
+  const std::wstring mainWindowTitle = std::wstring(L"ScaleLogger ") + kAppVersionWide;
+  ctx->hwnd = CreateWindowExW(0, wc.lpszClassName, mainWindowTitle.c_str(), WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_SIZEBOX,
+                              CW_USEDEFAULT, CW_USEDEFAULT, 860, 600, nullptr, nullptr, ctx->hInstance, nullptr);
+  if (!ctx->hwnd) return 1;
+  if (ShouldStopAtFreshStage(*ctx, 3, 303)) return 303;
+  return RunMainDialogStage4_PostCreate(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage4_PostCreate(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE4 entered");
+  ShowWindow(ctx->hwnd, ctx->nCmdShow);
+  UpdateWindow(ctx->hwnd);
+  g_ui.controller->Initialize();
+  UpdateConnectionUi(g_ui.controller->IsConnected());
+  const auto& cfg = g_ui.controller->Config();
+  if (cfg.darkMode) AddLogLine(std::string("Dark mode is experimental in ") + kAppVersion + " and is disabled by default.");
+  const char* disableStartupConnect = std::getenv("SCALELOGGER_DISABLE_STARTUP_CONNECT");
+  const bool startupConnectDisabledByEnv = disableStartupConnect && std::string(disableStartupConnect) == "1";
+  if (cfg.connectOnStartup && !startupConnectDisabledByEnv) {
+    PostMessageW(ctx->hwnd, kMsgStartupAutoConnect, 0, 0);
+  }
+  const auto ports = g_ui.controller->ScanPorts();
+  std::string joined;
+  for (std::size_t i = 0; i < ports.size(); ++i) {
+    if (i) joined += ", ";
+    joined += ports[i];
+  }
+  AddLogLine("Detected " + std::to_string(ports.size()) + " ports" + (joined.empty() ? "." : (": " + joined)));
+  if (ShouldStopAtFreshStage(*ctx, 4, 304)) return 304;
+  return RunMainDialogStage5_MessageLoop(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage5_MessageLoop(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE5 entered");
+  MSG msg;
+  while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+    TranslateMessage(&msg);
+    DispatchMessageW(&msg);
+  }
+  if (g_ui.controller) g_ui.controller->LogMessage("Session end: normal shutdown");
+  g_ui.controller.reset();
+  return static_cast<int>(msg.wParam);
+}
+
 static SCALELOGGER_NOINLINE int RunMainDialogFreshBody(HINSTANCE hInstance, int nCmdShow) {
-  const int stageLimit = GetRunMainStageLimit();
-  TraceEarly("TRACE: RunMainDialogFreshBody forwarding to impl body stageLimit=" + std::to_string(stageLimit));
-  return RunMainDialogImplBody(hInstance, nCmdShow, stageLimit);
+  FreshStartupContext ctx{};
+  ctx.hInstance = hInstance;
+  ctx.nCmdShow = nCmdShow;
+  return RunMainDialogStage0_Entry(&ctx);
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogImplBody(HINSTANCE hInstance, int nCmdShow, int stageLimit) {
