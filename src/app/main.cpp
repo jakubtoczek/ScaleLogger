@@ -369,6 +369,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: SCALELOGGER_ENABLE_IMPL_FRESH_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_IMPL_FRESH_PROBE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_ENABLE_WRAPPER_BODY_FRESH_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_WRAPPER_BODY_FRESH_PROBE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_ENABLE_IMPL_BODY_FRESH_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_IMPL_BODY_FRESH_PROBE"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_ENABLE_RUNMAIN_FRESH_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_RUNMAIN_FRESH_PROBE"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_ENABLE_RUNMAIN_FRESH_BODY_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_RUNMAIN_FRESH_BODY_PROBE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_USE_LEGACY_RUNMAIN=" + GetEnvOrUnset("SCALELOGGER_USE_LEGACY_RUNMAIN"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
   SetUnhandledExceptionFilter(FatalSehHandler);
@@ -479,16 +481,41 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     } else {
       AppendFatalLine("TRACE: ProbeRunMainDialogImplBodyFresh skipped (env not enabled)", true);
     }
+    const bool enableRunMainFreshProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_RUNMAIN_FRESH_PROBE") == "1";
+    if (enableRunMainFreshProbe) {
+      AppendFatalLine("TRACE: ProbeRunMainDialogFresh active", true);
+      AppendFatalLine("TRACE: Calling ProbeRunMainDialogFresh", true);
+      const int probeRunMainDialogFreshCode = scalelogger::ProbeRunMainDialogFresh(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: ProbeRunMainDialogFresh returned code=" + std::to_string(probeRunMainDialogFreshCode), true);
+    } else {
+      AppendFatalLine("TRACE: ProbeRunMainDialogFresh skipped (env not enabled)", true);
+    }
+    const bool enableRunMainFreshBodyProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_RUNMAIN_FRESH_BODY_PROBE") == "1";
+    if (enableRunMainFreshBodyProbe) {
+      AppendFatalLine("TRACE: ProbeRunMainDialogFreshBody active", true);
+      AppendFatalLine("TRACE: Calling ProbeRunMainDialogFreshBody", true);
+      const int probeRunMainDialogFreshBodyCode = scalelogger::ProbeRunMainDialogFreshBody(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: ProbeRunMainDialogFreshBody returned code=" + std::to_string(probeRunMainDialogFreshBodyCode), true);
+    } else {
+      AppendFatalLine("TRACE: ProbeRunMainDialogFreshBody skipped (env not enabled)", true);
+    }
 
     AppendFatalLine("TRACE: Address RunMainDialog=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::RunMainDialog)), true);
+    AppendFatalLine("TRACE: Address RunMainDialogFresh=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::RunMainDialogFresh)), true);
     AppendFatalLine("TRACE: Address ProbeRunMainDialogWrapper=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogWrapper)),
                     true);
     AppendFatalLine("TRACE: Address ProbeRunMainDialogImplDirect=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogImplDirect)),
                     true);
+    AppendFatalLine("TRACE: Address ProbeRunMainDialogFresh=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogFresh)), true);
+    AppendFatalLine("TRACE: Address ProbeRunMainDialogFreshBody=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogFreshBody)),
+                    true);
     AppendFatalLine("TRACE: Address ProbeMainDialogWithArgs=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::ProbeMainDialogWithArgs)), true);
     LogFunctionVirtualMemoryInfo("RunMainDialog", reinterpret_cast<const void*>(&scalelogger::RunMainDialog));
+    LogFunctionVirtualMemoryInfo("RunMainDialogFresh", reinterpret_cast<const void*>(&scalelogger::RunMainDialogFresh));
     LogFunctionVirtualMemoryInfo("ProbeRunMainDialogWrapper", reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogWrapper));
     LogFunctionVirtualMemoryInfo("ProbeRunMainDialogImplDirect", reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogImplDirect));
+    LogFunctionVirtualMemoryInfo("ProbeRunMainDialogFresh", reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogFresh));
+    LogFunctionVirtualMemoryInfo("ProbeRunMainDialogFreshBody", reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogFreshBody));
     LogFunctionVirtualMemoryInfo("ProbeMainDialogWithArgs", reinterpret_cast<const void*>(&scalelogger::ProbeMainDialogWithArgs));
 
     if (GetEnvOrUnset("SCALELOGGER_SKIP_FINAL_RUNMAIN") == "1") {

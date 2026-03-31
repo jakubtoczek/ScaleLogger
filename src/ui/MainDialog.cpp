@@ -1518,6 +1518,8 @@ static_assert(std::is_same_v<decltype(&ProbeRunMainDialogWrapperBodyFresh), RunM
               "ProbeRunMainDialogWrapperBodyFresh signature mismatch");
 static_assert(std::is_same_v<decltype(&ProbeRunMainDialogImplBodyFresh), RunMainDialogConcreteFn>,
               "ProbeRunMainDialogImplBodyFresh signature mismatch");
+static_assert(std::is_same_v<decltype(&ProbeRunMainDialogFresh), RunMainDialogConcreteFn>, "ProbeRunMainDialogFresh signature mismatch");
+static_assert(std::is_same_v<decltype(&ProbeRunMainDialogFreshBody), RunMainDialogConcreteFn>, "ProbeRunMainDialogFreshBody signature mismatch");
 
 int ProbeMainDialogBasic() {
   OutputDebugStringA("TRACE: ProbeMainDialogBasic entered\n");
@@ -1650,6 +1652,22 @@ SCALELOGGER_NOINLINE int ProbeRunMainDialogImplBodyFresh(HINSTANCE hInstance, in
   TraceEarlyLiteral("TRACE: RAW passed first line ProbeRunMainDialogImplBodyFresh");
   (void)MainDialogSentinelWithArgs(hInstance, nCmdShow);
   return 914;
+}
+
+SCALELOGGER_NOINLINE int ProbeRunMainDialogFresh(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered ProbeRunMainDialogFresh");
+  TraceEarlyLiteral("TRACE: RAW passed first line ProbeRunMainDialogFresh");
+  const int code = RunMainDialogFresh(hInstance, nCmdShow);
+  TraceEarly("TRACE: ProbeRunMainDialogFresh returned code=" + std::to_string(code));
+  return code;
+}
+
+SCALELOGGER_NOINLINE int ProbeRunMainDialogFreshBody(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered ProbeRunMainDialogFreshBody");
+  TraceEarlyLiteral("TRACE: RAW passed first line ProbeRunMainDialogFreshBody");
+  const int code = RunMainDialogFreshBody(hInstance, nCmdShow);
+  TraceEarly("TRACE: ProbeRunMainDialogFreshBody returned code=" + std::to_string(code));
+  return code;
 }
 
 static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANCE hInstance, int nCmdShow) {
