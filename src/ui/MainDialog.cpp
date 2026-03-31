@@ -1493,6 +1493,7 @@ bool ShouldReturnAtStage(int stageLimit, int stage) {
 
 static int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow);
 static int RunMainDialogImplBody(HINSTANCE hInstance, int nCmdShow, int stageLimit);
+static int RunMainDialogFreshBody(HINSTANCE hInstance, int nCmdShow);
 static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANCE hInstance, int nCmdShow);
 static int __cdecl CallProbeRunMainDialogImplDirectTrampoline(HINSTANCE hInstance, int nCmdShow);
 static int __cdecl CallProbeRunMainDialogWrapperTrampoline(HINSTANCE hInstance, int nCmdShow);
@@ -1503,9 +1504,11 @@ static SCALELOGGER_NOINLINE int MainDialogSentinelWithArgs(HINSTANCE hInstance, 
 
 using RunMainDialogConcreteFn = int (*)(HINSTANCE, int);
 static_assert(std::is_same_v<decltype(&RunMainDialog), RunMainDialogConcreteFn>, "RunMainDialog signature mismatch");
+static_assert(std::is_same_v<decltype(&RunMainDialogFresh), RunMainDialogConcreteFn>, "RunMainDialogFresh signature mismatch");
 static_assert(std::is_same_v<decltype(&ProbeRunMainDialogWrapper), RunMainDialogConcreteFn>, "ProbeRunMainDialogWrapper signature mismatch");
 static_assert(std::is_same_v<decltype(&ProbeRunMainDialogImplDirect), RunMainDialogConcreteFn>, "ProbeRunMainDialogImplDirect signature mismatch");
 static_assert(std::is_same_v<decltype(&RunMainDialogImpl), RunMainDialogConcreteFn>, "RunMainDialogImpl signature mismatch");
+static_assert(std::is_same_v<decltype(&RunMainDialogFreshBody), RunMainDialogConcreteFn>, "RunMainDialogFreshBody signature mismatch");
 static_assert(std::is_same_v<decltype(&ProbeMainDialogSentinelWithArgs), RunMainDialogConcreteFn>, "ProbeMainDialogSentinelWithArgs signature mismatch");
 static_assert(std::is_same_v<decltype(&ProbeMainDialogSentinelA), int (*)()>, "ProbeMainDialogSentinelA signature mismatch");
 static_assert(std::is_same_v<decltype(&ProbeRunMainDialogWrapperFresh), RunMainDialogConcreteFn>, "ProbeRunMainDialogWrapperFresh signature mismatch");
@@ -1678,6 +1681,12 @@ static SCALELOGGER_NOINLINE int RunMainDialogImpl(HINSTANCE hInstance, int nCmdS
   return RunMainDialogImplBody(hInstance, nCmdShow, stageLimit);
 }
 
+static SCALELOGGER_NOINLINE int RunMainDialogFreshBody(HINSTANCE hInstance, int nCmdShow) {
+  const int stageLimit = GetRunMainStageLimit();
+  TraceEarly("TRACE: RunMainDialogFreshBody forwarding to impl body stageLimit=" + std::to_string(stageLimit));
+  return RunMainDialogImplBody(hInstance, nCmdShow, stageLimit);
+}
+
 static SCALELOGGER_NOINLINE int RunMainDialogImplBody(HINSTANCE hInstance, int nCmdShow, int stageLimit) {
   TraceEarly("TRACE: RunMainDialogImpl stage 0 entered");
   if (ShouldReturnAtStage(stageLimit, 0)) {
@@ -1845,6 +1854,12 @@ SCALELOGGER_NOINLINE int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
   const int code = RunMainDialogImpl(hInstance, nCmdShow);
   TraceEarly("TRACE: RunMainDialog wrapper after return from direct path code=" + std::to_string(code));
   return code;
+}
+
+SCALELOGGER_NOINLINE int RunMainDialogFresh(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered RunMainDialogFresh");
+  TraceEarlyLiteral("TRACE: RAW passed first line RunMainDialogFresh");
+  return RunMainDialogFreshBody(hInstance, nCmdShow);
 }
 
 } // namespace scalelogger

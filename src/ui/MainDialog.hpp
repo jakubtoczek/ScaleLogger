@@ -22,6 +22,7 @@ int ProbeRunMainDialogWrapperFresh(HINSTANCE hInstance, int nCmdShow);
 int ProbeRunMainDialogImplDirectFresh(HINSTANCE hInstance, int nCmdShow);
 int ProbeRunMainDialogWrapperBodyFresh(HINSTANCE hInstance, int nCmdShow);
 int ProbeRunMainDialogImplBodyFresh(HINSTANCE hInstance, int nCmdShow);
+int RunMainDialogFresh(HINSTANCE hInstance, int nCmdShow);
 int RunMainDialog(HINSTANCE hInstance, int nCmdShow);
 #endif
 

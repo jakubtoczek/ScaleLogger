@@ -275,6 +275,7 @@ enum MainCallModeId {
   kMainCallRunMainThunk = 3,
   kMainCallWrapperProbe = 4,
   kMainCallImplProbe = 5,
+  kMainCallRunMainFresh = 6,
 };
 
 static const char* MainCallModeLabel(int modeId) {
@@ -284,6 +285,7 @@ static const char* MainCallModeLabel(int modeId) {
     case kMainCallRunMainThunk: return "runmain-mainthunk";
     case kMainCallWrapperProbe: return "wrapper-probe";
     case kMainCallImplProbe: return "impl-probe";
+    case kMainCallRunMainFresh: return "runmain-fresh";
     default: return "unknown";
   }
 }
@@ -295,6 +297,7 @@ static int DispatchMainCall(MainCallContext* ctx) {
     case kMainCallRunMainThunk: return CallRunMainFromMainThunk(ctx->fn, ctx->hInstance, ctx->nCmdShow);
     case kMainCallWrapperProbe: return scalelogger::ProbeRunMainDialogWrapper(ctx->hInstance, ctx->nCmdShow);
     case kMainCallImplProbe: return scalelogger::ProbeRunMainDialogImplDirect(ctx->hInstance, ctx->nCmdShow);
+    case kMainCallRunMainFresh: return scalelogger::RunMainDialogFresh(ctx->hInstance, ctx->nCmdShow);
     default: return ctx->sehReturnCode;
   }
 }
@@ -366,6 +369,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: SCALELOGGER_ENABLE_IMPL_FRESH_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_IMPL_FRESH_PROBE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_ENABLE_WRAPPER_BODY_FRESH_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_WRAPPER_BODY_FRESH_PROBE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_ENABLE_IMPL_BODY_FRESH_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_IMPL_BODY_FRESH_PROBE"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_USE_LEGACY_RUNMAIN=" + GetEnvOrUnset("SCALELOGGER_USE_LEGACY_RUNMAIN"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
   SetUnhandledExceptionFilter(FatalSehHandler);
   AppendFatalLine("TRACE: UnhandledExceptionFilter installed", true);
@@ -568,10 +572,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     AppendFatalLine("TRACE: Final call branch=normal selected call target", true);
 
     // Caller-side boundary instrumentation to distinguish direct call, fn-pointer call, main-thunk call, wrapper-probe, and impl-probe paths.
+    const bool useLegacyRunMain = GetEnvOrUnset("SCALELOGGER_USE_LEGACY_RUNMAIN") == "1";
+    AppendFatalLine(std::string("TRACE: Final default RunMain path selected=") + (useLegacyRunMain ? "legacy" : "fresh"), true);
     const std::string mainCallTargetRaw = GetEnvOrUnset("SCALELOGGER_MAIN_CALL_TARGET");
-    const std::string mainCallTarget = mainCallTargetRaw == "<unset>" ? "runmain-direct" : mainCallTargetRaw;
+    const std::string defaultMainCallTarget = useLegacyRunMain ? std::string("runmain-direct") : std::string("runmain-fresh");
+    const std::string mainCallTarget = mainCallTargetRaw == "<unset>" ? defaultMainCallTarget : mainCallTargetRaw;
     if (mainCallTargetRaw == "<unset>") {
-      AppendFatalLine("TRACE: Main call target unset, defaulting to runmain-direct", true);
+      AppendFatalLine("TRACE: Main call target unset, defaulting to " + defaultMainCallTarget, true);
     }
     int exitCode = 0;
     if (mainCallTarget == "runmain-direct") {
@@ -623,6 +630,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
       mainCtx.sehReturnCode = 245;
       exitCode = CallWithSehGuard(&mainCtx);
       AppendFatalLine("TRACE: After final call path impl-probe code=" + std::to_string(exitCode), true);
+      return exitCode;
+    }
+    if (mainCallTarget == "runmain-fresh") {
+      AppendFatalLine("TRACE: Selected main call target=runmain-fresh", true);
+      AppendFatalLine("TRACE: Before final call path runmain-fresh", true);
+      mainCtx.modeId = kMainCallRunMainFresh;
+      mainCtx.sehReturnCode = 246;
+      exitCode = CallWithSehGuard(&mainCtx);
+      AppendFatalLine("TRACE: After final call path runmain-fresh code=" + std::to_string(exitCode), true);
       return exitCode;
     }
     AppendFatalLine("TRACE: Invalid main call target '" + mainCallTarget + "', falling back to runmain-direct", true);
