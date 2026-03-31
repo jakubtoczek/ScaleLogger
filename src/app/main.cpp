@@ -4,6 +4,7 @@
 #include "ui/MainDialog.hpp"
 
 #include <Windows.h>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -209,6 +210,27 @@ LONG WINAPI FatalSehHandler(EXCEPTION_POINTERS* exceptionInfo) {
   AppendFatalLine("Session end: crash (fatal exception)", false);
   return EXCEPTION_EXECUTE_HANDLER;
 }
+
+std::string FormatFnPtr(const void* ptr) {
+  std::ostringstream oss;
+  oss << "0x" << std::hex << reinterpret_cast<std::uintptr_t>(ptr);
+  return oss.str();
+}
+
+#if defined(_MSC_VER)
+#define SCALELOGGER_MAIN_NOINLINE __declspec(noinline)
+#else
+#define SCALELOGGER_MAIN_NOINLINE __attribute__((noinline))
+#endif
+
+static SCALELOGGER_MAIN_NOINLINE int CallRunMainFromMainThunk(scalelogger::RunMainDialogFn fn, HINSTANCE hInstance, int nCmdShow) {
+  AppendFatalLine("TRACE: CallRunMainFromMainThunk entered", true);
+  AppendFatalLine("TRACE: CallRunMainFromMainThunk fn=" + FormatFnPtr(reinterpret_cast<const void*>(fn)), true);
+  AppendFatalLine("TRACE: CallRunMainFromMainThunk before invoking fn", true);
+  const int code = fn(hInstance, nCmdShow);
+  AppendFatalLine("TRACE: CallRunMainFromMainThunk after invoking fn code=" + std::to_string(code), true);
+  return code;
+}
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
@@ -219,6 +241,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: Executable path: " + GetExecutablePath(), true);
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_STAGE_LIMIT=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_STAGE_LIMIT"), true);
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_CALL_MODE=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_CALL_MODE"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_MAIN_CALL_TARGET=" + GetEnvOrUnset("SCALELOGGER_MAIN_CALL_TARGET"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_SKIP_FINAL_RUNMAIN=" + GetEnvOrUnset("SCALELOGGER_SKIP_FINAL_RUNMAIN"), true);
   AppendFatalLine("TRACE: SCALELOGGER_FORCE_NO_SERIAL=" + GetEnvOrUnset("SCALELOGGER_FORCE_NO_SERIAL"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
   SetUnhandledExceptionFilter(FatalSehHandler);
@@ -254,9 +278,71 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     } else {
       AppendFatalLine("TRACE: ProbeRunMainDialogWrapper skipped (env not enabled)", true);
     }
-    AppendFatalLine("TRACE: Calling RunMainDialog", true);
-    const int exitCode = scalelogger::RunMainDialog(hInstance, nCmdShow);
-    AppendFatalLine("TRACE: RunMainDialog returned exit_code=" + std::to_string(exitCode), true);
+
+    AppendFatalLine("TRACE: Address RunMainDialog=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::RunMainDialog)), true);
+    AppendFatalLine("TRACE: Address ProbeRunMainDialogWrapper=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogWrapper)),
+                    true);
+    AppendFatalLine("TRACE: Address ProbeRunMainDialogImplDirect=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogImplDirect)),
+                    true);
+    AppendFatalLine("TRACE: Address ProbeMainDialogWithArgs=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::ProbeMainDialogWithArgs)), true);
+
+    if (GetEnvOrUnset("SCALELOGGER_SKIP_FINAL_RUNMAIN") == "1") {
+      AppendFatalLine("TRACE: Final RunMain call skipped by env override", true);
+      return 120;
+    }
+
+    // Caller-side boundary instrumentation to distinguish direct call, fn-pointer call, main-thunk call, wrapper-probe, and impl-probe paths.
+    const std::string mainCallTargetRaw = GetEnvOrUnset("SCALELOGGER_MAIN_CALL_TARGET");
+    const std::string mainCallTarget = mainCallTargetRaw == "<unset>" ? "runmain-direct" : mainCallTargetRaw;
+    if (mainCallTargetRaw == "<unset>") {
+      AppendFatalLine("TRACE: Main call target unset, defaulting to runmain-direct", true);
+    }
+    int exitCode = 0;
+    if (mainCallTarget == "runmain-direct") {
+      AppendFatalLine("TRACE: Selected main call target=runmain-direct", true);
+      AppendFatalLine("TRACE: Before final call path runmain-direct", true);
+      exitCode = scalelogger::RunMainDialog(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: After final call path runmain-direct code=" + std::to_string(exitCode), true);
+      return exitCode;
+    }
+    if (mainCallTarget == "runmain-fn") {
+      AppendFatalLine("TRACE: Selected main call target=runmain-fn", true);
+      AppendFatalLine("TRACE: runmain-fn before binding function pointer", true);
+      scalelogger::RunMainDialogFn fn = &scalelogger::RunMainDialog;
+      AppendFatalLine("TRACE: runmain-fn after binding function pointer fn=" + FormatFnPtr(reinterpret_cast<const void*>(fn)), true);
+      AppendFatalLine("TRACE: Before final call path runmain-fn", true);
+      exitCode = fn(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: After final call path runmain-fn code=" + std::to_string(exitCode), true);
+      return exitCode;
+    }
+    if (mainCallTarget == "runmain-mainthunk") {
+      AppendFatalLine("TRACE: Selected main call target=runmain-mainthunk", true);
+      AppendFatalLine("TRACE: runmain-mainthunk before binding function pointer", true);
+      scalelogger::RunMainDialogFn fn = &scalelogger::RunMainDialog;
+      AppendFatalLine("TRACE: runmain-mainthunk after binding function pointer fn=" + FormatFnPtr(reinterpret_cast<const void*>(fn)), true);
+      AppendFatalLine("TRACE: Before final call path runmain-mainthunk", true);
+      exitCode = CallRunMainFromMainThunk(fn, hInstance, nCmdShow);
+      AppendFatalLine("TRACE: After final call path runmain-mainthunk code=" + std::to_string(exitCode), true);
+      return exitCode;
+    }
+    if (mainCallTarget == "wrapper-probe") {
+      AppendFatalLine("TRACE: Selected main call target=wrapper-probe", true);
+      AppendFatalLine("TRACE: Before final call path wrapper-probe", true);
+      exitCode = scalelogger::ProbeRunMainDialogWrapper(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: After final call path wrapper-probe code=" + std::to_string(exitCode), true);
+      return exitCode;
+    }
+    if (mainCallTarget == "impl-probe") {
+      AppendFatalLine("TRACE: Selected main call target=impl-probe", true);
+      AppendFatalLine("TRACE: Before final call path impl-probe", true);
+      exitCode = scalelogger::ProbeRunMainDialogImplDirect(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: After final call path impl-probe code=" + std::to_string(exitCode), true);
+      return exitCode;
+    }
+    AppendFatalLine("TRACE: Invalid main call target '" + mainCallTarget + "', falling back to runmain-direct", true);
+    AppendFatalLine("TRACE: Before final call path runmain-direct", true);
+    exitCode = scalelogger::RunMainDialog(hInstance, nCmdShow);
+    AppendFatalLine("TRACE: After final call path runmain-direct code=" + std::to_string(exitCode), true);
     return exitCode;
   } catch (const std::exception& ex) {
     ReportFatalCrash(std::string("FATAL: unhandled exception reached main: ") + ex.what(), 0, false, true);
