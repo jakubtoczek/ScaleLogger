@@ -231,6 +231,70 @@ static SCALELOGGER_MAIN_NOINLINE int CallRunMainFromMainThunk(scalelogger::RunMa
   AppendFatalLine("TRACE: CallRunMainFromMainThunk after invoking fn code=" + std::to_string(code), true);
   return code;
 }
+
+void LogFunctionVirtualMemoryInfo(const char* symbolName, const void* ptr) {
+  AppendFatalLine(std::string("TRACE: VQ begin symbol=") + symbolName + " ptr=" + FormatFnPtr(ptr), true);
+  MEMORY_BASIC_INFORMATION mbi{};
+  const SIZE_T queried = VirtualQuery(ptr, &mbi, sizeof(mbi));
+  if (queried == 0) {
+    AppendFatalLine(std::string("TRACE: VQ failed symbol=") + symbolName + " gle=" + std::to_string(GetLastError()), true);
+    return;
+  }
+  std::ostringstream oss;
+  oss << "TRACE: VQ symbol=" << symbolName << " allocBase=0x" << std::hex << reinterpret_cast<std::uintptr_t>(mbi.AllocationBase) << " base=0x"
+      << reinterpret_cast<std::uintptr_t>(mbi.BaseAddress) << std::dec << " regionSize=" << static_cast<unsigned long long>(mbi.RegionSize)
+      << " state=0x" << std::hex << static_cast<unsigned long>(mbi.State) << " protect=0x" << static_cast<unsigned long>(mbi.Protect)
+      << " type=0x" << static_cast<unsigned long>(mbi.Type);
+  AppendFatalLine(oss.str(), true);
+}
+
+struct MainCallContext {
+  HINSTANCE hInstance{nullptr};
+  int nCmdShow{0};
+  scalelogger::RunMainDialogFn fn{nullptr};
+};
+
+static int InvokeRunMainDirect(void* ctxRaw) {
+  auto* ctx = reinterpret_cast<MainCallContext*>(ctxRaw);
+  return scalelogger::RunMainDialog(ctx->hInstance, ctx->nCmdShow);
+}
+
+static int InvokeRunMainFn(void* ctxRaw) {
+  auto* ctx = reinterpret_cast<MainCallContext*>(ctxRaw);
+  return ctx->fn(ctx->hInstance, ctx->nCmdShow);
+}
+
+static int InvokeRunMainMainThunk(void* ctxRaw) {
+  auto* ctx = reinterpret_cast<MainCallContext*>(ctxRaw);
+  return CallRunMainFromMainThunk(ctx->fn, ctx->hInstance, ctx->nCmdShow);
+}
+
+static int InvokeWrapperProbe(void* ctxRaw) {
+  auto* ctx = reinterpret_cast<MainCallContext*>(ctxRaw);
+  return scalelogger::ProbeRunMainDialogWrapper(ctx->hInstance, ctx->nCmdShow);
+}
+
+static int InvokeImplProbe(void* ctxRaw) {
+  auto* ctx = reinterpret_cast<MainCallContext*>(ctxRaw);
+  return scalelogger::ProbeRunMainDialogImplDirect(ctx->hInstance, ctx->nCmdShow);
+}
+
+// Caller-side SEH guards are diagnostics-only to localize crash boundary behavior; not production crash-handling design.
+static SCALELOGGER_MAIN_NOINLINE int CallWithSehGuard(const char* label, int sehReturnCode, int (*invoke)(void*), void* ctxRaw) {
+  AppendFatalLine(std::string("TRACE: CallWithSehGuard entered label=") + label, true);
+  AppendFatalLine(std::string("TRACE: CallWithSehGuard before guarded invoke label=") + label, true);
+  __try {
+    const int code = invoke(ctxRaw);
+    AppendFatalLine(std::string("TRACE: CallWithSehGuard after guarded invoke label=") + label + " code=" + std::to_string(code), true);
+    return code;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    std::ostringstream oss;
+    oss << "TRACE: SEH trapped in " << label << " code=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0')
+        << static_cast<unsigned long>(GetExceptionCode());
+    AppendFatalLine(oss.str(), true);
+    return sehReturnCode;
+  }
+}
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
@@ -242,6 +306,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_STAGE_LIMIT=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_STAGE_LIMIT"), true);
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_CALL_MODE=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_CALL_MODE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_MAIN_CALL_TARGET=" + GetEnvOrUnset("SCALELOGGER_MAIN_CALL_TARGET"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_MATRIX=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_MATRIX"), true);
   AppendFatalLine("TRACE: SCALELOGGER_SKIP_FINAL_RUNMAIN=" + GetEnvOrUnset("SCALELOGGER_SKIP_FINAL_RUNMAIN"), true);
   AppendFatalLine("TRACE: SCALELOGGER_FORCE_NO_SERIAL=" + GetEnvOrUnset("SCALELOGGER_FORCE_NO_SERIAL"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
@@ -285,11 +350,47 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     AppendFatalLine("TRACE: Address ProbeRunMainDialogImplDirect=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogImplDirect)),
                     true);
     AppendFatalLine("TRACE: Address ProbeMainDialogWithArgs=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::ProbeMainDialogWithArgs)), true);
+    LogFunctionVirtualMemoryInfo("RunMainDialog", reinterpret_cast<const void*>(&scalelogger::RunMainDialog));
+    LogFunctionVirtualMemoryInfo("ProbeRunMainDialogWrapper", reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogWrapper));
+    LogFunctionVirtualMemoryInfo("ProbeRunMainDialogImplDirect", reinterpret_cast<const void*>(&scalelogger::ProbeRunMainDialogImplDirect));
+    LogFunctionVirtualMemoryInfo("ProbeMainDialogWithArgs", reinterpret_cast<const void*>(&scalelogger::ProbeMainDialogWithArgs));
 
     if (GetEnvOrUnset("SCALELOGGER_SKIP_FINAL_RUNMAIN") == "1") {
+      AppendFatalLine("TRACE: Final call branch=skip-final override", true);
       AppendFatalLine("TRACE: Final RunMain call skipped by env override", true);
       return 120;
     }
+
+    MainCallContext mainCtx{};
+    mainCtx.hInstance = hInstance;
+    mainCtx.nCmdShow = nCmdShow;
+    mainCtx.fn = &scalelogger::RunMainDialog;
+
+    if (GetEnvOrUnset("SCALELOGGER_RUNMAIN_MATRIX") == "1") {
+      AppendFatalLine("TRACE: Final call branch=matrix mode", true);
+      AppendFatalLine("TRACE: Matrix step 1 begin target=impl-probe", true);
+      int matrixCode = CallWithSehGuard("impl-probe", 245, InvokeImplProbe, &mainCtx);
+      AppendFatalLine("TRACE: Matrix step 1 end target=impl-probe code=" + std::to_string(matrixCode), true);
+
+      AppendFatalLine("TRACE: Matrix step 2 begin target=wrapper-probe", true);
+      matrixCode = CallWithSehGuard("wrapper-probe", 244, InvokeWrapperProbe, &mainCtx);
+      AppendFatalLine("TRACE: Matrix step 2 end target=wrapper-probe code=" + std::to_string(matrixCode), true);
+
+      AppendFatalLine("TRACE: Matrix step 3 begin target=runmain-fn", true);
+      matrixCode = CallWithSehGuard("runmain-fn", 242, InvokeRunMainFn, &mainCtx);
+      AppendFatalLine("TRACE: Matrix step 3 end target=runmain-fn code=" + std::to_string(matrixCode), true);
+
+      AppendFatalLine("TRACE: Matrix step 4 begin target=runmain-mainthunk", true);
+      matrixCode = CallWithSehGuard("runmain-mainthunk", 243, InvokeRunMainMainThunk, &mainCtx);
+      AppendFatalLine("TRACE: Matrix step 4 end target=runmain-mainthunk code=" + std::to_string(matrixCode), true);
+
+      AppendFatalLine("TRACE: Matrix step 5 begin target=runmain-direct", true);
+      matrixCode = CallWithSehGuard("runmain-direct", 241, InvokeRunMainDirect, &mainCtx);
+      AppendFatalLine("TRACE: Matrix step 5 end target=runmain-direct code=" + std::to_string(matrixCode), true);
+      AppendFatalLine("TRACE: Matrix mode complete returning code=130", true);
+      return 130;
+    }
+    AppendFatalLine("TRACE: Final call branch=normal selected call target", true);
 
     // Caller-side boundary instrumentation to distinguish direct call, fn-pointer call, main-thunk call, wrapper-probe, and impl-probe paths.
     const std::string mainCallTargetRaw = GetEnvOrUnset("SCALELOGGER_MAIN_CALL_TARGET");
@@ -301,47 +402,47 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     if (mainCallTarget == "runmain-direct") {
       AppendFatalLine("TRACE: Selected main call target=runmain-direct", true);
       AppendFatalLine("TRACE: Before final call path runmain-direct", true);
-      exitCode = scalelogger::RunMainDialog(hInstance, nCmdShow);
+      exitCode = CallWithSehGuard("runmain-direct", 241, InvokeRunMainDirect, &mainCtx);
       AppendFatalLine("TRACE: After final call path runmain-direct code=" + std::to_string(exitCode), true);
       return exitCode;
     }
     if (mainCallTarget == "runmain-fn") {
       AppendFatalLine("TRACE: Selected main call target=runmain-fn", true);
       AppendFatalLine("TRACE: runmain-fn before binding function pointer", true);
-      scalelogger::RunMainDialogFn fn = &scalelogger::RunMainDialog;
-      AppendFatalLine("TRACE: runmain-fn after binding function pointer fn=" + FormatFnPtr(reinterpret_cast<const void*>(fn)), true);
+      mainCtx.fn = &scalelogger::RunMainDialog;
+      AppendFatalLine("TRACE: runmain-fn after binding function pointer fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)), true);
       AppendFatalLine("TRACE: Before final call path runmain-fn", true);
-      exitCode = fn(hInstance, nCmdShow);
+      exitCode = CallWithSehGuard("runmain-fn", 242, InvokeRunMainFn, &mainCtx);
       AppendFatalLine("TRACE: After final call path runmain-fn code=" + std::to_string(exitCode), true);
       return exitCode;
     }
     if (mainCallTarget == "runmain-mainthunk") {
       AppendFatalLine("TRACE: Selected main call target=runmain-mainthunk", true);
       AppendFatalLine("TRACE: runmain-mainthunk before binding function pointer", true);
-      scalelogger::RunMainDialogFn fn = &scalelogger::RunMainDialog;
-      AppendFatalLine("TRACE: runmain-mainthunk after binding function pointer fn=" + FormatFnPtr(reinterpret_cast<const void*>(fn)), true);
+      mainCtx.fn = &scalelogger::RunMainDialog;
+      AppendFatalLine("TRACE: runmain-mainthunk after binding function pointer fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)), true);
       AppendFatalLine("TRACE: Before final call path runmain-mainthunk", true);
-      exitCode = CallRunMainFromMainThunk(fn, hInstance, nCmdShow);
+      exitCode = CallWithSehGuard("runmain-mainthunk", 243, InvokeRunMainMainThunk, &mainCtx);
       AppendFatalLine("TRACE: After final call path runmain-mainthunk code=" + std::to_string(exitCode), true);
       return exitCode;
     }
     if (mainCallTarget == "wrapper-probe") {
       AppendFatalLine("TRACE: Selected main call target=wrapper-probe", true);
       AppendFatalLine("TRACE: Before final call path wrapper-probe", true);
-      exitCode = scalelogger::ProbeRunMainDialogWrapper(hInstance, nCmdShow);
+      exitCode = CallWithSehGuard("wrapper-probe", 244, InvokeWrapperProbe, &mainCtx);
       AppendFatalLine("TRACE: After final call path wrapper-probe code=" + std::to_string(exitCode), true);
       return exitCode;
     }
     if (mainCallTarget == "impl-probe") {
       AppendFatalLine("TRACE: Selected main call target=impl-probe", true);
       AppendFatalLine("TRACE: Before final call path impl-probe", true);
-      exitCode = scalelogger::ProbeRunMainDialogImplDirect(hInstance, nCmdShow);
+      exitCode = CallWithSehGuard("impl-probe", 245, InvokeImplProbe, &mainCtx);
       AppendFatalLine("TRACE: After final call path impl-probe code=" + std::to_string(exitCode), true);
       return exitCode;
     }
     AppendFatalLine("TRACE: Invalid main call target '" + mainCallTarget + "', falling back to runmain-direct", true);
     AppendFatalLine("TRACE: Before final call path runmain-direct", true);
-    exitCode = scalelogger::RunMainDialog(hInstance, nCmdShow);
+    exitCode = CallWithSehGuard("runmain-direct", 241, InvokeRunMainDirect, &mainCtx);
     AppendFatalLine("TRACE: After final call path runmain-direct code=" + std::to_string(exitCode), true);
     return exitCode;
   } catch (const std::exception& ex) {
