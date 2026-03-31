@@ -324,6 +324,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_CALL_MODE=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_CALL_MODE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_MAIN_CALL_TARGET=" + GetEnvOrUnset("SCALELOGGER_MAIN_CALL_TARGET"), true);
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_MATRIX=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_MATRIX"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_MATRIX_ONLY=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_MATRIX_ONLY"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_MATRIX_STOP_ON_NONSEH=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_MATRIX_STOP_ON_NONSEH"), true);
   AppendFatalLine("TRACE: SCALELOGGER_SKIP_FINAL_RUNMAIN=" + GetEnvOrUnset("SCALELOGGER_SKIP_FINAL_RUNMAIN"), true);
   AppendFatalLine("TRACE: SCALELOGGER_FORCE_NO_SERIAL=" + GetEnvOrUnset("SCALELOGGER_FORCE_NO_SERIAL"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
@@ -384,36 +386,69 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     mainCtx.fn = &scalelogger::RunMainDialog;
 
     if (GetEnvOrUnset("SCALELOGGER_RUNMAIN_MATRIX") == "1") {
+      // Matrix mode is the primary caller-side evidence collection path for comparing guarded call forms (diagnostic only).
       AppendFatalLine("TRACE: Final call branch=matrix mode", true);
-      AppendFatalLine("TRACE: Matrix step 1 begin target=impl-probe", true);
-      mainCtx.modeId = kMainCallImplProbe;
-      mainCtx.sehReturnCode = 245;
-      int matrixCode = CallWithSehGuard(&mainCtx);
-      AppendFatalLine("TRACE: Matrix step 1 end target=impl-probe code=" + std::to_string(matrixCode), true);
+      const bool stopOnNonSeh = GetEnvOrUnset("SCALELOGGER_RUNMAIN_MATRIX_STOP_ON_NONSEH") == "1";
+      const std::string matrixOnly = GetEnvOrUnset("SCALELOGGER_RUNMAIN_MATRIX_ONLY");
+      const bool matrixOnlyIsSet = matrixOnly != "<unset>";
+      int implProbeResult = -1;
+      int wrapperProbeResult = -1;
+      int runMainFnResult = -1;
+      int runMainMainThunkResult = -1;
+      int runMainDirectResult = -1;
 
-      AppendFatalLine("TRACE: Matrix step 2 begin target=wrapper-probe", true);
-      mainCtx.modeId = kMainCallWrapperProbe;
-      mainCtx.sehReturnCode = 244;
-      matrixCode = CallWithSehGuard(&mainCtx);
-      AppendFatalLine("TRACE: Matrix step 2 end target=wrapper-probe code=" + std::to_string(matrixCode), true);
+      auto runMatrixStep = [&](int stepIndex, const char* target, int modeId, int sehCode, int& outResult) -> bool {
+        AppendFatalLine("TRACE: Matrix step " + std::to_string(stepIndex) + " begin target=" + target, true);
+        mainCtx.modeId = modeId;
+        mainCtx.sehReturnCode = sehCode;
+        AppendFatalLine("TRACE: Matrix step " + std::to_string(stepIndex) + " config modeId=" + std::to_string(modeId) + " sehReturnCode=" +
+                            std::to_string(sehCode) + " fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)),
+                        true);
+        outResult = CallWithSehGuard(&mainCtx);
+        const bool seh = outResult == sehCode;
+        AppendFatalLine("TRACE: Matrix step " + std::to_string(stepIndex) + " end target=" + target + " code=" + std::to_string(outResult), true);
+        AppendFatalLine(std::string("TRACE: Matrix step ") + std::to_string(stepIndex) + " verdict target=" + target + " result=" + (seh ? "seh" : "normal"),
+                        true);
+        if (stopOnNonSeh && !seh) {
+          AppendFatalLine(std::string("TRACE: Matrix stop-on-nonseH triggered at target=") + target + " code=" + std::to_string(outResult), true);
+          return true;
+        }
+        return false;
+      };
 
-      AppendFatalLine("TRACE: Matrix step 3 begin target=runmain-fn", true);
-      mainCtx.modeId = kMainCallRunMainFn;
-      mainCtx.sehReturnCode = 242;
-      matrixCode = CallWithSehGuard(&mainCtx);
-      AppendFatalLine("TRACE: Matrix step 3 end target=runmain-fn code=" + std::to_string(matrixCode), true);
+      auto shouldRunTarget = [&](const char* target) {
+        return !matrixOnlyIsSet || matrixOnly == target;
+      };
 
-      AppendFatalLine("TRACE: Matrix step 4 begin target=runmain-mainthunk", true);
-      mainCtx.modeId = kMainCallRunMainThunk;
-      mainCtx.sehReturnCode = 243;
-      matrixCode = CallWithSehGuard(&mainCtx);
-      AppendFatalLine("TRACE: Matrix step 4 end target=runmain-mainthunk code=" + std::to_string(matrixCode), true);
+      if (matrixOnlyIsSet && matrixOnly != "impl-probe" && matrixOnly != "wrapper-probe" && matrixOnly != "runmain-fn" &&
+          matrixOnly != "runmain-mainthunk" && matrixOnly != "runmain-direct") {
+        AppendFatalLine("TRACE: Matrix only target invalid value='" + matrixOnly + "', running full matrix", true);
+      }
+      const bool runFullMatrix = !matrixOnlyIsSet || (matrixOnly != "impl-probe" && matrixOnly != "wrapper-probe" && matrixOnly != "runmain-fn" &&
+                                                      matrixOnly != "runmain-mainthunk" && matrixOnly != "runmain-direct");
 
-      AppendFatalLine("TRACE: Matrix step 5 begin target=runmain-direct", true);
-      mainCtx.modeId = kMainCallRunMainDirect;
-      mainCtx.sehReturnCode = 241;
-      matrixCode = CallWithSehGuard(&mainCtx);
-      AppendFatalLine("TRACE: Matrix step 5 end target=runmain-direct code=" + std::to_string(matrixCode), true);
+      if (runFullMatrix || shouldRunTarget("impl-probe")) {
+        if (runMatrixStep(1, "impl-probe", kMainCallImplProbe, 245, implProbeResult)) goto matrix_done;
+      }
+      if (runFullMatrix || shouldRunTarget("wrapper-probe")) {
+        if (runMatrixStep(2, "wrapper-probe", kMainCallWrapperProbe, 244, wrapperProbeResult)) goto matrix_done;
+      }
+      if (runFullMatrix || shouldRunTarget("runmain-fn")) {
+        if (runMatrixStep(3, "runmain-fn", kMainCallRunMainFn, 242, runMainFnResult)) goto matrix_done;
+      }
+      if (runFullMatrix || shouldRunTarget("runmain-mainthunk")) {
+        if (runMatrixStep(4, "runmain-mainthunk", kMainCallRunMainThunk, 243, runMainMainThunkResult)) goto matrix_done;
+      }
+      if (runFullMatrix || shouldRunTarget("runmain-direct")) {
+        if (runMatrixStep(5, "runmain-direct", kMainCallRunMainDirect, 241, runMainDirectResult)) goto matrix_done;
+      }
+
+    matrix_done:
+      AppendFatalLine("TRACE: Matrix summary impl-probe=" + std::to_string(implProbeResult), true);
+      AppendFatalLine("TRACE: Matrix summary wrapper-probe=" + std::to_string(wrapperProbeResult), true);
+      AppendFatalLine("TRACE: Matrix summary runmain-fn=" + std::to_string(runMainFnResult), true);
+      AppendFatalLine("TRACE: Matrix summary runmain-mainthunk=" + std::to_string(runMainMainThunkResult), true);
+      AppendFatalLine("TRACE: Matrix summary runmain-direct=" + std::to_string(runMainDirectResult), true);
       AppendFatalLine("TRACE: Matrix mode complete returning code=130", true);
       return 130;
     }
