@@ -218,6 +218,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: Build tag: " + std::string(scalelogger::GetBuildTag()), true);
   AppendFatalLine("TRACE: Executable path: " + GetExecutablePath(), true);
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_STAGE_LIMIT=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_STAGE_LIMIT"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_CALL_MODE=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_CALL_MODE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_FORCE_NO_SERIAL=" + GetEnvOrUnset("SCALELOGGER_FORCE_NO_SERIAL"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
   SetUnhandledExceptionFilter(FatalSehHandler);
@@ -243,6 +244,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
       AppendFatalLine("TRACE: ProbeRunMainDialogImplDirect returned code=" + std::to_string(probeRunMainDialogImplDirectCode), true);
     } else {
       AppendFatalLine("TRACE: ProbeRunMainDialogImplDirect skipped (env not enabled)", true);
+    }
+    const bool enableRunMainWrapperProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_RUNMAIN_WRAPPER_PROBE") == "1";
+    if (enableRunMainWrapperProbe) {
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapper active", true);
+      AppendFatalLine("TRACE: Calling ProbeRunMainDialogWrapper", true);
+      const int probeRunMainDialogWrapperCode = scalelogger::ProbeRunMainDialogWrapper(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapper returned code=" + std::to_string(probeRunMainDialogWrapperCode), true);
+    } else {
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapper skipped (env not enabled)", true);
     }
     AppendFatalLine("TRACE: Calling RunMainDialog", true);
     const int exitCode = scalelogger::RunMainDialog(hInstance, nCmdShow);

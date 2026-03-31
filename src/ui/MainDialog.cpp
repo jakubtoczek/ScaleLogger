@@ -25,6 +25,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -1481,6 +1482,11 @@ bool ShouldReturnAtStage(int stageLimit, int stage) {
 }
 
 static int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow);
+static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANCE hInstance, int nCmdShow);
+
+static_assert(std::is_same_v<decltype(&RunMainDialog), RunMainDialogFn>, "RunMainDialog signature mismatch");
+static_assert(std::is_same_v<decltype(&ProbeRunMainDialogImplDirect), RunMainDialogFn>, "ProbeRunMainDialogImplDirect signature mismatch");
+static_assert(std::is_same_v<decltype(&RunMainDialogImpl), RunMainDialogFn>, "RunMainDialogImpl signature mismatch");
 
 int ProbeMainDialogBasic() {
   OutputDebugStringA("TRACE: ProbeMainDialogBasic entered\n");
@@ -1507,6 +1513,26 @@ SCALELOGGER_NOINLINE int ProbeMainDialogTouchUi(HINSTANCE hInstance) {
 SCALELOGGER_NOINLINE int ProbeRunMainDialogImplDirect(HINSTANCE hInstance, int nCmdShow) {
   TraceEarly("TRACE: ProbeRunMainDialogImplDirect entered");
   return RunMainDialogImpl(hInstance, nCmdShow);
+}
+
+SCALELOGGER_NOINLINE int ProbeRunMainDialogWrapper(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarly("TRACE: ProbeRunMainDialogWrapper entered");
+  const int code = RunMainDialog(hInstance, nCmdShow);
+  TraceEarly("TRACE: ProbeRunMainDialogWrapper returned code=" + std::to_string(code));
+  return code;
+}
+
+static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANCE hInstance, int nCmdShow) {
+  TraceEarly("TRACE: CallRunMainDialogFn entered");
+  {
+    std::ostringstream oss;
+    oss << "TRACE: CallRunMainDialogFn fn=0x" << std::hex << reinterpret_cast<std::uintptr_t>(fn);
+    TraceEarly(oss.str());
+  }
+  TraceEarly("TRACE: CallRunMainDialogFn before invoking fn");
+  const int code = fn(hInstance, nCmdShow);
+  TraceEarly("TRACE: CallRunMainDialogFn after invoking fn code=" + std::to_string(code));
+  return code;
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow) {
@@ -1647,8 +1673,34 @@ static SCALELOGGER_NOINLINE int RunMainDialogImpl(HINSTANCE hInstance, int nCmdS
 }
 
 SCALELOGGER_NOINLINE int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
-  TraceEarly("TRACE: RunMainDialog wrapper entered");
-  return RunMainDialogImpl(hInstance, nCmdShow);
+  // Crash-isolation boundary instrumentation: distinguish wrapper-entry, thunk/indirect-call, and impl-entry failures.
+  TraceEarly("TRACE: RunMainDialog public wrapper entered");
+  const int stageLimit = GetRunMainStageLimit();
+  TraceEarly("TRACE: RunMainDialog wrapper after stageLimit=" + std::to_string(stageLimit));
+  TraceEarly("TRACE: RunMainDialog wrapper before binding fn pointer");
+  RunMainDialogFn fn = &RunMainDialogImpl;
+  {
+    std::ostringstream oss;
+    oss << "TRACE: RunMainDialog wrapper after binding fn=0x" << std::hex << reinterpret_cast<std::uintptr_t>(fn);
+    TraceEarly(oss.str());
+  }
+  const char* modeRaw = std::getenv("SCALELOGGER_RUNMAIN_CALL_MODE");
+  const std::string mode = modeRaw ? modeRaw : "";
+  if (mode == "thunk") {
+    TraceEarly("TRACE: RunMainDialog wrapper selected mode=thunk");
+    TraceEarly("TRACE: RunMainDialog wrapper before indirect/thunk call path");
+    const int code = CallRunMainDialogFn(fn, hInstance, nCmdShow);
+    TraceEarly("TRACE: RunMainDialog wrapper after return from thunk path code=" + std::to_string(code));
+    return code;
+  }
+  if (!mode.empty() && mode != "direct") {
+    TraceEarly("TRACE: RunMainDialog wrapper invalid mode, defaulting to direct");
+  }
+  TraceEarly("TRACE: RunMainDialog wrapper selected mode=direct");
+  TraceEarly("TRACE: RunMainDialog wrapper before direct call path");
+  const int code = RunMainDialogImpl(hInstance, nCmdShow);
+  TraceEarly("TRACE: RunMainDialog wrapper after return from direct path code=" + std::to_string(code));
+  return code;
 }
 
 } // namespace scalelogger
