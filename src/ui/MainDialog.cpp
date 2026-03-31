@@ -1482,6 +1482,7 @@ bool ShouldReturnAtStage(int stageLimit, int stage) {
 }
 
 static int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow);
+static int RunMainDialogImplBody(HINSTANCE hInstance, int nCmdShow, int stageLimit);
 static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANCE hInstance, int nCmdShow);
 
 static_assert(std::is_same_v<decltype(&RunMainDialog), RunMainDialogFn>, "RunMainDialog signature mismatch");
@@ -1512,7 +1513,26 @@ SCALELOGGER_NOINLINE int ProbeMainDialogTouchUi(HINSTANCE hInstance) {
 
 SCALELOGGER_NOINLINE int ProbeRunMainDialogImplDirect(HINSTANCE hInstance, int nCmdShow) {
   TraceEarly("TRACE: ProbeRunMainDialogImplDirect entered");
+#if defined(_MSC_VER)
+  TraceEarly("TRACE: ProbeRunMainDialogImplDirect before local SEH guard");
+  __try {
+    TraceEarly("TRACE: ProbeRunMainDialogImplDirect inside local SEH guard before impl");
+    const int code = RunMainDialogImpl(hInstance, nCmdShow);
+    TraceEarly("TRACE: ProbeRunMainDialogImplDirect inside local SEH guard after impl code=" + std::to_string(code));
+    TraceEarly("TRACE: ProbeRunMainDialogImplDirect after local SEH guard");
+    return code;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    const unsigned long sehCode = GetExceptionCode();
+    std::ostringstream oss;
+    oss << "TRACE: ProbeRunMainDialogImplDirect local SEH trapped code=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0')
+        << sehCode;
+    TraceEarly(oss.str());
+    return -701;
+  }
+#else
+  TraceEarly("TRACE: ProbeRunMainDialogImplDirect local SEH guard unavailable on this compiler");
   return RunMainDialogImpl(hInstance, nCmdShow);
+#endif
 }
 
 SCALELOGGER_NOINLINE int ProbeRunMainDialogWrapper(HINSTANCE hInstance, int nCmdShow) {
@@ -1536,7 +1556,20 @@ static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANC
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow) {
+  // Diagnostic-only split to isolate whether faults occur before first impl-body line, in prolog/local setup, or right after raw-entry boundary.
+  TraceEarly("TRACE: RunMainDialogImpl raw entry");
+  char rawEntryLine[160]{};
+  std::snprintf(rawEntryLine, sizeof(rawEntryLine), "TRACE: RunMainDialogImpl raw entry hInstance=%p nCmdShow=%d",
+                static_cast<void*>(hInstance), nCmdShow);
+  TraceEarly(rawEntryLine);
+  TraceEarly("TRACE: RunMainDialogImpl before any local object construction");
+  TraceEarly("TRACE: RunMainDialogImpl before stage-limit read");
   const int stageLimit = GetRunMainStageLimit();
+  TraceEarly("TRACE: RunMainDialogImpl after stage-limit read value=" + std::to_string(stageLimit));
+  return RunMainDialogImplBody(hInstance, nCmdShow, stageLimit);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogImplBody(HINSTANCE hInstance, int nCmdShow, int stageLimit) {
   TraceEarly("TRACE: RunMainDialogImpl stage 0 entered");
   if (ShouldReturnAtStage(stageLimit, 0)) {
     TraceEarly("TRACE: RunMainDialogImpl early return at stage 0");

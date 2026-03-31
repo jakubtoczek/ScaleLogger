@@ -52,6 +52,19 @@ std::string GetExecutablePath() {
   return (len > 0 && len < MAX_PATH) ? std::string(path, len) : std::string("<unknown>");
 }
 
+std::string FormatSystemTimeLine(const char* label, const SYSTEMTIME& st) {
+  std::ostringstream oss;
+  oss << "TRACE: " << label << "="
+      << std::setfill('0') << std::setw(4) << st.wYear << "-"
+      << std::setw(2) << st.wMonth << "-"
+      << std::setw(2) << st.wDay << " "
+      << std::setw(2) << st.wHour << ":"
+      << std::setw(2) << st.wMinute << ":"
+      << std::setw(2) << st.wSecond << "."
+      << std::setw(3) << st.wMilliseconds;
+  return oss.str();
+}
+
 void LoadFatalDiagnosticsConfig() {
   try {
     const auto configPath = ResolveUserConfigPath();
@@ -320,6 +333,23 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: ScaleLogger version: " + std::string(scalelogger::kAppVersion), true);
   AppendFatalLine("TRACE: Build tag: " + std::string(scalelogger::GetBuildTag()), true);
   AppendFatalLine("TRACE: Executable path: " + GetExecutablePath(), true);
+  {
+    SYSTEMTIME localNow{};
+    SYSTEMTIME utcNow{};
+    GetLocalTime(&localNow);
+    GetSystemTime(&utcNow);
+    AppendFatalLine(FormatSystemTimeLine("session-local-time", localNow), true);
+    AppendFatalLine(FormatSystemTimeLine("session-utc-time", utcNow), true);
+    AppendFatalLine("TRACE: session-process-id=" + std::to_string(static_cast<unsigned long long>(GetCurrentProcessId())), true);
+    AppendFatalLine("TRACE: session-thread-id=" + std::to_string(static_cast<unsigned long long>(GetCurrentThreadId())), true);
+    AppendFatalLine("TRACE: session-tickcount64=" + std::to_string(static_cast<unsigned long long>(GetTickCount64())), true);
+    LARGE_INTEGER qpc{};
+    if (QueryPerformanceCounter(&qpc) != 0) {
+      AppendFatalLine("TRACE: session-qpc=" + std::to_string(static_cast<long long>(qpc.QuadPart)), true);
+    } else {
+      AppendFatalLine("TRACE: session-qpc=<unavailable>", true);
+    }
+  }
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_STAGE_LIMIT=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_STAGE_LIMIT"), true);
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_CALL_MODE=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_CALL_MODE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_MAIN_CALL_TARGET=" + GetEnvOrUnset("SCALELOGGER_MAIN_CALL_TARGET"), true);
