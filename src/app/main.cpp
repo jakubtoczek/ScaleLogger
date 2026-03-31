@@ -362,6 +362,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: SCALELOGGER_ENABLE_WRAPPER_TRAMPOLINE_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_WRAPPER_TRAMPOLINE_PROBE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_ENABLE_MAINDIALOG_SENTINEL_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_MAINDIALOG_SENTINEL_PROBE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_ENABLE_MAINDIALOG_SENTINEL_ARGS_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_MAINDIALOG_SENTINEL_ARGS_PROBE"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_ENABLE_WRAPPER_FRESH_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_WRAPPER_FRESH_PROBE"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_ENABLE_IMPL_FRESH_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_IMPL_FRESH_PROBE"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_ENABLE_WRAPPER_BODY_FRESH_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_WRAPPER_BODY_FRESH_PROBE"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_ENABLE_IMPL_BODY_FRESH_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_IMPL_BODY_FRESH_PROBE"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
   SetUnhandledExceptionFilter(FatalSehHandler);
   AppendFatalLine("TRACE: UnhandledExceptionFilter installed", true);
@@ -434,6 +438,42 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
       AppendFatalLine("TRACE: ProbeMainDialogSentinelWithArgs returned code=" + std::to_string(probeMainDialogSentinelWithArgsCode), true);
     } else {
       AppendFatalLine("TRACE: ProbeMainDialogSentinelWithArgs skipped (env not enabled)", true);
+    }
+    const bool enableWrapperFreshProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_WRAPPER_FRESH_PROBE") == "1";
+    if (enableWrapperFreshProbe) {
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapperFresh active", true);
+      AppendFatalLine("TRACE: Calling ProbeRunMainDialogWrapperFresh", true);
+      const int probeRunMainDialogWrapperFreshCode = scalelogger::ProbeRunMainDialogWrapperFresh(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapperFresh returned code=" + std::to_string(probeRunMainDialogWrapperFreshCode), true);
+    } else {
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapperFresh skipped (env not enabled)", true);
+    }
+    const bool enableImplFreshProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_IMPL_FRESH_PROBE") == "1";
+    if (enableImplFreshProbe) {
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplDirectFresh active", true);
+      AppendFatalLine("TRACE: Calling ProbeRunMainDialogImplDirectFresh", true);
+      const int probeRunMainDialogImplDirectFreshCode = scalelogger::ProbeRunMainDialogImplDirectFresh(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplDirectFresh returned code=" + std::to_string(probeRunMainDialogImplDirectFreshCode), true);
+    } else {
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplDirectFresh skipped (env not enabled)", true);
+    }
+    const bool enableWrapperBodyFreshProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_WRAPPER_BODY_FRESH_PROBE") == "1";
+    if (enableWrapperBodyFreshProbe) {
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapperBodyFresh active", true);
+      AppendFatalLine("TRACE: Calling ProbeRunMainDialogWrapperBodyFresh", true);
+      const int probeRunMainDialogWrapperBodyFreshCode = scalelogger::ProbeRunMainDialogWrapperBodyFresh(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapperBodyFresh returned code=" + std::to_string(probeRunMainDialogWrapperBodyFreshCode), true);
+    } else {
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapperBodyFresh skipped (env not enabled)", true);
+    }
+    const bool enableImplBodyFreshProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_IMPL_BODY_FRESH_PROBE") == "1";
+    if (enableImplBodyFreshProbe) {
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplBodyFresh active", true);
+      AppendFatalLine("TRACE: Calling ProbeRunMainDialogImplBodyFresh", true);
+      const int probeRunMainDialogImplBodyFreshCode = scalelogger::ProbeRunMainDialogImplBodyFresh(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplBodyFresh returned code=" + std::to_string(probeRunMainDialogImplBodyFreshCode), true);
+    } else {
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplBodyFresh skipped (env not enabled)", true);
     }
 
     AppendFatalLine("TRACE: Address RunMainDialog=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::RunMainDialog)), true);

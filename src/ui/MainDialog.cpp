@@ -1508,6 +1508,13 @@ static_assert(std::is_same_v<decltype(&ProbeRunMainDialogImplDirect), RunMainDia
 static_assert(std::is_same_v<decltype(&RunMainDialogImpl), RunMainDialogConcreteFn>, "RunMainDialogImpl signature mismatch");
 static_assert(std::is_same_v<decltype(&ProbeMainDialogSentinelWithArgs), RunMainDialogConcreteFn>, "ProbeMainDialogSentinelWithArgs signature mismatch");
 static_assert(std::is_same_v<decltype(&ProbeMainDialogSentinelA), int (*)()>, "ProbeMainDialogSentinelA signature mismatch");
+static_assert(std::is_same_v<decltype(&ProbeRunMainDialogWrapperFresh), RunMainDialogConcreteFn>, "ProbeRunMainDialogWrapperFresh signature mismatch");
+static_assert(std::is_same_v<decltype(&ProbeRunMainDialogImplDirectFresh), RunMainDialogConcreteFn>,
+              "ProbeRunMainDialogImplDirectFresh signature mismatch");
+static_assert(std::is_same_v<decltype(&ProbeRunMainDialogWrapperBodyFresh), RunMainDialogConcreteFn>,
+              "ProbeRunMainDialogWrapperBodyFresh signature mismatch");
+static_assert(std::is_same_v<decltype(&ProbeRunMainDialogImplBodyFresh), RunMainDialogConcreteFn>,
+              "ProbeRunMainDialogImplBodyFresh signature mismatch");
 
 int ProbeMainDialogBasic() {
   OutputDebugStringA("TRACE: ProbeMainDialogBasic entered\n");
@@ -1612,6 +1619,34 @@ SCALELOGGER_NOINLINE int ProbeMainDialogSentinelWithArgs(HINSTANCE hInstance, in
   const int code = MainDialogSentinelWithArgs(hInstance, nCmdShow);
   TraceEarly("TRACE: ProbeMainDialogSentinelWithArgs after call code=" + std::to_string(code));
   return code;
+}
+
+SCALELOGGER_NOINLINE int ProbeRunMainDialogWrapperFresh(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered ProbeRunMainDialogWrapperFresh");
+  TraceEarlyLiteral("TRACE: RAW passed first line ProbeRunMainDialogWrapperFresh");
+  (void)MainDialogSentinelWithArgs(hInstance, nCmdShow);
+  return 911;
+}
+
+SCALELOGGER_NOINLINE int ProbeRunMainDialogImplDirectFresh(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered ProbeRunMainDialogImplDirectFresh");
+  TraceEarlyLiteral("TRACE: RAW passed first line ProbeRunMainDialogImplDirectFresh");
+  (void)MainDialogSentinelWithArgs(hInstance, nCmdShow);
+  return 912;
+}
+
+SCALELOGGER_NOINLINE int ProbeRunMainDialogWrapperBodyFresh(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered ProbeRunMainDialogWrapperBodyFresh");
+  TraceEarlyLiteral("TRACE: RAW passed first line ProbeRunMainDialogWrapperBodyFresh");
+  (void)MainDialogSentinelWithArgs(hInstance, nCmdShow);
+  return 913;
+}
+
+SCALELOGGER_NOINLINE int ProbeRunMainDialogImplBodyFresh(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered ProbeRunMainDialogImplBodyFresh");
+  TraceEarlyLiteral("TRACE: RAW passed first line ProbeRunMainDialogImplBodyFresh");
+  (void)MainDialogSentinelWithArgs(hInstance, nCmdShow);
+  return 914;
 }
 
 static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANCE hInstance, int nCmdShow) {

@@ -18,6 +18,10 @@ int ProbeRunMainDialogImplDirectViaTrampoline(HINSTANCE hInstance, int nCmdShow)
 int ProbeRunMainDialogWrapperViaTrampoline(HINSTANCE hInstance, int nCmdShow);
 int ProbeMainDialogSentinelA();
 int ProbeMainDialogSentinelWithArgs(HINSTANCE hInstance, int nCmdShow);
+int ProbeRunMainDialogWrapperFresh(HINSTANCE hInstance, int nCmdShow);
+int ProbeRunMainDialogImplDirectFresh(HINSTANCE hInstance, int nCmdShow);
+int ProbeRunMainDialogWrapperBodyFresh(HINSTANCE hInstance, int nCmdShow);
+int ProbeRunMainDialogImplBodyFresh(HINSTANCE hInstance, int nCmdShow);
 int RunMainDialog(HINSTANCE hInstance, int nCmdShow);
 #endif
 
