@@ -114,11 +114,34 @@ struct UiState {
 
 UiState g_ui;
 HBRUSH g_darkBrush = CreateSolidBrush(RGB(32, 32, 32));
+HBRUSH g_settingsDebugParentBrush = CreateSolidBrush(RGB(255, 64, 64));
+HBRUSH g_settingsDebugTabBodyBrush = CreateSolidBrush(RGB(64, 128, 255));
+HBRUSH g_settingsDebugReadOnlyEditBrush = CreateSolidBrush(RGB(255, 235, 64));
+HBRUSH g_settingsDebugStaticBrush = CreateSolidBrush(RGB(255, 64, 220));
+HBRUSH g_settingsDebugDefaultBrush = CreateSolidBrush(RGB(64, 220, 140));
 enum class ConnectionUiState { Disconnected, Connecting, Connected };
 ConnectionUiState g_connectionUiState = ConnectionUiState::Disconnected;
 void LoadSettingsIntoControls(HWND settingsHwnd);
 std::wstring GetControlText(HWND control);
 void AddLogLine(const std::string& text);
+void TraceEarly(const std::string& message);
+
+bool IsSettingsPaintDebugEnabled() {
+  static int state = -1;
+  if (state < 0) {
+    const char* raw = std::getenv("SCALELOGGER_SETTINGS_PAINT_DEBUG");
+    state = (raw && std::string(raw) == "1") ? 1 : 0;
+  }
+  return state == 1;
+}
+
+void TraceSettingsPaintDebug(const std::string& message) {
+  if (!IsSettingsPaintDebugEnabled()) return;
+  static int traceCount = 0;
+  if (traceCount >= 40) return;
+  ++traceCount;
+  TraceEarly("SETTINGS_PAINT_DEBUG: " + message);
+}
 
 namespace uilayout {
 constexpr int kMargin = 12;
@@ -273,21 +296,24 @@ LRESULT HandleDarkCtlColor(HDC hdc) {
 
 LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
   auto* draw = reinterpret_cast<LPNMCUSTOMDRAW>(lParam);
-  if (!draw || !IsDarkModeEnabled()) return CDRF_DODEFAULT;
+  const bool debugPaint = IsSettingsPaintDebugEnabled();
+  if (!draw || (!IsDarkModeEnabled() && !debugPaint)) return CDRF_DODEFAULT;
 
   switch (draw->dwDrawStage) {
     case CDDS_PREPAINT: {
-      FillRect(draw->hdc, &draw->rc, g_darkBrush);
+      FillRect(draw->hdc, &draw->rc, debugPaint ? g_settingsDebugParentBrush : g_darkBrush);
+      if (debugPaint) TraceSettingsPaintDebug("tab custom draw: CDDS_PREPAINT");
       return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
     }
     case CDDS_ITEMPREPAINT: {
       const int tabIndex = static_cast<int>(draw->dwItemSpec);
       const int selectedIndex = TabCtrl_GetCurSel(draw->hdr.hwndFrom);
-      const COLORREF tabColor = (tabIndex == selectedIndex) ? RGB(58, 58, 58) : RGB(40, 40, 40);
+      const COLORREF tabColor = debugPaint ? ((tabIndex == selectedIndex) ? RGB(255, 140, 0) : RGB(160, 80, 255))
+                                           : ((tabIndex == selectedIndex) ? RGB(58, 58, 58) : RGB(40, 40, 40));
 
       HBRUSH tabBrush = CreateSolidBrush(tabColor);
       FillRect(draw->hdc, &draw->rc, tabBrush);
-      HBRUSH borderBrush = CreateSolidBrush(RGB(78, 78, 78));
+      HBRUSH borderBrush = CreateSolidBrush(debugPaint ? RGB(255, 255, 255) : RGB(78, 78, 78));
       FrameRect(draw->hdc, &draw->rc, borderBrush);
       DeleteObject(borderBrush);
       DeleteObject(tabBrush);
@@ -306,12 +332,14 @@ LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
         SetTextColor(draw->hdc, RGB(235, 235, 235));
         DrawTextW(draw->hdc, text, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
       }
+      if (debugPaint) TraceSettingsPaintDebug("tab custom draw: CDDS_ITEMPREPAINT index=" + std::to_string(tabIndex));
       return CDRF_SKIPDEFAULT;
     }
     case CDDS_POSTPAINT: {
       RECT tabClient = draw->rc;
       TabCtrl_AdjustRect(draw->hdr.hwndFrom, FALSE, &tabClient);
-      FillRect(draw->hdc, &tabClient, g_darkBrush);
+      FillRect(draw->hdc, &tabClient, debugPaint ? g_settingsDebugTabBodyBrush : g_darkBrush);
+      if (debugPaint) TraceSettingsPaintDebug("tab custom draw: CDDS_POSTPAINT (tab body fill)");
       return CDRF_DODEFAULT;
     }
     default: return CDRF_DODEFAULT;
@@ -878,6 +906,9 @@ void LayoutSettingsWindow(HWND hwnd) {
 LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
   switch (msg) {
     case WM_CREATE: {
+      if (IsSettingsPaintDebugEnabled()) {
+        TraceSettingsPaintDebug("settings paint debug mode active (SCALELOGGER_SETTINGS_PAINT_DEBUG=1)");
+      }
       g_ui.settingsTab = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS, 12, 12, 840, 500, hwnd,
                                          reinterpret_cast<HMENU>(kSettingsTab), nullptr, nullptr);
       ApplySettingsTabTheme(g_ui.settingsTab);
@@ -1080,16 +1111,40 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       return 0;
     }
     case WM_ERASEBKGND: {
-      if (!IsDarkModeEnabled()) break;
+      const bool debugPaint = IsSettingsPaintDebugEnabled();
+      if (!IsDarkModeEnabled() && !debugPaint) break;
       RECT rc{};
       GetClientRect(hwnd, &rc);
-      FillRect(reinterpret_cast<HDC>(wParam), &rc, g_darkBrush);
+      FillRect(reinterpret_cast<HDC>(wParam), &rc, debugPaint ? g_settingsDebugParentBrush : g_darkBrush);
+      if (debugPaint) TraceSettingsPaintDebug("settings parent: WM_ERASEBKGND");
       return 1;
     }
     case WM_CTLCOLORSTATIC:
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORLISTBOX:
     case WM_CTLCOLORBTN: {
+      if (IsSettingsPaintDebugEnabled()) {
+        HWND control = reinterpret_cast<HWND>(lParam);
+        HDC dc = reinterpret_cast<HDC>(wParam);
+        wchar_t className[64]{};
+        GetClassNameW(control, className, static_cast<int>(std::size(className)));
+        const LONG style = GetWindowLongW(control, GWL_STYLE);
+        const bool readOnlyEdit = std::wcscmp(className, L"Edit") == 0 && (style & ES_READONLY) != 0;
+        SetTextColor(dc, RGB(10, 10, 10));
+        if (readOnlyEdit) {
+          SetBkColor(dc, RGB(255, 235, 64));
+          TraceSettingsPaintDebug("WM_CTLCOLOR* readonly edit id=" + std::to_string(GetDlgCtrlID(control)));
+          return reinterpret_cast<LRESULT>(g_settingsDebugReadOnlyEditBrush);
+        }
+        if (std::wcscmp(className, L"Static") == 0) {
+          SetBkColor(dc, RGB(255, 64, 220));
+          TraceSettingsPaintDebug("WM_CTLCOLOR* static id=" + std::to_string(GetDlgCtrlID(control)));
+          return reinterpret_cast<LRESULT>(g_settingsDebugStaticBrush);
+        }
+        SetBkColor(dc, RGB(64, 220, 140));
+        TraceSettingsPaintDebug("WM_CTLCOLOR* class=" + ToUtf8(className) + " id=" + std::to_string(GetDlgCtrlID(control)));
+        return reinterpret_cast<LRESULT>(g_settingsDebugDefaultBrush);
+      }
       const auto brush = HandleDarkCtlColor(reinterpret_cast<HDC>(wParam));
       if (brush != 0) return brush;
       break;
