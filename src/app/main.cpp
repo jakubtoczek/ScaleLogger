@@ -378,6 +378,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     AppendFatalLine("TRACE: Calling ProbeMainDialogTouchUi", true);
     const int probeTouchUiCode = scalelogger::ProbeMainDialogTouchUi(hInstance);
     AppendFatalLine("TRACE: ProbeMainDialogTouchUi returned code=" + std::to_string(probeTouchUiCode), true);
+    // Keep opt-in only: this probe executes the dialog path and must not alter normal startup behavior.
     const bool enableDirectImplProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_DIRECT_IMPL_PROBE") == "1";
     if (enableDirectImplProbe) {
       AppendFatalLine("TRACE: ProbeRunMainDialogImplDirect active", true);

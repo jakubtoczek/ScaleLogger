@@ -737,24 +737,24 @@ void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested) {
 void CreateTopRow(HWND hwnd) {
   g_ui.connectionIndicator = CreateWindowW(L"STATIC", L"\x25CF", WS_CHILD | WS_VISIBLE, uilayout::kMargin, 19, 14, 20, hwnd, nullptr, nullptr, nullptr);
   g_ui.connectionTitle = CreateWindowW(L"STATIC", L"Status:", WS_CHILD | WS_VISIBLE, 34, 17, uilayout::kStatusTitleWidth, 22, hwnd,
-                                       reinterpret_cast<HMENU>(kLblConnectionTitle), nullptr, nullptr);
+                                       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kLblConnectionTitle)), nullptr, nullptr);
   g_ui.connectionStatus = CreateWindowW(L"STATIC", L"Disconnected", WS_CHILD | WS_VISIBLE, 84, 17, uilayout::kStatusStateWidth, 22, hwnd,
-                                        reinterpret_cast<HMENU>(kLblConnectionStatus), nullptr, nullptr);
+                                        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kLblConnectionStatus)), nullptr, nullptr);
   g_ui.connectButton = CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 628, uilayout::kTopRowY,
                                      uilayout::kTopButtonConnectWidth, uilayout::kTopRowHeight, hwnd,
-                                     reinterpret_cast<HMENU>(kBtnConnect), nullptr, nullptr);
+                                     reinterpret_cast<HMENU>(static_cast<INT_PTR>(kBtnConnect)), nullptr, nullptr);
   g_ui.settingsButton = CreateWindowW(L"BUTTON", L"Settings", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 736, uilayout::kTopRowY,
                                       uilayout::kTopButtonSettingsWidth, uilayout::kTopRowHeight, hwnd,
-                                      reinterpret_cast<HMENU>(kBtnSettings), nullptr, nullptr);
+                                      reinterpret_cast<HMENU>(static_cast<INT_PTR>(kBtnSettings)), nullptr, nullptr);
   g_ui.aboutButton = CreateWindowW(L"BUTTON", L"About", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 822, uilayout::kTopRowY,
                                    uilayout::kTopButtonAboutWidth, uilayout::kTopRowHeight, hwnd,
-                                   reinterpret_cast<HMENU>(kBtnAbout), nullptr, nullptr);
+                                   reinterpret_cast<HMENU>(static_cast<INT_PTR>(kBtnAbout)), nullptr, nullptr);
 }
 
 void CreateLogPane(HWND hwnd) {
   g_ui.logEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL |
                                                                       ES_READONLY,
-                                 uilayout::kMargin, uilayout::kLogTopY, 840, 500, hwnd, reinterpret_cast<HMENU>(kEditLog), nullptr, nullptr);
+                                 uilayout::kMargin, uilayout::kLogTopY, 840, 500, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kEditLog)), nullptr, nullptr);
 }
 
 void AddControl(std::vector<HWND>& tabControls, HWND control) { tabControls.push_back(control); }
@@ -921,7 +921,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         TraceSettingsPaintDebug("settings paint debug mode active (SCALELOGGER_SETTINGS_PAINT_DEBUG=1)");
       }
       g_ui.settingsTab = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS, 12, 12, 840, 500, hwnd,
-                                         reinterpret_cast<HMENU>(kSettingsTab), nullptr, nullptr);
+                                         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSettingsTab)), nullptr, nullptr);
       ApplySettingsTabTheme(g_ui.settingsTab);
       TCITEMW item{};
       item.mask = TCIF_TEXT;
@@ -942,13 +942,13 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       };
       auto combo = [&](int id, int y, int width, std::vector<HWND>& list) {
         HWND c = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWNLIST, fieldLeft, y, width, 300, hwnd,
-                               reinterpret_cast<HMENU>(id), nullptr, nullptr);
+                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
         AddControl(list, c);
         return c;
       };
       auto editableCombo = [&](int id, int y, int width, std::vector<HWND>& list) {
         HWND c = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | CBS_DROPDOWN | CBS_AUTOHSCROLL, fieldLeft, y, width, 300, hwnd,
-                               reinterpret_cast<HMENU>(id), nullptr, nullptr);
+                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
         AddControl(list, c);
         return c;
       };
@@ -957,9 +957,9 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       HWND port = editableCombo(kSerialPortCombo, top, 430, g_ui.serialTabControls);
       SendMessageW(port, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"COM6"));
       AddControl(g_ui.serialTabControls, CreateWindowW(L"BUTTON", L"Scan Ports", WS_CHILD | WS_VISIBLE, fieldLeft + 440, top, 96, 24, hwnd,
-                                                       reinterpret_cast<HMENU>(kSerialScanBtn), nullptr, nullptr));
+                                                       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSerialScanBtn)), nullptr, nullptr));
       AddControl(g_ui.serialTabControls, CreateWindowW(L"BUTTON", L"Test Receive", WS_CHILD | WS_VISIBLE, fieldLeft + 545, top, 100, 24, hwnd,
-                                                       reinterpret_cast<HMENU>(kSerialTestBtn), nullptr, nullptr));
+                                                       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSerialTestBtn)), nullptr, nullptr));
 
       label(L"Baud", top + 36, g_ui.serialTabControls);
       HWND baud = editableCombo(kSerialBaudCombo, top + 36, 645, g_ui.serialTabControls);
@@ -1028,7 +1028,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       for (const wchar_t* value : {L"\\r\\n", L"\\n", L"\\r"}) SendMessageW(eol, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
       AddControl(g_ui.serialTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-                                 fieldLeft, top + 252, 645, 46, hwnd, reinterpret_cast<HMENU>(kSerialSummaryEdit), nullptr, nullptr));
+                                 fieldLeft, top + 252, 645, 46, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSerialSummaryEdit)), nullptr, nullptr));
 
       label(L"Mode", top + 10, g_ui.outputTabControls);
       HWND mode = combo(kOutputModeCombo, top + 8, 645, g_ui.outputTabControls);
@@ -1036,14 +1036,14 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
       auto checkbox = [&](const wchar_t* text, int id, int y) {
         AddControl(g_ui.outputTabControls, CreateWindowW(L"BUTTON", text, WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 8, y, 220, 22, hwnd,
-                                                         reinterpret_cast<HMENU>(id), nullptr, nullptr));
+                                                         reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr));
       };
       checkbox(L"Trim whitespace", kOutputTrimCheck, top + 46);
       checkbox(L"Strip suffix", kOutputStripSuffixCheck, top + 74);
       label(L"Known suffix", top + 102, g_ui.outputTabControls);
       AddControl(g_ui.outputTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 100, 645, 24, hwnd,
-                                 reinterpret_cast<HMENU>(kOutputSuffixEdit), nullptr, nullptr));
+                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(kOutputSuffixEdit)), nullptr, nullptr));
       checkbox(L"Normalize sign spacing", kOutputNormalizeCheck, top + 132);
       checkbox(L"Preserve leading plus sign", kOutputPreservePlusCheck, top + 160);
       checkbox(L"Preserve leading minus sign", kOutputPreserveMinusCheck, top + 188);
@@ -1056,48 +1056,48 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       label(L"Custom sequence", top + 284, g_ui.outputTabControls);
       AddControl(g_ui.outputTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_READONLY, fieldLeft, top + 282, 645, 24, hwnd,
-                                 reinterpret_cast<HMENU>(kOutputCustomSequenceEdit), nullptr, nullptr));
+                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(kOutputCustomSequenceEdit)), nullptr, nullptr));
       AddControl(g_ui.outputTabControls,
                  CreateWindowW(L"BUTTON", L"Capture Key", WS_CHILD | WS_VISIBLE, fieldLeft, top + 314, 206, 24, hwnd,
-                               reinterpret_cast<HMENU>(kOutputCaptureKeyBtn), nullptr, nullptr));
+                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(kOutputCaptureKeyBtn)), nullptr, nullptr));
       AddControl(g_ui.outputTabControls,
                  CreateWindowW(L"BUTTON", L"Remove Last", WS_CHILD | WS_VISIBLE, fieldLeft + 218, top + 314, 206, 24, hwnd,
-                               reinterpret_cast<HMENU>(kOutputRemoveLastBtn), nullptr, nullptr));
+                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(kOutputRemoveLastBtn)), nullptr, nullptr));
       AddControl(g_ui.outputTabControls,
                  CreateWindowW(L"BUTTON", L"Clear", WS_CHILD | WS_VISIBLE, fieldLeft + 436, top + 314, 209, 24, hwnd,
-                               reinterpret_cast<HMENU>(kOutputClearBtn), nullptr, nullptr));
+                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(kOutputClearBtn)), nullptr, nullptr));
       AddControl(g_ui.outputTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-                                 fieldLeft, top + 346, 645, 46, hwnd, reinterpret_cast<HMENU>(kOutputSummaryEdit), nullptr, nullptr));
+                                 fieldLeft, top + 346, 645, 46, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kOutputSummaryEdit)), nullptr, nullptr));
 
       label(L"Config path", top + 2, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top, 645, 24, hwnd,
-                                 reinterpret_cast<HMENU>(kAppConfigFolderEdit), nullptr, nullptr));
+                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppConfigFolderEdit)), nullptr, nullptr));
       AddControl(g_ui.applicationTabControls,
                  CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top, 70, 24, hwnd,
-                               reinterpret_cast<HMENU>(kAppConfigBrowseBtn), nullptr, nullptr));
+                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppConfigBrowseBtn)), nullptr, nullptr));
       label(L"Logs folder", top + 46, g_ui.applicationTabControls);
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, fieldLeft, top + 44, 645, 24, hwnd,
-                                 reinterpret_cast<HMENU>(kAppLogsFolderEdit), nullptr, nullptr));
+                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppLogsFolderEdit)), nullptr, nullptr));
       AddControl(g_ui.applicationTabControls,
                  CreateWindowW(L"BUTTON", L"Browse", WS_CHILD | WS_VISIBLE, fieldLeft + 650, top + 44, 70, 24, hwnd,
-                               reinterpret_cast<HMENU>(kAppLogsBrowseBtn), nullptr, nullptr));
+                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppLogsBrowseBtn)), nullptr, nullptr));
       label(L"Log mode", top + 82, g_ui.applicationTabControls);
       HWND logMode = combo(kAppLogModeCombo, top + 80, 645, g_ui.applicationTabControls);
       for (const wchar_t* value : {L"No file logging", L"New file per session", L"Single file"}) SendMessageW(logMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(value));
 
       AddControl(g_ui.applicationTabControls,
                  CreateWindowW(L"BUTTON", L"Connect on startup", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 8, top + 142, 220, 24, hwnd,
-                               reinterpret_cast<HMENU>(kAppConnectStartupCheck), nullptr, nullptr));
+                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppConnectStartupCheck)), nullptr, nullptr));
       AddControl(g_ui.applicationTabControls,
                  CreateWindowW(L"BUTTON", L"Dark mode (experimental)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 250, top + 142, 190, 24, hwnd,
-                               reinterpret_cast<HMENU>(kAppDarkModeCheck), nullptr, nullptr));
+                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppDarkModeCheck)), nullptr, nullptr));
       
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-                                 left + 10, top + 170, 760, 104, hwnd, reinterpret_cast<HMENU>(kAppPathsLabel), nullptr, nullptr));
+                                 left + 10, top + 170, 760, 104, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppPathsLabel)), nullptr, nullptr));
 
       for (int comboId : {kSerialPortCombo, kSerialBaudCombo, kSerialDataBitsCombo, kSerialParityCombo, kSerialStopBitsCombo, kSerialTimeoutCombo,
                           kSerialEolCombo, kOutputModeCombo, kOutputActionCombo, kAppLogModeCombo}) {
@@ -1105,12 +1105,12 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       }
 
       CreateWindowW(L"BUTTON", L"Save Configuration", WS_CHILD | WS_VISIBLE, 20, 520, 140, 32, hwnd,
-                    reinterpret_cast<HMENU>(kSettingsSaveConfig), nullptr, nullptr);
+                    reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSettingsSaveConfig)), nullptr, nullptr);
       CreateWindowW(L"BUTTON", L"Save Config As...", WS_CHILD | WS_VISIBLE, 170, 520, 130, 32, hwnd,
-                    reinterpret_cast<HMENU>(kSettingsSaveAsConfig), nullptr, nullptr);
-      CreateWindowW(L"BUTTON", L"Apply", WS_CHILD | WS_VISIBLE, 700, 520, 70, 32, hwnd, reinterpret_cast<HMENU>(kSettingsApply), nullptr,
+                    reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSettingsSaveAsConfig)), nullptr, nullptr);
+      CreateWindowW(L"BUTTON", L"Apply", WS_CHILD | WS_VISIBLE, 700, 520, 70, 32, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSettingsApply)), nullptr,
                     nullptr);
-      CreateWindowW(L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE, 780, 520, 70, 32, hwnd, reinterpret_cast<HMENU>(kSettingsCancel), nullptr,
+      CreateWindowW(L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE, 780, 520, 70, 32, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSettingsCancel)), nullptr,
                     nullptr);
 
       ShowTab(0);
