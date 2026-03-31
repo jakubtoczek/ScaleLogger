@@ -126,6 +126,7 @@ void LoadSettingsIntoControls(HWND settingsHwnd);
 std::wstring GetControlText(HWND control);
 void AddLogLine(const std::string& text);
 void TraceEarly(const std::string& message);
+void TraceEarlyLiteral(const char* text);
 
 bool IsSettingsPaintDebugEnabled() {
   static int state = -1;
@@ -255,6 +256,15 @@ std::string ToUtf8(const std::wstring& text) {
 void TraceEarly(const std::string& message) {
   OutputDebugStringA((message + "\n").c_str());
   std::fprintf(stderr, "%s\n", message.c_str());
+}
+
+void TraceEarlyLiteral(const char* text) {
+  // Raw crash-isolation helper: avoids temporary-object construction at earliest function-entry boundaries.
+  if (!text) return;
+  OutputDebugStringA(text);
+  OutputDebugStringA("\n");
+  std::fputs(text, stderr);
+  std::fputc('\n', stderr);
 }
 
 std::string ExtractPortToken(const std::string& display) {
@@ -1512,6 +1522,8 @@ SCALELOGGER_NOINLINE int ProbeMainDialogTouchUi(HINSTANCE hInstance) {
 }
 
 SCALELOGGER_NOINLINE int ProbeRunMainDialogImplDirect(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered ProbeRunMainDialogImplDirect");
+  TraceEarlyLiteral("TRACE: RAW passed first line ProbeRunMainDialogImplDirect");
   // Local SEH guard intentionally removed; caller-side SEH capture in main.cpp is the active diagnostic path.
   TraceEarly("TRACE: ProbeRunMainDialogImplDirect entered");
   TraceEarly("TRACE: ProbeRunMainDialogImplDirect before direct impl invoke");
@@ -1521,6 +1533,8 @@ SCALELOGGER_NOINLINE int ProbeRunMainDialogImplDirect(HINSTANCE hInstance, int n
 }
 
 SCALELOGGER_NOINLINE int ProbeRunMainDialogWrapper(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered ProbeRunMainDialogWrapper");
+  TraceEarlyLiteral("TRACE: RAW passed first line ProbeRunMainDialogWrapper");
   TraceEarly("TRACE: ProbeRunMainDialogWrapper entered");
   const int code = RunMainDialog(hInstance, nCmdShow);
   TraceEarly("TRACE: ProbeRunMainDialogWrapper returned code=" + std::to_string(code));
@@ -1541,6 +1555,8 @@ static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANC
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered RunMainDialogImpl");
+  TraceEarlyLiteral("TRACE: RAW passed first line RunMainDialogImpl");
   // Diagnostic-only split to isolate whether faults occur before first impl-body line, in prolog/local setup, or right after raw-entry boundary.
   TraceEarly("TRACE: RunMainDialogImpl raw entry");
   char rawEntryLine[160]{};
@@ -1691,6 +1707,8 @@ static SCALELOGGER_NOINLINE int RunMainDialogImplBody(HINSTANCE hInstance, int n
 }
 
 SCALELOGGER_NOINLINE int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered RunMainDialog");
+  TraceEarlyLiteral("TRACE: RAW passed first line RunMainDialog");
   // Crash-isolation boundary instrumentation: distinguish wrapper-entry, thunk/indirect-call, and impl-entry failures.
   TraceEarly("TRACE: RunMainDialog public wrapper entered");
   const int stageLimit = GetRunMainStageLimit();
