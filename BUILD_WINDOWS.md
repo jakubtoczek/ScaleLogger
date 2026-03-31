@@ -26,13 +26,15 @@ ctest --preset windows-test
 ## Create release bundle
 From repository root:
 ```bat
-ScaleLogger_build_release.bat
+ScaleLogger_build_tagged_release.bat
 ```
 
 This produces:
-- `release\ScaleLogger.exe`
+- `release\ScaleLogger_<buildtag>.exe`
 - `release\SHA256SUMS.txt`
 - `release\BUILD_MANIFEST_<version>.txt` (version comes from `CMakeLists.txt`)
+
+`ScaleLogger_build_tagged_release.bat` is the authoritative repo-local tagged release wrapper. External helper scripts such as `extbuild.bat` are convenience wrappers outside this repo and are not the source of truth.
 
 ## First real runtime test pass
 After successful build/test, run the focused manual runtime checklist:

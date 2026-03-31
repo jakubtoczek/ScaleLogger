@@ -121,13 +121,13 @@ Expected Results:
 From repo root in `cmd.exe`:
 
 ```bat
-ScaleLogger_build_release.bat
+ScaleLogger_build_tagged_release.bat
 ```
 
 Pass criteria:
 - Script exits success.
-- `release\ScaleLogger.exe` exists.
-- `release\SHA256SUMS.txt` exists and references `ScaleLogger.exe`.
+- `release\ScaleLogger_<buildtag>.exe` exists.
+- `release\SHA256SUMS.txt` exists and references `ScaleLogger_<buildtag>.exe`.
 - `release\BUILD_MANIFEST_<version>.txt` exists (version from `CMakeLists.txt`).
 - Manifest includes runtime combo option arrays (`baud_rates`, `data_bits_options`, `parity_options`, `stop_bits_options`).
 

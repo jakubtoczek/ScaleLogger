@@ -39,11 +39,11 @@ Prerequisites:
 For a fresh-clone reproducible release package, run:
 
 ```bat
-ScaleLogger_build_release.bat
+ScaleLogger_build_tagged_release.bat
 ```
 
 The wrapper always configures/builds/tests in Release first, then produces:
-- `release\ScaleLogger.exe`
+- `release\ScaleLogger_<buildtag>.exe`
 - `release\SHA256SUMS.txt`
 - `release\BUILD_MANIFEST_<version>.txt`
 
@@ -107,10 +107,12 @@ JSON parser note:
 At runtime these placeholders are expanded to the active user profile location so builds are portable across different Windows accounts.
 
 ## Release outputs
-Use `ScaleLogger_build_release.bat` to create a native release folder with:
-- `ScaleLogger.exe`
+Use `ScaleLogger_build_tagged_release.bat` to create a native release folder with:
+- `ScaleLogger_<buildtag>.exe`
 - `SHA256SUMS.txt`
 - `BUILD_MANIFEST_<version>.txt` (version derived from `CMakeLists.txt`)
+
+`ScaleLogger_build_tagged_release.bat` is the authoritative repo-local tagged release wrapper. External helper scripts such as `extbuild.bat` are convenience wrappers outside this repo and are not the source of truth.
 
 Release manifest includes runtime combo option arrays sourced from `default_config.json`:
 - `baud_rates`

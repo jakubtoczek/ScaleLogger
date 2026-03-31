@@ -4,8 +4,8 @@ setlocal EnableExtensions EnableDelayedExpansion
 REM ---------------------------------------------------------------------------
 REM ScaleLogger release wrapper with build-tagged executable output.
 REM Usage:
-REM   build.bat                -> auto UTC build tag (yyyyMMddTHHmmssZ)
-REM   build.bat custom_tag     -> explicit build tag override
+REM   ScaleLogger_build_tagged_release.bat                -> auto UTC build tag (yyyyMMddTHHmmssZ)
+REM   ScaleLogger_build_tagged_release.bat custom_tag     -> explicit build tag override
 REM ---------------------------------------------------------------------------
 
 set "APP_VERSION="
