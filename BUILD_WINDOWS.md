@@ -28,6 +28,11 @@ From repository root:
 ```bat
 ScaleLogger_build_tagged_release.bat
 ```
+Optional:
+```bat
+ScaleLogger_build_tagged_release.bat [build_tag] [keep]
+```
+Default behavior removes `out\` after successful packaging. Add `keep` to preserve `out\` and other intermediate build artifacts for inspection/debugging.
 
 This produces:
 - `release\ScaleLogger_<buildtag>.exe`

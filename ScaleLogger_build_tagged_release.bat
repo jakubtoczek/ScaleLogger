@@ -4,15 +4,29 @@ setlocal EnableExtensions EnableDelayedExpansion
 REM ---------------------------------------------------------------------------
 REM ScaleLogger release wrapper with build-tagged executable output.
 REM Usage:
-REM   ScaleLogger_build_tagged_release.bat                -> auto UTC build tag (yyyyMMddTHHmmssZ)
-REM   ScaleLogger_build_tagged_release.bat custom_tag     -> explicit build tag override
+REM   ScaleLogger_build_tagged_release.bat                     -> auto UTC build tag (yyyyMMddTHHmmssZ), cleanup enabled
+REM   ScaleLogger_build_tagged_release.bat custom_tag          -> explicit build tag override, cleanup enabled
+REM   ScaleLogger_build_tagged_release.bat keep                -> auto UTC build tag, preserve out\ and intermediate build artifacts
+REM   ScaleLogger_build_tagged_release.bat custom_tag keep     -> explicit build tag + preserve out\ and intermediate build artifacts
 REM ---------------------------------------------------------------------------
+
+set "TARGET_DIR=%~dp0"
+if "%TARGET_DIR:~-1%"=="\" set "TARGET_DIR=%TARGET_DIR:~0,-1%"
+cd /d "%TARGET_DIR%"
 
 set "APP_VERSION="
 set "RELEASE_DIR=release"
 set "BUILD_DIR=out\build\windows-vs2026-x64"
 set "SOURCE_EXE=%BUILD_DIR%\Release\ScaleLogger.exe"
-set "BUILD_TAG=%~1"
+set "KEEP_BUILD=0"
+set "BUILD_TAG="
+
+if /I "%~1"=="keep" (
+  set "KEEP_BUILD=1"
+) else (
+  set "BUILD_TAG=%~1"
+)
+if /I "%~2"=="keep" set "KEEP_BUILD=1"
 
 if not defined BUILD_TAG (
   for /f "usebackq delims=" %%T in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')"`) do (
@@ -119,9 +133,28 @@ if %errorlevel% neq 0 (
 )
 rmdir /s /q "%STAGE_DIR%"
 
+if "%KEEP_BUILD%"=="0" (
+  echo.
+  echo === Cleanup ===
+  echo Cleaning build artifacts: %TARGET_DIR%\out
+  if exist "%TARGET_DIR%\out" (
+    rmdir /s /q "%TARGET_DIR%\out"
+    if exist "%TARGET_DIR%\out" (
+      echo WARNING: Failed to fully remove out folder
+    ) else (
+      echo Removed: %TARGET_DIR%\out
+    )
+  )
+) else (
+  echo.
+  echo === Cleanup skipped ===
+  echo KEEP_BUILD=1, preserving build artifacts.
+)
+
 echo.
 echo Release build complete.
 echo Build tag:  %BUILD_TAG%
+echo KEEP_BUILD: %KEEP_BUILD%
 echo Executable: %OUTPUT_EXE%
 echo Checksum:   %CHECKSUM_FILE%
 echo Manifest:   %MANIFEST_FILE%

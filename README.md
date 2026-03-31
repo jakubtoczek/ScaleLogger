@@ -41,6 +41,11 @@ For a fresh-clone reproducible release package, run:
 ```bat
 ScaleLogger_build_tagged_release.bat
 ```
+Optional:
+```bat
+ScaleLogger_build_tagged_release.bat [build_tag] [keep]
+```
+Default behavior removes `out\` after successful packaging. Add `keep` to preserve `out\` and other intermediate build artifacts for debugging.
 
 The wrapper always configures/builds/tests in Release first, then produces:
 - `release\ScaleLogger_<buildtag>.exe`
