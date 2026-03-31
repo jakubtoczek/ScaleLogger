@@ -14,6 +14,8 @@ int ProbeMainDialogWithArgs(HINSTANCE hInstance, int nCmdShow);
 int ProbeMainDialogTouchUi(HINSTANCE hInstance);
 int ProbeRunMainDialogImplDirect(HINSTANCE hInstance, int nCmdShow);
 int ProbeRunMainDialogWrapper(HINSTANCE hInstance, int nCmdShow);
+int ProbeRunMainDialogImplDirectViaTrampoline(HINSTANCE hInstance, int nCmdShow);
+int ProbeRunMainDialogWrapperViaTrampoline(HINSTANCE hInstance, int nCmdShow);
 int RunMainDialog(HINSTANCE hInstance, int nCmdShow);
 #endif
 

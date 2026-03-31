@@ -1494,10 +1494,14 @@ bool ShouldReturnAtStage(int stageLimit, int stage) {
 static int RunMainDialogImpl(HINSTANCE hInstance, int nCmdShow);
 static int RunMainDialogImplBody(HINSTANCE hInstance, int nCmdShow, int stageLimit);
 static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANCE hInstance, int nCmdShow);
+static int __cdecl CallProbeRunMainDialogImplDirectTrampoline(HINSTANCE hInstance, int nCmdShow);
+static int __cdecl CallProbeRunMainDialogWrapperTrampoline(HINSTANCE hInstance, int nCmdShow);
 
-static_assert(std::is_same_v<decltype(&RunMainDialog), RunMainDialogFn>, "RunMainDialog signature mismatch");
-static_assert(std::is_same_v<decltype(&ProbeRunMainDialogImplDirect), RunMainDialogFn>, "ProbeRunMainDialogImplDirect signature mismatch");
-static_assert(std::is_same_v<decltype(&RunMainDialogImpl), RunMainDialogFn>, "RunMainDialogImpl signature mismatch");
+using RunMainDialogConcreteFn = int (*)(HINSTANCE, int);
+static_assert(std::is_same_v<decltype(&RunMainDialog), RunMainDialogConcreteFn>, "RunMainDialog signature mismatch");
+static_assert(std::is_same_v<decltype(&ProbeRunMainDialogWrapper), RunMainDialogConcreteFn>, "ProbeRunMainDialogWrapper signature mismatch");
+static_assert(std::is_same_v<decltype(&ProbeRunMainDialogImplDirect), RunMainDialogConcreteFn>, "ProbeRunMainDialogImplDirect signature mismatch");
+static_assert(std::is_same_v<decltype(&RunMainDialogImpl), RunMainDialogConcreteFn>, "RunMainDialogImpl signature mismatch");
 
 int ProbeMainDialogBasic() {
   OutputDebugStringA("TRACE: ProbeMainDialogBasic entered\n");
@@ -1538,6 +1542,30 @@ SCALELOGGER_NOINLINE int ProbeRunMainDialogWrapper(HINSTANCE hInstance, int nCmd
   TraceEarly("TRACE: ProbeRunMainDialogWrapper entered");
   const int code = RunMainDialog(hInstance, nCmdShow);
   TraceEarly("TRACE: ProbeRunMainDialogWrapper returned code=" + std::to_string(code));
+  return code;
+}
+
+static int __cdecl CallProbeRunMainDialogImplDirectTrampoline(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered impl trampoline");
+  return ProbeRunMainDialogImplDirect(hInstance, nCmdShow);
+}
+
+static int __cdecl CallProbeRunMainDialogWrapperTrampoline(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarlyLiteral("TRACE: RAW entered wrapper trampoline");
+  return ProbeRunMainDialogWrapper(hInstance, nCmdShow);
+}
+
+SCALELOGGER_NOINLINE int ProbeRunMainDialogImplDirectViaTrampoline(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarly("TRACE: ProbeRunMainDialogImplDirectViaTrampoline before trampoline");
+  const int code = CallProbeRunMainDialogImplDirectTrampoline(hInstance, nCmdShow);
+  TraceEarly("TRACE: ProbeRunMainDialogImplDirectViaTrampoline after trampoline code=" + std::to_string(code));
+  return code;
+}
+
+SCALELOGGER_NOINLINE int ProbeRunMainDialogWrapperViaTrampoline(HINSTANCE hInstance, int nCmdShow) {
+  TraceEarly("TRACE: ProbeRunMainDialogWrapperViaTrampoline before trampoline");
+  const int code = CallProbeRunMainDialogWrapperTrampoline(hInstance, nCmdShow);
+  TraceEarly("TRACE: ProbeRunMainDialogWrapperViaTrampoline after trampoline code=" + std::to_string(code));
   return code;
 }
 

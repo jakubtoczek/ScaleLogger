@@ -358,6 +358,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_MATRIX_STOP_ON_NONSEH=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_MATRIX_STOP_ON_NONSEH"), true);
   AppendFatalLine("TRACE: SCALELOGGER_SKIP_FINAL_RUNMAIN=" + GetEnvOrUnset("SCALELOGGER_SKIP_FINAL_RUNMAIN"), true);
   AppendFatalLine("TRACE: SCALELOGGER_FORCE_NO_SERIAL=" + GetEnvOrUnset("SCALELOGGER_FORCE_NO_SERIAL"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_ENABLE_DIRECT_IMPL_TRAMPOLINE_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_DIRECT_IMPL_TRAMPOLINE_PROBE"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_ENABLE_WRAPPER_TRAMPOLINE_PROBE=" + GetEnvOrUnset("SCALELOGGER_ENABLE_WRAPPER_TRAMPOLINE_PROBE"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
   SetUnhandledExceptionFilter(FatalSehHandler);
   AppendFatalLine("TRACE: UnhandledExceptionFilter installed", true);
@@ -391,6 +393,26 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
       AppendFatalLine("TRACE: ProbeRunMainDialogWrapper returned code=" + std::to_string(probeRunMainDialogWrapperCode), true);
     } else {
       AppendFatalLine("TRACE: ProbeRunMainDialogWrapper skipped (env not enabled)", true);
+    }
+    const bool enableDirectImplTrampolineProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_DIRECT_IMPL_TRAMPOLINE_PROBE") == "1";
+    if (enableDirectImplTrampolineProbe) {
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplDirectViaTrampoline active", true);
+      AppendFatalLine("TRACE: Calling ProbeRunMainDialogImplDirectViaTrampoline", true);
+      const int probeRunMainDialogImplDirectViaTrampolineCode = scalelogger::ProbeRunMainDialogImplDirectViaTrampoline(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplDirectViaTrampoline returned code=" + std::to_string(probeRunMainDialogImplDirectViaTrampolineCode),
+                      true);
+    } else {
+      AppendFatalLine("TRACE: ProbeRunMainDialogImplDirectViaTrampoline skipped (env not enabled)", true);
+    }
+    const bool enableWrapperTrampolineProbe = GetEnvOrUnset("SCALELOGGER_ENABLE_WRAPPER_TRAMPOLINE_PROBE") == "1";
+    if (enableWrapperTrampolineProbe) {
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapperViaTrampoline active", true);
+      AppendFatalLine("TRACE: Calling ProbeRunMainDialogWrapperViaTrampoline", true);
+      const int probeRunMainDialogWrapperViaTrampolineCode = scalelogger::ProbeRunMainDialogWrapperViaTrampoline(hInstance, nCmdShow);
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapperViaTrampoline returned code=" + std::to_string(probeRunMainDialogWrapperViaTrampolineCode),
+                      true);
+    } else {
+      AppendFatalLine("TRACE: ProbeRunMainDialogWrapperViaTrampoline skipped (env not enabled)", true);
     }
 
     AppendFatalLine("TRACE: Address RunMainDialog=" + FormatFnPtr(reinterpret_cast<const void*>(&scalelogger::RunMainDialog)), true);
