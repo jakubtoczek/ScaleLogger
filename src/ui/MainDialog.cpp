@@ -46,6 +46,7 @@ constexpr UINT kMsgStartupAutoConnect = WM_APP + 3;
 constexpr UINT kMsgSettingsFinalizeCombos = WM_APP + 4;
 constexpr UINT kMsgSettingsFinalizeDisplay = WM_APP + 5;
 constexpr UINT kMsgComboEditNormalizeSelection = WM_APP + 6;
+constexpr UINT kMsgDeferredControllerInit = WM_APP + 7;
 
 constexpr int kSettingsTab = 200;
 constexpr int kSettingsApply = 201;
@@ -122,6 +123,7 @@ HBRUSH g_settingsDebugStaticBrush = CreateSolidBrush(RGB(255, 64, 220));
 HBRUSH g_settingsDebugDefaultBrush = CreateSolidBrush(RGB(64, 220, 140));
 enum class ConnectionUiState { Disconnected, Connecting, Connected };
 ConnectionUiState g_connectionUiState = ConnectionUiState::Disconnected;
+bool g_freshDeferredControllerInitPending = false;
 void LoadSettingsIntoControls(HWND settingsHwnd);
 std::wstring GetControlText(HWND control);
 void AddLogLine(const std::string& text);
@@ -265,6 +267,29 @@ void TraceEarlyLiteral(const char* text) {
   OutputDebugStringA("\n");
   std::fputs(text, stderr);
   std::fputc('\n', stderr);
+}
+
+bool IsDeferredControllerInitDisabled() {
+  const char* raw = std::getenv("SCALELOGGER_DISABLE_DEFERRED_CONTROLLER_INIT");
+  return raw && std::string(raw) == "1";
+}
+
+void CompleteFreshPostInitStartupTasks(HWND hwnd) {
+  if (!g_ui.controller) return;
+  const auto& cfg = g_ui.controller->Config();
+  if (cfg.darkMode) AddLogLine(std::string("Dark mode is experimental in ") + kAppVersion + " and is disabled by default.");
+  const char* disableStartupConnect = std::getenv("SCALELOGGER_DISABLE_STARTUP_CONNECT");
+  const bool startupConnectDisabledByEnv = disableStartupConnect && std::string(disableStartupConnect) == "1";
+  if (cfg.connectOnStartup && !startupConnectDisabledByEnv) {
+    PostMessageW(hwnd, kMsgStartupAutoConnect, 0, 0);
+  }
+  const auto ports = g_ui.controller->ScanPorts();
+  std::string joined;
+  for (std::size_t i = 0; i < ports.size(); ++i) {
+    if (i) joined += ", ";
+    joined += ports[i];
+  }
+  AddLogLine("Detected " + std::to_string(ports.size()) + " ports" + (joined.empty() ? "." : (": " + joined)));
 }
 
 std::string ExtractPortToken(const std::string& display) {
@@ -1360,6 +1385,15 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case kMsgUiConnectionState:
       UpdateConnectionUi(wParam != 0);
       return 0;
+    case kMsgDeferredControllerInit:
+      TraceEarlyLiteral("TRACE: Deferred controller init message entered");
+      if (g_freshDeferredControllerInitPending && g_ui.controller) {
+        g_ui.controller->Initialize();
+        UpdateConnectionUi(g_ui.controller->IsConnected());
+        CompleteFreshPostInitStartupTasks(hwnd);
+        g_freshDeferredControllerInitPending = false;
+      }
+      return 0;
     case kMsgStartupAutoConnect:
       AddLogLine("Handling deferred startup auto-connect.");
       if (g_ui.controller) {
@@ -1758,6 +1792,7 @@ static bool ShouldStopAtFreshSubstageB(const FreshStartupContext& ctx, const cha
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage0_Entry(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE0 entered");
+  g_freshDeferredControllerInitPending = false;
   ctx->stageLimit = GetFreshStageLimit();
   const char* rawSubstageLimit = std::getenv("SCALELOGGER_FRESH_SUBSTAGE_LIMIT");
   const char* rawSubstageLimitB = std::getenv("SCALELOGGER_FRESH_SUBSTAGE_LIMIT_B");
@@ -1835,14 +1870,21 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage4B_InitializeController(FreshS
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4B1_ControllerInitialize(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4B1 entered");
-  g_ui.controller->Initialize();
+  if (IsDeferredControllerInitDisabled()) {
+    TraceEarlyLiteral("TRACE: STAGE4B1 synchronous controller init override");
+    g_ui.controller->Initialize();
+  } else {
+    TraceEarlyLiteral("TRACE: STAGE4B1 posting deferred controller init");
+    g_freshDeferredControllerInitPending = true;
+    PostMessageW(ctx->hwnd, kMsgDeferredControllerInit, 0, 0);
+  }
   if (ShouldStopAtFreshSubstageB(*ctx, "4B1", 350)) return 350;
   return RunMainDialogStage4B2_ReadConnectionState(ctx);
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4B2_ReadConnectionState(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4B2 entered");
-  ctx->initialConnected = g_ui.controller->IsConnected();
+  ctx->initialConnected = g_freshDeferredControllerInitPending ? false : g_ui.controller->IsConnected();
   if (ShouldStopAtFreshSubstageB(*ctx, "4B2", 351)) return 351;
   return RunMainDialogStage4B3_UpdateConnectionUi(ctx);
 }
@@ -1863,20 +1905,11 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage4B4_PostInitHandoff(FreshStart
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4C_StartupConnectAndScan(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4C entered");
-  const auto& cfg = g_ui.controller->Config();
-  if (cfg.darkMode) AddLogLine(std::string("Dark mode is experimental in ") + kAppVersion + " and is disabled by default.");
-  const char* disableStartupConnect = std::getenv("SCALELOGGER_DISABLE_STARTUP_CONNECT");
-  const bool startupConnectDisabledByEnv = disableStartupConnect && std::string(disableStartupConnect) == "1";
-  if (cfg.connectOnStartup && !startupConnectDisabledByEnv) {
-    PostMessageW(ctx->hwnd, kMsgStartupAutoConnect, 0, 0);
+  if (!g_freshDeferredControllerInitPending) {
+    CompleteFreshPostInitStartupTasks(ctx->hwnd);
+  } else {
+    TraceEarlyLiteral("TRACE: STAGE4C deferring startup tasks until deferred init message");
   }
-  const auto ports = g_ui.controller->ScanPorts();
-  std::string joined;
-  for (std::size_t i = 0; i < ports.size(); ++i) {
-    if (i) joined += ", ";
-    joined += ports[i];
-  }
-  AddLogLine("Detected " + std::to_string(ports.size()) + " ports" + (joined.empty() ? "." : (": " + joined)));
   if (ShouldStopAtFreshSubstage(*ctx, "4C", 342)) return 342;
   return RunMainDialogStage4D_BeforeMessageLoop(ctx);
 }
