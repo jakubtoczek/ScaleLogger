@@ -339,6 +339,52 @@ static int CallWithSehGuard(MainCallContext* ctx) {
   }
   return code;
 }
+
+enum MinimalEntryTargetId {
+  kMinimalEntryTargetSentinel = 1,
+  kMinimalEntryTargetTinyWindow = 2,
+  kMinimalEntryTargetFresh = 3,
+};
+
+struct MinimalEntryCallContext {
+  int targetId{0};
+  int sehReturnCode{0};
+  HINSTANCE hInstance{nullptr};
+  int nCmdShow{0};
+};
+
+static int DispatchMinimalEntryCall(MinimalEntryCallContext* ctx) {
+  switch (ctx->targetId) {
+    case kMinimalEntryTargetSentinel: return scalelogger::ProbeMainDialogSentinelWithArgs(ctx->hInstance, ctx->nCmdShow);
+    case kMinimalEntryTargetTinyWindow: return scalelogger::LaunchTinyWindow(ctx->hInstance, ctx->nCmdShow);
+    case kMinimalEntryTargetFresh: return scalelogger::RunMainDialogFresh(ctx->hInstance, ctx->nCmdShow);
+    default: return ctx->sehReturnCode;
+  }
+}
+
+static SCALELOGGER_MAIN_NOINLINE int ExecuteMinimalEntryCallWithSeh(MinimalEntryCallContext* ctx, unsigned long* trappedCodeOut) {
+  __try {
+    *trappedCodeOut = 0;
+    return DispatchMinimalEntryCall(ctx);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    *trappedCodeOut = static_cast<unsigned long>(GetExceptionCode());
+    return ctx->sehReturnCode;
+  }
+}
+
+static int RunMinimalEntryTargetWithLogging(MinimalEntryCallContext* ctx, const std::string& targetLabel) {
+  unsigned long trappedCode = 0;
+  const int code = ExecuteMinimalEntryCallWithSeh(ctx, &trappedCode);
+  if (trappedCode != 0) {
+    std::ostringstream oss;
+    oss << "TRACE: Minimal entry SEH trapped target=" << targetLabel << " code=0x" << std::uppercase << std::hex << std::setw(8)
+        << std::setfill('0') << trappedCode;
+    AppendFatalLine(oss.str(), true);
+    return code;
+  }
+  AppendFatalLine("TRACE: Minimal entry target returned code=" + std::to_string(code), true);
+  return code;
+}
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
@@ -404,27 +450,20 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     const std::string minTargetRaw = GetEnvOrUnset("SCALELOGGER_MIN_ENTRY_TARGET");
     const std::string minTarget = minTargetRaw == "<unset>" ? std::string("fresh") : minTargetRaw;
     AppendFatalLine("TRACE: Minimal entry selected target=" + minTarget, true);
-    int code = 0;
-    unsigned long trappedCode = 0;
-    __try {
-      if (minTarget == "sentinel") code = scalelogger::ProbeMainDialogSentinelWithArgs(hInstance, nCmdShow);
-      else if (minTarget == "tiny-window") code = scalelogger::LaunchTinyWindow(hInstance, nCmdShow);
-      else code = scalelogger::RunMainDialogFresh(hInstance, nCmdShow);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-      trappedCode = static_cast<unsigned long>(GetExceptionCode());
-      if (minTarget == "sentinel") code = 270;
-      else if (minTarget == "tiny-window") code = 271;
-      else code = 272;
+    MinimalEntryCallContext minCtx{};
+    minCtx.hInstance = hInstance;
+    minCtx.nCmdShow = nCmdShow;
+    if (minTarget == "sentinel") {
+      minCtx.targetId = kMinimalEntryTargetSentinel;
+      minCtx.sehReturnCode = 270;
+    } else if (minTarget == "tiny-window") {
+      minCtx.targetId = kMinimalEntryTargetTinyWindow;
+      minCtx.sehReturnCode = 271;
+    } else {
+      minCtx.targetId = kMinimalEntryTargetFresh;
+      minCtx.sehReturnCode = 272;
     }
-    if (trappedCode != 0) {
-      std::ostringstream oss;
-      oss << "TRACE: Minimal entry SEH trapped target=" << minTarget << " code=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0')
-          << trappedCode;
-      AppendFatalLine(oss.str(), true);
-      return code;
-    }
-    AppendFatalLine("TRACE: Minimal entry target returned code=" + std::to_string(code), true);
-    return code;
+    return RunMinimalEntryTargetWithLogging(&minCtx, minTarget);
 
     AppendFatalLine("TRACE: Calling ProbeMainDialogBasic", true);
     const int probeBasicCode = scalelogger::ProbeMainDialogBasic();
