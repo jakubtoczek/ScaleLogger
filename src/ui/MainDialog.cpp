@@ -1502,6 +1502,10 @@ static int RunMainDialogStage1_InitializeUi(FreshStartupContext* ctx);
 static int RunMainDialogStage2_CreateController(FreshStartupContext* ctx);
 static int RunMainDialogStage3_CreateMainWindow(FreshStartupContext* ctx);
 static int RunMainDialogStage4_PostCreate(FreshStartupContext* ctx);
+static int RunMainDialogStage4A_ShowWindow(FreshStartupContext* ctx);
+static int RunMainDialogStage4B_InitializeController(FreshStartupContext* ctx);
+static int RunMainDialogStage4C_StartupConnectAndScan(FreshStartupContext* ctx);
+static int RunMainDialogStage4D_BeforeMessageLoop(FreshStartupContext* ctx);
 static int RunMainDialogStage5_MessageLoop(FreshStartupContext* ctx);
 static SCALELOGGER_NOINLINE int CallRunMainDialogFn(RunMainDialogFn fn, HINSTANCE hInstance, int nCmdShow);
 static int __cdecl CallProbeRunMainDialogImplDirectTrampoline(HINSTANCE hInstance, int nCmdShow);
@@ -1712,6 +1716,7 @@ struct FreshStartupContext {
   HINSTANCE hInstance{nullptr};
   int nCmdShow{0};
   int stageLimit{-1};
+  std::string substageLimit;
   std::filesystem::path dataRoot;
   HWND hwnd{nullptr};
 };
@@ -1731,10 +1736,20 @@ static bool ShouldStopAtFreshStage(const FreshStartupContext& ctx, int stage, in
   return true;
 }
 
+static bool ShouldStopAtFreshSubstage(const FreshStartupContext& ctx, const char* substageLabel, int code) {
+  if (ctx.substageLimit.empty()) return false;
+  if (ctx.substageLimit != substageLabel) return false;
+  TraceEarly("TRACE: Fresh substage-limit stop at substage=" + std::string(substageLabel) + " code=" + std::to_string(code));
+  return true;
+}
+
 static SCALELOGGER_NOINLINE int RunMainDialogStage0_Entry(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE0 entered");
   ctx->stageLimit = GetFreshStageLimit();
+  const char* rawSubstageLimit = std::getenv("SCALELOGGER_FRESH_SUBSTAGE_LIMIT");
+  ctx->substageLimit = rawSubstageLimit ? rawSubstageLimit : "";
   TraceEarly("TRACE: STAGE0 fresh stage-limit value=" + std::to_string(ctx->stageLimit));
+  TraceEarly("TRACE: STAGE0 fresh substage-limit value=" + (ctx->substageLimit.empty() ? std::string("<unset>") : ctx->substageLimit));
   if (ShouldStopAtFreshStage(*ctx, 0, 300)) return 300;
   return RunMainDialogStage1_InitializeUi(ctx);
 }
@@ -1786,10 +1801,27 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage3_CreateMainWindow(FreshStartu
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4_PostCreate(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4 entered");
+  return RunMainDialogStage4A_ShowWindow(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage4A_ShowWindow(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE4A entered");
   ShowWindow(ctx->hwnd, ctx->nCmdShow);
   UpdateWindow(ctx->hwnd);
+  if (ShouldStopAtFreshSubstage(*ctx, "4A", 340)) return 340;
+  return RunMainDialogStage4B_InitializeController(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage4B_InitializeController(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE4B entered");
   g_ui.controller->Initialize();
   UpdateConnectionUi(g_ui.controller->IsConnected());
+  if (ShouldStopAtFreshSubstage(*ctx, "4B", 341)) return 341;
+  return RunMainDialogStage4C_StartupConnectAndScan(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage4C_StartupConnectAndScan(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE4C entered");
   const auto& cfg = g_ui.controller->Config();
   if (cfg.darkMode) AddLogLine(std::string("Dark mode is experimental in ") + kAppVersion + " and is disabled by default.");
   const char* disableStartupConnect = std::getenv("SCALELOGGER_DISABLE_STARTUP_CONNECT");
@@ -1804,6 +1836,13 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage4_PostCreate(FreshStartupConte
     joined += ports[i];
   }
   AddLogLine("Detected " + std::to_string(ports.size()) + " ports" + (joined.empty() ? "." : (": " + joined)));
+  if (ShouldStopAtFreshSubstage(*ctx, "4C", 342)) return 342;
+  return RunMainDialogStage4D_BeforeMessageLoop(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage4D_BeforeMessageLoop(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE4D entered");
+  if (ShouldStopAtFreshSubstage(*ctx, "4D", 343)) return 343;
   if (ShouldStopAtFreshStage(*ctx, 4, 304)) return 304;
   return RunMainDialogStage5_MessageLoop(ctx);
 }
