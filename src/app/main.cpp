@@ -1,6 +1,7 @@
 #ifdef _WIN32
 #include "core/AppConfig.hpp"
 #include "core/AppVersion.hpp"
+#include "app/MinEntryTinyWindow.hpp"
 #include "ui/MainDialog.hpp"
 
 #include <Windows.h>
@@ -390,10 +391,41 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: SCALELOGGER_DISABLE_DEFERRED_CONTROLLER_INIT=" + GetEnvOrUnset("SCALELOGGER_DISABLE_DEFERRED_CONTROLLER_INIT"), true);
   AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_FRESH_CALL_MODE=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_FRESH_CALL_MODE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_USE_LEGACY_RUNMAIN=" + GetEnvOrUnset("SCALELOGGER_USE_LEGACY_RUNMAIN"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_MIN_ENTRY_TARGET=" + GetEnvOrUnset("SCALELOGGER_MIN_ENTRY_TARGET"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
   SetUnhandledExceptionFilter(FatalSehHandler);
   AppendFatalLine("TRACE: UnhandledExceptionFilter installed", true);
   try {
+    // This branch intentionally minimizes launch boundary to distinguish harness effects from RunMain/fresh symbol-family effects.
+    if (GetEnvOrUnset("SCALELOGGER_SKIP_FINAL_RUNMAIN") == "1") {
+      AppendFatalLine("TRACE: Minimal entry branch=skip-final override", true);
+      return 120;
+    }
+    const std::string minTargetRaw = GetEnvOrUnset("SCALELOGGER_MIN_ENTRY_TARGET");
+    const std::string minTarget = minTargetRaw == "<unset>" ? std::string("fresh") : minTargetRaw;
+    AppendFatalLine("TRACE: Minimal entry selected target=" + minTarget, true);
+    int code = 0;
+    unsigned long trappedCode = 0;
+    __try {
+      if (minTarget == "sentinel") code = scalelogger::ProbeMainDialogSentinelWithArgs(hInstance, nCmdShow);
+      else if (minTarget == "tiny-window") code = scalelogger::LaunchTinyWindow(hInstance, nCmdShow);
+      else code = scalelogger::RunMainDialogFresh(hInstance, nCmdShow);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+      trappedCode = static_cast<unsigned long>(GetExceptionCode());
+      if (minTarget == "sentinel") code = 270;
+      else if (minTarget == "tiny-window") code = 271;
+      else code = 272;
+    }
+    if (trappedCode != 0) {
+      std::ostringstream oss;
+      oss << "TRACE: Minimal entry SEH trapped target=" << minTarget << " code=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0')
+          << trappedCode;
+      AppendFatalLine(oss.str(), true);
+      return code;
+    }
+    AppendFatalLine("TRACE: Minimal entry target returned code=" + std::to_string(code), true);
+    return code;
+
     AppendFatalLine("TRACE: Calling ProbeMainDialogBasic", true);
     const int probeBasicCode = scalelogger::ProbeMainDialogBasic();
     AppendFatalLine("TRACE: ProbeMainDialogBasic returned code=" + std::to_string(probeBasicCode), true);

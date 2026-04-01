@@ -48,6 +48,7 @@ if(WIN32)
 
   add_executable(ScaleLogger WIN32
     src/app/main.cpp
+    src/app/MinEntryTinyWindow.cpp
     src/app/AppController.cpp
     src/app/ConfigService.cpp
     src/ui/MainDialog.cpp
