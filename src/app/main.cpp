@@ -2,6 +2,7 @@
 #include "core/AppConfig.hpp"
 #include "core/AppVersion.hpp"
 #include "app/MinEntryTinyWindow.hpp"
+#include "ui/MainDialogCompat1715.hpp"
 #include "ui/MainDialog.hpp"
 
 #include <Windows.h>
@@ -344,6 +345,7 @@ enum MinimalEntryTargetId {
   kMinimalEntryTargetSentinel = 1,
   kMinimalEntryTargetTinyWindow = 2,
   kMinimalEntryTargetFresh = 3,
+  kMinimalEntryTargetCompat1715 = 4,
 };
 
 struct MinimalEntryCallContext {
@@ -358,6 +360,7 @@ static int DispatchMinimalEntryCall(MinimalEntryCallContext* ctx) {
     case kMinimalEntryTargetSentinel: return scalelogger::ProbeMainDialogSentinelWithArgs(ctx->hInstance, ctx->nCmdShow);
     case kMinimalEntryTargetTinyWindow: return scalelogger::LaunchTinyWindow(ctx->hInstance, ctx->nCmdShow);
     case kMinimalEntryTargetFresh: return scalelogger::RunMainDialogFresh(ctx->hInstance, ctx->nCmdShow);
+    case kMinimalEntryTargetCompat1715: return scalelogger::RunMainDialogCompat1715(ctx->hInstance, ctx->nCmdShow);
     default: return ctx->sehReturnCode;
   }
 }
@@ -459,6 +462,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     } else if (minTarget == "tiny-window") {
       minCtx.targetId = kMinimalEntryTargetTinyWindow;
       minCtx.sehReturnCode = 271;
+    } else if (minTarget == "compat1715") {
+      // Intentionally uses the older 20260325-1715 UI entry design for launch compatibility comparison on the scale PC.
+      minCtx.targetId = kMinimalEntryTargetCompat1715;
+      minCtx.sehReturnCode = 273;
     } else {
       minCtx.targetId = kMinimalEntryTargetFresh;
       minCtx.sehReturnCode = 272;
