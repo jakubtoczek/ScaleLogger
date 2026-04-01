@@ -1504,6 +1504,10 @@ static int RunMainDialogStage3_CreateMainWindow(FreshStartupContext* ctx);
 static int RunMainDialogStage4_PostCreate(FreshStartupContext* ctx);
 static int RunMainDialogStage4A_ShowWindow(FreshStartupContext* ctx);
 static int RunMainDialogStage4B_InitializeController(FreshStartupContext* ctx);
+static int RunMainDialogStage4B1_ControllerInitialize(FreshStartupContext* ctx);
+static int RunMainDialogStage4B2_ReadConnectionState(FreshStartupContext* ctx);
+static int RunMainDialogStage4B3_UpdateConnectionUi(FreshStartupContext* ctx);
+static int RunMainDialogStage4B4_PostInitHandoff(FreshStartupContext* ctx);
 static int RunMainDialogStage4C_StartupConnectAndScan(FreshStartupContext* ctx);
 static int RunMainDialogStage4D_BeforeMessageLoop(FreshStartupContext* ctx);
 static int RunMainDialogStage5_MessageLoop(FreshStartupContext* ctx);
@@ -1717,6 +1721,8 @@ struct FreshStartupContext {
   int nCmdShow{0};
   int stageLimit{-1};
   std::string substageLimit;
+  std::string substageLimitB;
+  bool initialConnected{false};
   std::filesystem::path dataRoot;
   HWND hwnd{nullptr};
 };
@@ -1743,13 +1749,23 @@ static bool ShouldStopAtFreshSubstage(const FreshStartupContext& ctx, const char
   return true;
 }
 
+static bool ShouldStopAtFreshSubstageB(const FreshStartupContext& ctx, const char* substageLabel, int code) {
+  if (ctx.substageLimitB.empty()) return false;
+  if (ctx.substageLimitB != substageLabel) return false;
+  TraceEarly("TRACE: Fresh substage-B-limit stop at substage=" + std::string(substageLabel) + " code=" + std::to_string(code));
+  return true;
+}
+
 static SCALELOGGER_NOINLINE int RunMainDialogStage0_Entry(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE0 entered");
   ctx->stageLimit = GetFreshStageLimit();
   const char* rawSubstageLimit = std::getenv("SCALELOGGER_FRESH_SUBSTAGE_LIMIT");
+  const char* rawSubstageLimitB = std::getenv("SCALELOGGER_FRESH_SUBSTAGE_LIMIT_B");
   ctx->substageLimit = rawSubstageLimit ? rawSubstageLimit : "";
+  ctx->substageLimitB = rawSubstageLimitB ? rawSubstageLimitB : "";
   TraceEarly("TRACE: STAGE0 fresh stage-limit value=" + std::to_string(ctx->stageLimit));
   TraceEarly("TRACE: STAGE0 fresh substage-limit value=" + (ctx->substageLimit.empty() ? std::string("<unset>") : ctx->substageLimit));
+  TraceEarly("TRACE: STAGE0 fresh substage-B-limit value=" + (ctx->substageLimitB.empty() ? std::string("<unset>") : ctx->substageLimitB));
   if (ShouldStopAtFreshStage(*ctx, 0, 300)) return 300;
   return RunMainDialogStage1_InitializeUi(ctx);
 }
@@ -1814,9 +1830,34 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage4A_ShowWindow(FreshStartupCont
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4B_InitializeController(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4B entered");
+  return RunMainDialogStage4B1_ControllerInitialize(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage4B1_ControllerInitialize(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE4B1 entered");
   g_ui.controller->Initialize();
-  UpdateConnectionUi(g_ui.controller->IsConnected());
+  if (ShouldStopAtFreshSubstageB(*ctx, "4B1", 350)) return 350;
+  return RunMainDialogStage4B2_ReadConnectionState(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage4B2_ReadConnectionState(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE4B2 entered");
+  ctx->initialConnected = g_ui.controller->IsConnected();
+  if (ShouldStopAtFreshSubstageB(*ctx, "4B2", 351)) return 351;
+  return RunMainDialogStage4B3_UpdateConnectionUi(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage4B3_UpdateConnectionUi(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE4B3 entered");
+  UpdateConnectionUi(ctx->initialConnected);
+  if (ShouldStopAtFreshSubstageB(*ctx, "4B3", 352)) return 352;
+  return RunMainDialogStage4B4_PostInitHandoff(ctx);
+}
+
+static SCALELOGGER_NOINLINE int RunMainDialogStage4B4_PostInitHandoff(FreshStartupContext* ctx) {
+  TraceEarlyLiteral("TRACE: STAGE4B4 entered");
   if (ShouldStopAtFreshSubstage(*ctx, "4B", 341)) return 341;
+  if (ShouldStopAtFreshSubstageB(*ctx, "4B4", 353)) return 353;
   return RunMainDialogStage4C_StartupConnectAndScan(ctx);
 }
 
