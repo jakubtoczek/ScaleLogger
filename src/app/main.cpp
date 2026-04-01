@@ -2,6 +2,7 @@
 #include "core/AppConfig.hpp"
 #include "core/AppVersion.hpp"
 #include "app/MinEntryTinyWindow.hpp"
+#include "ui/MainDialog2.hpp"
 #include "ui/MainDialogCompat1715.hpp"
 #include "ui/MainDialog.hpp"
 
@@ -346,6 +347,7 @@ enum MinimalEntryTargetId {
   kMinimalEntryTargetTinyWindow = 2,
   kMinimalEntryTargetFresh = 3,
   kMinimalEntryTargetCompat1715 = 4,
+  kMinimalEntryTargetDialog2 = 5,
 };
 
 struct MinimalEntryCallContext {
@@ -361,6 +363,7 @@ static int DispatchMinimalEntryCall(MinimalEntryCallContext* ctx) {
     case kMinimalEntryTargetTinyWindow: return scalelogger::LaunchTinyWindow(ctx->hInstance, ctx->nCmdShow);
     case kMinimalEntryTargetFresh: return scalelogger::RunMainDialogFresh(ctx->hInstance, ctx->nCmdShow);
     case kMinimalEntryTargetCompat1715: return scalelogger::RunMainDialogCompat1715(ctx->hInstance, ctx->nCmdShow);
+    case kMinimalEntryTargetDialog2: return scalelogger::RunMainDialog2(ctx->hInstance, ctx->nCmdShow);
     default: return ctx->sehReturnCode;
   }
 }
@@ -466,6 +469,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
       // Intentionally uses the older 20260325-1715 UI entry design for launch compatibility comparison on the scale PC.
       minCtx.targetId = kMinimalEntryTargetCompat1715;
       minCtx.sehReturnCode = 273;
+    } else if (minTarget == "dialog2") {
+      // Intentionally provides a clean-room real app shell without AppController/startup dependencies, to isolate shared launch-path faults on the scale PC.
+      minCtx.targetId = kMinimalEntryTargetDialog2;
+      minCtx.sehReturnCode = 274;
     } else {
       minCtx.targetId = kMinimalEntryTargetFresh;
       minCtx.sehReturnCode = 272;

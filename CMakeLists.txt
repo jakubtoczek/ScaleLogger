@@ -52,6 +52,7 @@ if(WIN32)
     src/app/AppController.cpp
     src/app/ConfigService.cpp
     src/ui/MainDialog.cpp
+    src/ui/MainDialog2.cpp
     src/ui/MainDialogCompat1715.cpp
     src/ui/SettingsDialogLogic.cpp
     src/ui/AboutDialog.cpp
