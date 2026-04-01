@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <type_traits>
 
 namespace {
 struct FatalDiagnosticsConfig {
@@ -278,6 +279,15 @@ enum MainCallModeId {
   kMainCallRunMainFresh = 6,
 };
 
+static_assert(std::is_same_v<decltype(&scalelogger::ProbeMainDialogWithArgs), scalelogger::RunMainDialogFn>, "ProbeMainDialogWithArgs signature mismatch");
+static_assert(std::is_same_v<decltype(&scalelogger::ProbeMainDialogSentinelWithArgs), scalelogger::RunMainDialogFn>,
+              "ProbeMainDialogSentinelWithArgs signature mismatch");
+static_assert(std::is_same_v<decltype(&scalelogger::ProbeRunMainDialogFresh), scalelogger::RunMainDialogFn>, "ProbeRunMainDialogFresh signature mismatch");
+static_assert(std::is_same_v<decltype(&scalelogger::ProbeRunMainDialogFreshBody), scalelogger::RunMainDialogFn>,
+              "ProbeRunMainDialogFreshBody signature mismatch");
+static_assert(std::is_same_v<decltype(&scalelogger::RunMainDialogFresh), scalelogger::RunMainDialogFn>, "RunMainDialogFresh signature mismatch");
+static_assert(std::is_same_v<decltype(&scalelogger::RunMainDialog), scalelogger::RunMainDialogFn>, "RunMainDialog signature mismatch");
+
 static const char* MainCallModeLabel(int modeId) {
   switch (modeId) {
     case kMainCallRunMainDirect: return "runmain-direct";
@@ -378,6 +388,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
   AppendFatalLine("TRACE: SCALELOGGER_USE_THIN_FRESH_STARTUP=" + GetEnvOrUnset("SCALELOGGER_USE_THIN_FRESH_STARTUP"), true);
   AppendFatalLine("TRACE: SCALELOGGER_USE_PREVIOUS_DEFERRED_STARTUP=" + GetEnvOrUnset("SCALELOGGER_USE_PREVIOUS_DEFERRED_STARTUP"), true);
   AppendFatalLine("TRACE: SCALELOGGER_DISABLE_DEFERRED_CONTROLLER_INIT=" + GetEnvOrUnset("SCALELOGGER_DISABLE_DEFERRED_CONTROLLER_INIT"), true);
+  AppendFatalLine("TRACE: SCALELOGGER_RUNMAIN_FRESH_CALL_MODE=" + GetEnvOrUnset("SCALELOGGER_RUNMAIN_FRESH_CALL_MODE"), true);
   AppendFatalLine("TRACE: SCALELOGGER_USE_LEGACY_RUNMAIN=" + GetEnvOrUnset("SCALELOGGER_USE_LEGACY_RUNMAIN"), true);
   AppendFatalLine("TRACE: wWinMain entered", true);
   SetUnhandledExceptionFilter(FatalSehHandler);
@@ -605,51 +616,86 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     }
     AppendFatalLine("TRACE: Final call branch=normal selected call target", true);
 
-    // Caller-side boundary instrumentation to distinguish direct call, fn-pointer call, main-thunk call, wrapper-probe, and impl-probe paths.
+    // Caller-side boundary instrumentation to compare final selected call targets and call modes through guarded dispatch.
     const bool useLegacyRunMain = GetEnvOrUnset("SCALELOGGER_USE_LEGACY_RUNMAIN") == "1";
     AppendFatalLine(std::string("TRACE: Final default RunMain path selected=") + (useLegacyRunMain ? "legacy" : "fresh"), true);
     const std::string mainCallTargetRaw = GetEnvOrUnset("SCALELOGGER_MAIN_CALL_TARGET");
-    const std::string defaultMainCallTarget = useLegacyRunMain ? std::string("runmain-direct") : std::string("runmain-fresh");
+    const std::string defaultMainCallTarget = useLegacyRunMain ? std::string("legacy-direct") : std::string("runmain-fresh-direct");
     const std::string mainCallTarget = mainCallTargetRaw == "<unset>" ? defaultMainCallTarget : mainCallTargetRaw;
     if (mainCallTargetRaw == "<unset>") {
       AppendFatalLine("TRACE: Main call target unset, defaulting to " + defaultMainCallTarget, true);
     }
+    const std::string freshCallModeRaw = GetEnvOrUnset("SCALELOGGER_RUNMAIN_FRESH_CALL_MODE");
+    const std::string freshCallMode = freshCallModeRaw == "<unset>" ? std::string("direct") : freshCallModeRaw;
+    AppendFatalLine("TRACE: Selected final call target=" + mainCallTarget, true);
+    AppendFatalLine("TRACE: Selected final call mode=" + freshCallMode, true);
     int exitCode = 0;
-    if (mainCallTarget == "runmain-direct") {
-      AppendFatalLine("TRACE: Selected main call target=runmain-direct", true);
-      AppendFatalLine("TRACE: Before final call path runmain-direct", true);
+    if (mainCallTarget == "legacy-direct" || mainCallTarget == "runmain-direct") {
       mainCtx.modeId = kMainCallRunMainDirect;
       mainCtx.sehReturnCode = 241;
+      AppendFatalLine("TRACE: Before final call path legacy-direct", true);
       exitCode = CallWithSehGuard(&mainCtx);
-      AppendFatalLine("TRACE: After final call path runmain-direct code=" + std::to_string(exitCode), true);
+      AppendFatalLine("TRACE: After final call path legacy-direct code=" + std::to_string(exitCode), true);
       return exitCode;
     }
-    if (mainCallTarget == "runmain-fn") {
-      AppendFatalLine("TRACE: Selected main call target=runmain-fn", true);
-      AppendFatalLine("TRACE: runmain-fn before binding function pointer", true);
-      mainCtx.fn = &scalelogger::RunMainDialog;
-      AppendFatalLine("TRACE: runmain-fn after binding function pointer fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)), true);
-      AppendFatalLine("TRACE: Before final call path runmain-fn", true);
+    if (mainCallTarget == "sentinel-args") {
       mainCtx.modeId = kMainCallRunMainFn;
-      mainCtx.sehReturnCode = 242;
+      mainCtx.fn = &scalelogger::ProbeMainDialogSentinelWithArgs;
+      mainCtx.sehReturnCode = 260;
+      AppendFatalLine("TRACE: Before final call path sentinel-args fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)), true);
       exitCode = CallWithSehGuard(&mainCtx);
-      AppendFatalLine("TRACE: After final call path runmain-fn code=" + std::to_string(exitCode), true);
+      AppendFatalLine("TRACE: After final call path sentinel-args code=" + std::to_string(exitCode), true);
       return exitCode;
     }
-    if (mainCallTarget == "runmain-mainthunk") {
-      AppendFatalLine("TRACE: Selected main call target=runmain-mainthunk", true);
-      AppendFatalLine("TRACE: runmain-mainthunk before binding function pointer", true);
-      mainCtx.fn = &scalelogger::RunMainDialog;
-      AppendFatalLine("TRACE: runmain-mainthunk after binding function pointer fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)), true);
-      AppendFatalLine("TRACE: Before final call path runmain-mainthunk", true);
-      mainCtx.modeId = kMainCallRunMainThunk;
-      mainCtx.sehReturnCode = 243;
+    if (mainCallTarget == "probe-with-args") {
+      mainCtx.modeId = kMainCallRunMainFn;
+      mainCtx.fn = &scalelogger::ProbeMainDialogWithArgs;
+      mainCtx.sehReturnCode = 261;
+      AppendFatalLine("TRACE: Before final call path probe-with-args fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)), true);
       exitCode = CallWithSehGuard(&mainCtx);
-      AppendFatalLine("TRACE: After final call path runmain-mainthunk code=" + std::to_string(exitCode), true);
+      AppendFatalLine("TRACE: After final call path probe-with-args code=" + std::to_string(exitCode), true);
+      return exitCode;
+    }
+    if (mainCallTarget == "fresh-probe") {
+      mainCtx.modeId = kMainCallRunMainFn;
+      mainCtx.fn = &scalelogger::ProbeRunMainDialogFresh;
+      mainCtx.sehReturnCode = 262;
+      AppendFatalLine("TRACE: Before final call path fresh-probe fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)), true);
+      exitCode = CallWithSehGuard(&mainCtx);
+      AppendFatalLine("TRACE: After final call path fresh-probe code=" + std::to_string(exitCode), true);
+      return exitCode;
+    }
+    if (mainCallTarget == "fresh-body-probe") {
+      mainCtx.modeId = kMainCallRunMainFn;
+      mainCtx.fn = &scalelogger::ProbeRunMainDialogFreshBody;
+      mainCtx.sehReturnCode = 263;
+      AppendFatalLine("TRACE: Before final call path fresh-body-probe fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)), true);
+      exitCode = CallWithSehGuard(&mainCtx);
+      AppendFatalLine("TRACE: After final call path fresh-body-probe code=" + std::to_string(exitCode), true);
+      return exitCode;
+    }
+    if (mainCallTarget == "runmain-fresh-direct" || mainCallTarget == "runmain-fresh") {
+      if (freshCallMode == "fn") {
+        mainCtx.modeId = kMainCallRunMainFn;
+        mainCtx.fn = &scalelogger::RunMainDialogFresh;
+        mainCtx.sehReturnCode = 265;
+      } else if (freshCallMode == "mainthunk") {
+        mainCtx.modeId = kMainCallRunMainThunk;
+        mainCtx.fn = &scalelogger::RunMainDialogFresh;
+        mainCtx.sehReturnCode = 266;
+      } else {
+        if (freshCallMode != "direct") {
+          AppendFatalLine("TRACE: Invalid SCALELOGGER_RUNMAIN_FRESH_CALL_MODE; defaulting to direct", true);
+        }
+        mainCtx.modeId = kMainCallRunMainFresh;
+        mainCtx.sehReturnCode = 264;
+      }
+      AppendFatalLine("TRACE: Before final call path runmain-fresh-direct fn=" + FormatFnPtr(reinterpret_cast<const void*>(mainCtx.fn)), true);
+      exitCode = CallWithSehGuard(&mainCtx);
+      AppendFatalLine("TRACE: After final call path runmain-fresh-direct code=" + std::to_string(exitCode), true);
       return exitCode;
     }
     if (mainCallTarget == "wrapper-probe") {
-      AppendFatalLine("TRACE: Selected main call target=wrapper-probe", true);
       AppendFatalLine("TRACE: Before final call path wrapper-probe", true);
       mainCtx.modeId = kMainCallWrapperProbe;
       mainCtx.sehReturnCode = 244;
@@ -658,7 +704,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
       return exitCode;
     }
     if (mainCallTarget == "impl-probe") {
-      AppendFatalLine("TRACE: Selected main call target=impl-probe", true);
       AppendFatalLine("TRACE: Before final call path impl-probe", true);
       mainCtx.modeId = kMainCallImplProbe;
       mainCtx.sehReturnCode = 245;
@@ -666,21 +711,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
       AppendFatalLine("TRACE: After final call path impl-probe code=" + std::to_string(exitCode), true);
       return exitCode;
     }
-    if (mainCallTarget == "runmain-fresh") {
-      AppendFatalLine("TRACE: Selected main call target=runmain-fresh", true);
-      AppendFatalLine("TRACE: Before final call path runmain-fresh", true);
-      mainCtx.modeId = kMainCallRunMainFresh;
-      mainCtx.sehReturnCode = 246;
-      exitCode = CallWithSehGuard(&mainCtx);
-      AppendFatalLine("TRACE: After final call path runmain-fresh code=" + std::to_string(exitCode), true);
-      return exitCode;
-    }
-    AppendFatalLine("TRACE: Invalid main call target '" + mainCallTarget + "', falling back to runmain-direct", true);
-    AppendFatalLine("TRACE: Before final call path runmain-direct", true);
+    AppendFatalLine("TRACE: Invalid main call target '" + mainCallTarget + "', falling back to legacy-direct", true);
+    AppendFatalLine("TRACE: Before final call path legacy-direct", true);
     mainCtx.modeId = kMainCallRunMainDirect;
     mainCtx.sehReturnCode = 241;
     exitCode = CallWithSehGuard(&mainCtx);
-    AppendFatalLine("TRACE: After final call path runmain-direct code=" + std::to_string(exitCode), true);
+    AppendFatalLine("TRACE: After final call path legacy-direct code=" + std::to_string(exitCode), true);
     return exitCode;
   } catch (const std::exception& ex) {
     ReportFatalCrash(std::string("FATAL: unhandled exception reached main: ") + ex.what(), 0, false, true);
