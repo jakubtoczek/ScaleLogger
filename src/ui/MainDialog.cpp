@@ -1543,58 +1543,17 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 struct FreshStartupContext {
   HINSTANCE hInstance{nullptr};
   int nCmdShow{0};
-  int stageLimit{-1};
-  std::string substageLimit;
-  std::string substageLimitB;
   bool initialConnected{false};
   std::filesystem::path dataRoot;
   HWND hwnd{nullptr};
 };
 
-static int GetFreshStageLimit() {
-  const char* raw = std::getenv("SCALELOGGER_FRESH_STAGE_LIMIT");
-  if (!raw || !*raw) return -1;
-  char* end = nullptr;
-  const long parsed = std::strtol(raw, &end, 10);
-  if (end == raw || (end && *end != '\0') || parsed < 0 || parsed > 1000) return -1;
-  return static_cast<int>(parsed);
-}
-
-static bool ShouldStopAtFreshStage(const FreshStartupContext& ctx, int stage, int code) {
-  if (ctx.stageLimit != stage) return false;
-  TraceEarly("TRACE: Fresh stage-limit stop at stage=" + std::to_string(stage) + " code=" + std::to_string(code));
-  return true;
-}
-
-static bool ShouldStopAtFreshSubstage(const FreshStartupContext& ctx, const char* substageLabel, int code) {
-  if (ctx.substageLimit.empty()) return false;
-  if (ctx.substageLimit != substageLabel) return false;
-  TraceEarly("TRACE: Fresh substage-limit stop at substage=" + std::string(substageLabel) + " code=" + std::to_string(code));
-  return true;
-}
-
-static bool ShouldStopAtFreshSubstageB(const FreshStartupContext& ctx, const char* substageLabel, int code) {
-  if (ctx.substageLimitB.empty()) return false;
-  if (ctx.substageLimitB != substageLabel) return false;
-  TraceEarly("TRACE: Fresh substage-B-limit stop at substage=" + std::string(substageLabel) + " code=" + std::to_string(code));
-  return true;
-}
-
 static SCALELOGGER_NOINLINE int RunMainDialogStage0_Entry(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE0 entered");
   g_freshDeferredControllerInitPending = false;
   g_freshStartupControllerInitialized = false;
-  ctx->stageLimit = GetFreshStageLimit();
-  const char* rawSubstageLimit = std::getenv("SCALELOGGER_FRESH_SUBSTAGE_LIMIT");
-  const char* rawSubstageLimitB = std::getenv("SCALELOGGER_FRESH_SUBSTAGE_LIMIT_B");
-  ctx->substageLimit = rawSubstageLimit ? rawSubstageLimit : "";
-  ctx->substageLimitB = rawSubstageLimitB ? rawSubstageLimitB : "";
-  TraceEarly("TRACE: STAGE0 fresh stage-limit value=" + std::to_string(ctx->stageLimit));
-  TraceEarly("TRACE: STAGE0 fresh substage-limit value=" + (ctx->substageLimit.empty() ? std::string("<unset>") : ctx->substageLimit));
-  TraceEarly("TRACE: STAGE0 fresh substage-B-limit value=" + (ctx->substageLimitB.empty() ? std::string("<unset>") : ctx->substageLimitB));
   TraceEarly(std::string("TRACE: STAGE0 thin fresh startup mode=") + (UseThinFreshStartup() ? "enabled" : "disabled"));
   TraceEarly(std::string("TRACE: STAGE0 previous deferred startup mode=") + (UsePreviousDeferredStartup() ? "enabled" : "disabled"));
-  if (ShouldStopAtFreshStage(*ctx, 0, 300)) return 300;
   return RunMainDialogStage1_InitializeUi(ctx);
 }
 
@@ -1604,7 +1563,6 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage1_InitializeUi(FreshStartupCon
   INITCOMMONCONTROLSEX icc{sizeof(INITCOMMONCONTROLSEX), ICC_TAB_CLASSES};
   const BOOL initOk = InitCommonControlsEx(&icc);
   TraceEarly("TRACE: STAGE1 InitCommonControlsEx result=" + std::to_string(initOk));
-  if (ShouldStopAtFreshStage(*ctx, 1, 301)) return 301;
   return RunMainDialogStage2_CreateController(ctx);
 }
 
@@ -1622,7 +1580,6 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage2_CreateController(FreshStartu
   g_ui.controller = std::make_unique<AppController>(ctx->dataRoot);
   g_ui.controller->SetLogSink([](const std::string& message, bool isError) { PostLogLineToUiThread((isError ? "ERROR: " : "") + message); });
   g_ui.controller->SetConnectionStateSink([](bool connected) { PostConnectionStateToUiThread(connected); });
-  if (ShouldStopAtFreshStage(*ctx, 2, 302)) return 302;
   return RunMainDialogStage3_CreateMainWindow(ctx);
 }
 
@@ -1639,7 +1596,6 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage3_CreateMainWindow(FreshStartu
   ctx->hwnd = CreateWindowExW(0, wc.lpszClassName, mainWindowTitle.c_str(), WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_SIZEBOX,
                               CW_USEDEFAULT, CW_USEDEFAULT, 860, 600, nullptr, nullptr, ctx->hInstance, nullptr);
   if (!ctx->hwnd) return 1;
-  if (ShouldStopAtFreshStage(*ctx, 3, 303)) return 303;
   return RunMainDialogStage4_PostCreate(ctx);
 }
 
@@ -1652,7 +1608,6 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage4A_ShowWindow(FreshStartupCont
   TraceEarlyLiteral("TRACE: STAGE4A entered");
   ShowWindow(ctx->hwnd, ctx->nCmdShow);
   UpdateWindow(ctx->hwnd);
-  if (ShouldStopAtFreshSubstage(*ctx, "4A", 340)) return 340;
   return RunMainDialogStage4B_InitializeController(ctx);
 }
 
@@ -1675,28 +1630,23 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage4B1_ControllerInitialize(Fresh
     g_freshDeferredControllerInitPending = true;
     PostMessageW(ctx->hwnd, kMsgFreshStartupStep1InitController, 0, 0);
   }
-  if (ShouldStopAtFreshSubstageB(*ctx, "4B1", 350)) return 350;
   return RunMainDialogStage4B2_ReadConnectionState(ctx);
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4B2_ReadConnectionState(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4B2 entered");
   ctx->initialConnected = g_freshStartupControllerInitialized && g_ui.controller ? g_ui.controller->IsConnected() : false;
-  if (ShouldStopAtFreshSubstageB(*ctx, "4B2", 351)) return 351;
   return RunMainDialogStage4B3_UpdateConnectionUi(ctx);
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4B3_UpdateConnectionUi(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4B3 entered");
   UpdateConnectionUi(ctx->initialConnected);
-  if (ShouldStopAtFreshSubstageB(*ctx, "4B3", 352)) return 352;
   return RunMainDialogStage4B4_PostInitHandoff(ctx);
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4B4_PostInitHandoff(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4B4 entered");
-  if (ShouldStopAtFreshSubstage(*ctx, "4B", 341)) return 341;
-  if (ShouldStopAtFreshSubstageB(*ctx, "4B4", 353)) return 353;
   return RunMainDialogStage4C_StartupConnectAndScan(ctx);
 }
 
@@ -1708,14 +1658,11 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage4C_StartupConnectAndScan(Fresh
   } else {
     TraceEarlyLiteral("TRACE: STAGE4C startup tasks deferred to posted startup pipeline");
   }
-  if (ShouldStopAtFreshSubstage(*ctx, "4C", 342)) return 342;
   return RunMainDialogStage4D_BeforeMessageLoop(ctx);
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4D_BeforeMessageLoop(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4D entered");
-  if (ShouldStopAtFreshSubstage(*ctx, "4D", 343)) return 343;
-  if (ShouldStopAtFreshStage(*ctx, 4, 304)) return 304;
   return RunMainDialogStage5_MessageLoop(ctx);
 }
 
