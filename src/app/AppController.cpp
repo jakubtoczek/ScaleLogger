@@ -1,16 +1,17 @@
 #include "app/AppController.hpp"
+
 #include "app/ConfigService.hpp"
 
-#include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <condition_variable>
-#include <ctime>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <iomanip>
 #include <mutex>
 #include <sstream>
+#include <system_error>
 #include <vector>
 
 #ifdef _WIN32
@@ -46,25 +47,6 @@ std::string EscapeForLog(const std::string& value) {
   return out;
 }
 
-std::string FormatStopBitsForLog(float value) {
-  if (value == 1.5F) return "1.5";
-  if (value >= 1.9F) return "2";
-  return "1";
-}
-
-std::string FormatTimeoutForLog(float value) {
-  std::ostringstream oss;
-  oss << std::fixed << std::setprecision(2) << value;
-  return oss.str();
-}
-
-std::string UpperAscii(std::string text) {
-  for (char& ch : text) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-  return text;
-}
-
-bool PortNamesMatch(const std::string& lhs, const std::string& rhs) { return UpperAscii(lhs) == UpperAscii(rhs); }
-
 void SanitizeSerialSettings(AppSettings& settings) {
   if (settings.serial.port.empty()) settings.serial.port = "COM6";
   if (settings.serial.baudRate <= 0) settings.serial.baudRate = 1200;
@@ -76,6 +58,41 @@ void SanitizeSerialSettings(AppSettings& settings) {
   if (settings.serial.eol.empty()) settings.serial.eol = "\r\n";
 }
 
+std::string FormatStopBits(float value) {
+  if (value == 1.5F) return "1.5";
+  if (value >= 1.9F) return "2";
+  return "1";
+}
+
+std::string FormatTimeout(float value) {
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(2) << value;
+  return oss.str();
+}
+
+std::string LogModeText(LogMode mode) {
+  switch (mode) {
+    case LogMode::SingleFile: return "single_file";
+    case LogMode::None: return "none";
+    case LogMode::PerSession:
+    default: return "per_session";
+  }
+}
+
+void ResolveAndSanitize(std::filesystem::path dataRoot, AppSettings& settings, AppConfig& config) {
+  SanitizeSerialSettings(settings);
+  ConfigService::SanitizeConfig(config);
+  config.configFolder = ConfigService::ResolveConfiguredPath(dataRoot, config.configFolder).string();
+  config.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot, config.logsFolder).string();
+}
+
+bool PortNamesMatch(const std::string& lhs, const std::string& rhs) {
+  auto upper = [](std::string value) {
+    for (char& ch : value) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    return value;
+  };
+  return upper(lhs) == upper(rhs);
+}
 } // namespace
 
 AppController::AppController(std::filesystem::path dataRoot)
@@ -83,143 +100,112 @@ AppController::AppController(std::filesystem::path dataRoot)
 
 void AppController::Initialize() {
   EmitLog("Initialize begin");
-  std::string startupSerialSource = "config defaults";
+  EmitLog("Startup data root: " + dataRoot_.string());
+
+  AppConfig loadedConfig{};
+  AppSettings loadedSettings{};
+  std::string source = "in-memory defaults";
+
+  const auto userConfigPath = configPath_;
+  const auto defaultConfigPath = ConfigService::ResolveDefaultConfigPath(dataRoot_);
+
   try {
-    const bool hasUserConfig = std::filesystem::exists(configPath_);
-    EmitLog("Startup data root: " + dataRoot_.string());
-    EmitLog("Startup config path: " + configPath_.string());
-    EmitLog(hasUserConfig ? ("Startup config found: " + configPath_.string()) : ("Startup config not found: " + configPath_.string()));
-
-    config_ = LoadConfig(configPath_);
-    ConfigService::SanitizeConfig(config_);
-    settings_ = LoadConfigSettings(configPath_);
-    EmitLog("Startup config source: " + std::string(hasUserConfig ? "disk config file" : "defaults from missing config"));
-    if (!hasUserConfig) {
-      const auto defaultConfigPath = ConfigService::ResolveDefaultConfigPath(dataRoot_);
-      if (std::filesystem::exists(defaultConfigPath)) {
-        config_ = LoadConfig(defaultConfigPath);
-        ConfigService::SanitizeConfig(config_);
-        settings_ = LoadConfigSettings(defaultConfigPath);
-        startupSerialSource = "built-in defaults";
-        EmitLog("Startup config source: " + defaultConfigPath.string());
-      } else {
-        startupSerialSource = "built-in defaults";
-        EmitLog("Startup config source: built-in defaults (no default_config.json found near executable)");
-      }
+    if (std::filesystem::exists(userConfigPath)) {
+      loadedConfig = LoadConfig(userConfigPath);
+      loadedSettings = LoadConfigSettings(userConfigPath);
+      source = "user config: " + userConfigPath.string();
+    } else if (std::filesystem::exists(defaultConfigPath)) {
+      loadedConfig = LoadConfig(defaultConfigPath);
+      loadedSettings = LoadConfigSettings(defaultConfigPath);
+      source = "default config: " + defaultConfigPath.string();
     }
-
-    SanitizeSerialSettings(settings_);
-
-    config_.configFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
-    config_.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
-    if (config_.configFileName.empty()) config_.configFileName = "ScaleLogger.config.json";
-    configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
-
-    std::error_code ec;
-    std::filesystem::create_directories(std::filesystem::path(config_.logsFolder), ec);
-    if (ec) EmitLog("WARN: Failed to create logs directory: " + std::filesystem::path(config_.logsFolder).string(), true);
-    FlushBufferedFileLogs();
-
-    EmitLog("Startup effective serial source: " + startupSerialSource);
-    EmitLog("Startup effective serial: port=" + settings_.serial.port + "; baudrate=" + std::to_string(settings_.serial.baudRate) +
-            "; databits=" + std::to_string(settings_.serial.dataBits) + "; parity=" + std::string(1, settings_.serial.parity) +
-            "; stopbits=" + FormatStopBitsForLog(settings_.serial.stopBits) + "; timeout=" + FormatTimeoutForLog(settings_.serial.timeoutSeconds) +
-            "; eol=" + EscapeForLog(settings_.serial.eol));
-    const std::string logModeText =
-        config_.logMode == LogMode::SingleFile ? "single_file" : (config_.logMode == LogMode::None ? "none" : "per_session");
-    EmitLog("Startup effective logging: folder=" + config_.logsFolder + "; mode=" + logModeText + "; pattern=" + config_.logFilePattern);
-    EmitLog(config_.connectOnStartup ? "Startup auto-connect enabled" : "Startup auto-connect disabled");
-    EmitLog("Startup load completed");
   } catch (const std::exception& ex) {
-    config_ = AppConfig{};
-    settings_ = AppSettings{};
-    config_.configFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.configFolder).string();
-    config_.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, config_.logsFolder).string();
-    configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
-    FlushBufferedFileLogs();
-    EmitLog("Startup effective serial source: fallback defaults after startup-load failure");
-    EmitLog(std::string("ERROR: Startup config load failed. Using defaults. ") + ex.what(), true);
+    loadedConfig = AppConfig{};
+    loadedSettings = AppSettings{};
+    source = std::string("fallback defaults after load failure: ") + ex.what();
   }
+
+  ResolveAndSanitize(dataRoot_, loadedSettings, loadedConfig);
+
+  settings_ = loadedSettings;
+  config_ = loadedConfig;
+  configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
+
+  std::error_code ec;
+  std::filesystem::create_directories(std::filesystem::path(config_.logsFolder), ec);
+  if (ec) EmitLog("WARN: Failed to create logs directory: " + std::filesystem::path(config_.logsFolder).string(), true);
+
+  FlushBufferedFileLogs();
+
+  EmitLog("Startup config source: " + source);
+  EmitLog("Startup effective config path: " + configPath_.string());
+  EmitLog("Startup serial: port=" + settings_.serial.port + "; baudrate=" + std::to_string(settings_.serial.baudRate) +
+          "; databits=" + std::to_string(settings_.serial.dataBits) + "; parity=" + std::string(1, settings_.serial.parity) +
+          "; stopbits=" + FormatStopBits(settings_.serial.stopBits) + "; timeout=" + FormatTimeout(settings_.serial.timeoutSeconds) +
+          "; eol=" + EscapeForLog(settings_.serial.eol));
+  EmitLog("Startup logging: folder=" + config_.logsFolder + "; mode=" + LogModeText(config_.logMode) + "; pattern=" + config_.logFilePattern);
   EmitLog("Initialize end");
-  EmitLog("Application start");
 }
 
 void AppController::Connect() {
   EmitLog("Connect begin");
   if (const char* forceNoSerial = std::getenv("SCALELOGGER_FORCE_NO_SERIAL")) {
     if (std::string(forceNoSerial) == "1") {
-      EmitLog("Serial subsystem fully disabled by env override");
       connected_ = false;
       EmitConnectionState(false);
-      EmitLog("Connect end: skipped by environment override");
+      EmitLog("Connect skipped: SCALELOGGER_FORCE_NO_SERIAL=1");
       return;
     }
   }
-  if (connected_) {
-    EmitLog("Connect end: already connected");
+
+  if (connected_ || serial_.IsConnected()) {
+    connected_ = true;
+    EmitConnectionState(true);
+    EmitLog("Connect skipped: already connected");
     return;
   }
 
-  EmitLog("TRACE: AppController::Connect before serial_.Connect()");
   const bool connected = serial_.Connect(
       settings_.serial,
       [this](const std::string& rawLine) {
         try {
           const auto parsed = parser_.Process(rawLine, settings_.parsing);
           if (!parsed.ok) {
-            if (config_.lineLogMode == LineLogMode::Compact) {
-              EmitLog("Scale input raw='" + rawLine + "' parse_error='" + parsed.message + "'", true);
-            } else {
-              EmitLog("Raw received line: '" + rawLine + "'");
-            }
             EmitLog("Parse rejected: " + parsed.message + " raw='" + rawLine + "'", true);
             return;
           }
-          if (config_.lineLogMode == LineLogMode::Compact) {
-            EmitLog("Scale input raw='" + rawLine + "' parsed='" + parsed.processed + "'");
-          } else if (settings_.parsing.mode == ParseMode::Parsed) {
-            EmitLog("Raw received line: '" + rawLine + "'");
-            EmitLog("Parsed value: '" + parsed.processed + "'");
-          }
-          if (settings_.output.postAction == PostAction::CustomSequence) {
-            std::string seq;
-            for (std::size_t i = 0; i < settings_.output.customSequence.size(); ++i) {
-              if (i > 0) seq += " -> ";
-              seq += settings_.output.customSequence[i];
-            }
-            EmitLog("Executing custom sequence: " + seq);
-          }
+
+          EmitLog("Parsed value: '" + parsed.processed + "' from raw='" + rawLine + "'");
           const auto sendResult = injector_.SendTextAndAction(Utf8ToWide(parsed.processed), settings_.output);
-          if (sendResult.status != InputInjector::SendStatus::Success) {
-            if (sendResult.status == InputInjector::SendStatus::TextFailed) {
-              EmitLog("Text injection failed for value: " + parsed.processed, true);
-            } else {
-              if (settings_.output.postAction == PostAction::CustomSequence && !sendResult.failedToken.empty()) {
-                EmitLog("WARN: Unrecognized or failed custom sequence token: " + sendResult.failedToken, true);
-                EmitLog("Custom sequence execution failed after text injection", true);
-              } else {
-                EmitLog("Post-action key injection failed after text injection", true);
-              }
-            }
+          if (sendResult.status == InputInjector::SendStatus::Success) {
+            EmitLog("Injection succeeded for parsed value: '" + parsed.processed + "'");
+            return;
+          }
+
+          if (sendResult.status == InputInjector::SendStatus::TextFailed) {
+            EmitLog("Text injection failed for value: '" + parsed.processed + "'", true);
+            return;
+          }
+
+          if (!sendResult.failedToken.empty()) {
+            EmitLog("Post-action failed for token: " + sendResult.failedToken, true);
+          } else {
+            EmitLog("Post-action key injection failed", true);
           }
         } catch (const std::exception& ex) {
           EmitLog(std::string("ERROR: Exception while handling serial line callback: ") + ex.what(), true);
-        } catch (...) {
-          EmitLog("ERROR: Non-standard exception while handling serial line callback.", true);
         }
       },
-      [this](const std::string& m) { EmitLog(m); }, [this](const std::string& m) { EmitLog(m, true); });
+      [this](const std::string& m) { EmitLog(m); },
+      [this](const std::string& m) { EmitLog(m, true); });
 
-  EmitLog(std::string("TRACE: AppController::Connect after serial_.Connect() result=") + (connected ? "success" : "failure"));
   connected_ = connected;
   EmitConnectionState(connected_);
-  if (connected_) EmitLog("Connected to " + settings_.serial.port + ". No valid scale data received yet.");
   EmitLog(std::string("Connect end: ") + (connected_ ? "success" : "failed"));
 }
 
 void AppController::Disconnect() {
-  if (!connected_ && !serial_.IsConnected()) return;
-  serial_.Disconnect();
+  if (serial_.IsConnected()) serial_.Disconnect();
   connected_ = false;
   EmitConnectionState(false);
   EmitLog("Disconnected");
@@ -227,38 +213,21 @@ void AppController::Disconnect() {
 
 void AppController::ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig, bool persistToDisk) {
   AppSettings resolvedSettings = nextSettings;
-  SanitizeSerialSettings(resolvedSettings);
   AppConfig resolvedConfig = nextConfig;
-  ConfigService::SanitizeConfig(resolvedConfig);
-  resolvedConfig.configFolder = ConfigService::ResolveConfiguredPath(dataRoot_, resolvedConfig.configFolder).string();
-  resolvedConfig.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot_, resolvedConfig.logsFolder).string();
+  ResolveAndSanitize(dataRoot_, resolvedSettings, resolvedConfig);
 
-  const bool settingsChanged =
-      settings_.serial.port != resolvedSettings.serial.port || settings_.serial.baudRate != resolvedSettings.serial.baudRate ||
-      settings_.serial.dataBits != resolvedSettings.serial.dataBits || settings_.serial.parity != resolvedSettings.serial.parity ||
-      settings_.serial.stopBits != resolvedSettings.serial.stopBits || settings_.serial.timeoutSeconds != resolvedSettings.serial.timeoutSeconds ||
-      settings_.serial.eol != resolvedSettings.serial.eol || settings_.parsing.mode != resolvedSettings.parsing.mode ||
-      settings_.parsing.trimWhitespace != resolvedSettings.parsing.trimWhitespace ||
-      settings_.parsing.stripSuffix != resolvedSettings.parsing.stripSuffix || settings_.parsing.suffix != resolvedSettings.parsing.suffix ||
-      settings_.parsing.normalizeSign != resolvedSettings.parsing.normalizeSign ||
-      settings_.parsing.preservePlusSign != resolvedSettings.parsing.preservePlusSign ||
-      settings_.parsing.preserveMinusSign != resolvedSettings.parsing.preserveMinusSign ||
-      settings_.parsing.numericValidation != resolvedSettings.parsing.numericValidation ||
-      settings_.output.postAction != resolvedSettings.output.postAction || settings_.output.customSequence != resolvedSettings.output.customSequence;
-  const bool configChanged =
-      config_.configFolder != resolvedConfig.configFolder || config_.configFileName != resolvedConfig.configFileName ||
-      config_.logsFolder != resolvedConfig.logsFolder ||
-      config_.logFilePattern != resolvedConfig.logFilePattern ||
-      config_.logMode != resolvedConfig.logMode || config_.lineLogMode != resolvedConfig.lineLogMode ||
-      config_.connectOnStartup != resolvedConfig.connectOnStartup || config_.darkMode != resolvedConfig.darkMode;
+  const bool settingsChanged = ConfigService::CountSettingsDifferences(settings_, resolvedSettings) > 0;
+  const bool configChanged = ConfigService::CountConfigDifferences(config_, resolvedConfig) > 0;
   if (!settingsChanged && !configChanged) return;
 
-  const bool reconnect = serial_.IsConnected() && SerialSettingsRequireReconnect(settings_.serial, resolvedSettings.serial);
+  const bool serialReconnectRequired = SerialSettingsRequireReconnect(settings_.serial, resolvedSettings.serial);
   const bool logDestinationChanged = config_.logsFolder != resolvedConfig.logsFolder || config_.logMode != resolvedConfig.logMode ||
                                      config_.logFilePattern != resolvedConfig.logFilePattern;
+
   settings_ = resolvedSettings;
   config_ = resolvedConfig;
   configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
+
   if (logDestinationChanged) {
     std::lock_guard<std::mutex> lock(fileLogMutex_);
     if (logFile_.is_open()) logFile_.close();
@@ -266,12 +235,14 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
     sessionLogName_.clear();
     logWriteErrorNotified_ = false;
   }
-  if (persistToDisk && (settingsChanged || configChanged)) {
+
+  if (persistToDisk) {
     if (SaveConfig(configPath_, config_, &settings_)) EmitLog("Configuration saved");
     else EmitLog("ERROR: Failed to save configuration: " + configPath_.string(), true);
   }
-  if (reconnect) {
-    EmitLog("Reconnecting with updated serial settings on " + settings_.serial.port);
+
+  if (connected_ && serialReconnectRequired) {
+    EmitLog("Reconnecting due to serial settings update");
     Disconnect();
     Connect();
   }
@@ -281,33 +252,29 @@ AppController::SaveConfigResult AppController::SaveResolvedConfiguration() {
   SaveConfigResult result{};
   result.path = configPath_;
 
-  std::error_code ec;
-  const bool existedBeforeSave = std::filesystem::exists(result.path, ec) && !ec;
-
-  AppConfig diskConfig{};
-  AppSettings diskSettings{};
-  if (existedBeforeSave) {
-    diskConfig = LoadConfig(result.path);
-    bool usedLegacyCompatibilityMapping = false;
-    diskSettings = LoadConfigSettings(result.path, &usedLegacyCompatibilityMapping);
-    ConfigService::SanitizeConfig(diskConfig);
-    SanitizeSerialSettings(diskSettings);
-  } else {
-    diskConfig = AppConfig{};
-    diskSettings = AppSettings{};
-    ConfigService::SanitizeConfig(diskConfig);
-    SanitizeSerialSettings(diskSettings);
-  }
-
   AppConfig resolvedConfig = config_;
   AppSettings resolvedSettings = settings_;
-  ConfigService::SanitizeConfig(resolvedConfig);
-  SanitizeSerialSettings(resolvedSettings);
+  ResolveAndSanitize(dataRoot_, resolvedSettings, resolvedConfig);
 
-  result.changedFieldCount =
-      ConfigService::CountConfigDifferences(diskConfig, resolvedConfig) + ConfigService::CountSettingsDifferences(diskSettings, resolvedSettings);
+  bool existedBeforeSave = false;
+  AppConfig diskBeforeConfig{};
+  AppSettings diskBeforeSettings{};
+  try {
+    existedBeforeSave = std::filesystem::exists(result.path);
+    if (existedBeforeSave) {
+      diskBeforeConfig = LoadConfig(result.path);
+      diskBeforeSettings = LoadConfigSettings(result.path);
+      ResolveAndSanitize(dataRoot_, diskBeforeSettings, diskBeforeConfig);
+    } else {
+      ResolveAndSanitize(dataRoot_, diskBeforeSettings, diskBeforeConfig);
+    }
+  } catch (...) {
+    ResolveAndSanitize(dataRoot_, diskBeforeSettings, diskBeforeConfig);
+  }
 
-  if (result.changedFieldCount == 0 && existedBeforeSave) {
+  result.changedFieldCount = ConfigService::CountConfigDifferences(diskBeforeConfig, resolvedConfig) +
+                             ConfigService::CountSettingsDifferences(diskBeforeSettings, resolvedSettings);
+  if (existedBeforeSave && result.changedFieldCount == 0) {
     result.status = SaveConfigStatus::Unchanged;
     return result;
   }
@@ -332,6 +299,7 @@ bool AppController::TestReceive(const SerialSettings& settings, std::string& rec
     EmitLog(errorMessage, true);
     return false;
   }
+
   if (serial_.IsConnected() && PortNamesMatch(settings_.serial.port, settings.port)) {
     errorMessage = "Test Receive cannot run while already connected to " + settings.port + ". Disconnect first.";
     EmitLog(errorMessage, true);
@@ -383,6 +351,7 @@ bool AppController::TestReceive(const SerialSettings& settings, std::string& rec
     EmitLog("Test receive end on " + settings.port + ": timeout", true);
     return false;
   }
+
   EmitLog("Test receive end on " + settings.port + ": success");
   return ok;
 }
@@ -397,31 +366,32 @@ bool AppController::IsConnected() const { return connected_ || serial_.IsConnect
 
 void AppController::EmitLog(const std::string& message, bool isError) const {
   WriteLogFileLine(message, isError);
-  if (logSink_) {
-    logSink_(message, isError);
-  }
+  if (logSink_) logSink_(message, isError);
 }
 
 void AppController::EmitConnectionState(bool connected) const {
-  if (connectionStateSink_) {
-    connectionStateSink_(connected);
-  }
+  if (connectionStateSink_) connectionStateSink_(connected);
 }
 
 void AppController::WriteLogFileLine(const std::string& message, bool isError) const {
+  (void)isError;
   if (config_.logMode == LogMode::None && !fileLogBufferingActive_) return;
+
   std::string warning;
   {
     std::lock_guard<std::mutex> lock(fileLogMutex_);
+
     if (fileLogBufferingActive_) {
       bufferedFileLogs_.push_back({message, isError});
       return;
     }
+
     const auto path = ResolveLogPath();
     if (path.empty()) return;
 
     if (activeLogPath_ != path) {
       if (logFile_.is_open()) logFile_.close();
+
       std::error_code ec;
       std::filesystem::create_directories(path.parent_path(), ec);
       if (ec) {
@@ -432,10 +402,12 @@ void AppController::WriteLogFileLine(const std::string& message, bool isError) c
         }
         return;
       }
+
       logFile_.open(path, std::ios::out | std::ios::app);
       activeLogPath_ = path;
       logWriteErrorNotified_ = false;
     }
+
     if (!logFile_.is_open()) {
       if (!logWriteErrorNotified_) {
         warning = "ERROR: Unable to write to log file: " + path.string();
@@ -451,16 +423,18 @@ void AppController::WriteLogFileLine(const std::string& message, bool isError) c
 #else
     localtime_r(&now, &tmNow);
 #endif
+
     char stamp[16];
     std::strftime(stamp, sizeof(stamp), "%H:%M:%S", &tmNow);
-    (void)isError;
     logFile_ << "[" << stamp << "] " << message << "\n";
     logFile_.flush();
+
     if (!logFile_ && !logWriteErrorNotified_) {
       warning = "ERROR: Failed while flushing log file: " + path.string();
       logWriteErrorNotified_ = true;
     }
   }
+
   if (!warning.empty() && logSink_) logSink_(warning, true);
 }
 
@@ -472,6 +446,7 @@ void AppController::FlushBufferedFileLogs() {
     fileLogBufferingActive_ = false;
     pending.swap(bufferedFileLogs_);
   }
+
   for (const auto& entry : pending) {
     WriteLogFileLine("[startup-buffered] " + entry.message, entry.isError);
   }
@@ -479,24 +454,25 @@ void AppController::FlushBufferedFileLogs() {
 
 std::filesystem::path AppController::ResolveLogPath() const {
   const auto logsDir = std::filesystem::path(config_.logsFolder);
+  if (config_.logMode == LogMode::None) return {};
   if (config_.logMode == LogMode::SingleFile) return logsDir / "ScaleLogger.log";
-  if (config_.logMode == LogMode::PerSession) {
-    if (sessionLogName_.empty()) {
-      const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-      std::tm tmNow{};
+
+  if (sessionLogName_.empty()) {
+    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm tmNow{};
 #ifdef _WIN32
-      localtime_s(&tmNow, &now);
+    localtime_s(&tmNow, &now);
 #else
-      localtime_r(&now, &tmNow);
+    localtime_r(&now, &tmNow);
 #endif
-      char buffer[128];
-      const auto pattern = config_.logFilePattern.empty() ? std::string("ScaleLogger_%Y%m%d_%H%M%S.log") : config_.logFilePattern;
-      std::strftime(buffer, sizeof(buffer), pattern.c_str(), &tmNow);
-      sessionLogName_ = buffer;
-    }
-    return logsDir / sessionLogName_;
+
+    char buffer[128]{};
+    const auto pattern = config_.logFilePattern.empty() ? std::string("ScaleLogger_%Y%m%d_%H%M%S.log") : config_.logFilePattern;
+    std::strftime(buffer, sizeof(buffer), pattern.c_str(), &tmNow);
+    sessionLogName_ = buffer;
   }
-  return {};
+
+  return logsDir / sessionLogName_;
 }
 
 } // namespace scalelogger
