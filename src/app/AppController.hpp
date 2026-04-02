@@ -16,7 +16,7 @@ namespace scalelogger {
 
 class AppController {
  public:
-  enum class SaveConfigStatus { Created, Updated, Unchanged, Failed };
+  enum class SaveConfigStatus { Created, Updated, Failed };
   struct SaveConfigResult {
     SaveConfigStatus status{SaveConfigStatus::Failed};
     int changedFieldCount{0};

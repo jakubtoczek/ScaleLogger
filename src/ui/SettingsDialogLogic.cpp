@@ -415,9 +415,6 @@ void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveR
         ctx.controller->LogMessage("Configuration saved to " + saveResult.path.string() + ": " +
                                    (changeSummary.empty() ? std::to_string(saveResult.changedFieldCount) + " fields changed" : changeSummary));
         break;
-      case AppController::SaveConfigStatus::Unchanged:
-        ctx.controller->LogMessage("Configuration already up to date at: " + saveResult.path.string());
-        break;
       case AppController::SaveConfigStatus::Failed:
       default:
         ctx.controller->LogMessage("Failed to save configuration file: " + saveResult.path.string(), true);

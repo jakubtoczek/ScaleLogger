@@ -237,29 +237,7 @@ AppController::SaveConfigResult AppController::SaveResolvedConfiguration() {
   AppSettings resolvedSettings = settings_;
   ResolveAndSanitize(dataRoot_, resolvedSettings, resolvedConfig);
 
-  bool existedBeforeSave = false;
-  AppConfig diskBeforeConfig{};
-  AppSettings diskBeforeSettings{};
-  try {
-    existedBeforeSave = std::filesystem::exists(result.path);
-    if (existedBeforeSave) {
-      diskBeforeConfig = LoadConfig(result.path);
-      diskBeforeSettings = LoadConfigSettings(result.path);
-      ResolveAndSanitize(dataRoot_, diskBeforeSettings, diskBeforeConfig);
-    } else {
-      ResolveAndSanitize(dataRoot_, diskBeforeSettings, diskBeforeConfig);
-    }
-  } catch (...) {
-    ResolveAndSanitize(dataRoot_, diskBeforeSettings, diskBeforeConfig);
-  }
-
-  result.changedFieldCount = ConfigService::CountConfigDifferences(diskBeforeConfig, resolvedConfig) +
-                             ConfigService::CountSettingsDifferences(diskBeforeSettings, resolvedSettings);
-  if (existedBeforeSave && result.changedFieldCount == 0) {
-    result.status = SaveConfigStatus::Unchanged;
-    return result;
-  }
-
+  const bool existedBeforeSave = std::filesystem::exists(result.path);
   if (!SaveConfig(result.path, resolvedConfig, &resolvedSettings)) {
     result.status = SaveConfigStatus::Failed;
     return result;
@@ -267,6 +245,7 @@ AppController::SaveConfigResult AppController::SaveResolvedConfiguration() {
 
   config_ = resolvedConfig;
   settings_ = resolvedSettings;
+  result.changedFieldCount = 0;
   result.status = existedBeforeSave ? SaveConfigStatus::Updated : SaveConfigStatus::Created;
   return result;
 }
