@@ -1490,6 +1490,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     }
     case WM_COMMAND: {
       const int id = LOWORD(wParam);
+      if (!g_ui.controller) return 0;
       switch (id) {
         case kBtnConnect:
           if (g_ui.controller->IsConnected()) {

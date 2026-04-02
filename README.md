@@ -118,6 +118,7 @@ Use `ScaleLogger_build_tagged_release.bat` to create a native release folder wit
 - `BUILD_MANIFEST_<version>.txt` (version derived from `CMakeLists.txt`)
 
 `ScaleLogger_build_tagged_release.bat` is the authoritative repo-local tagged release wrapper. External helper scripts such as `extbuild.bat` are convenience wrappers outside this repo and are not the source of truth.
+The legacy untagged wrapper (`ScaleLogger_build_release.bat`) was removed to keep one canonical release workflow.
 Legacy diagnostic launch harnesses (`slfinal.bat`, `slwide.bat`, `slmin.bat`) were removed as part of startup simplification and should not be used.
 
 Release manifest includes runtime combo option arrays sourced from `default_config.json`:
