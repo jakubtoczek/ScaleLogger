@@ -4,8 +4,8 @@
 
 - follow-up fixes: forced no-serial connect/disconnect is now race-safe and cannot flip back to connected after a disconnect
 - parser minus-sign stripping now mirrors guarded plus behavior and only strips a valid single numeric minus prefix
-- replaced legacy release helper with `ScaleLogger_build_tagged_release.bat` and removed old `ScaleLogger_build_release.bat`
-- removed obsolete `build_nuitka_onefile.bat` and `build_nuitka_standalone.bat`
+- replaced legacy release helper flow with the tagged release helper
+- removed obsolete legacy one-file/standalone helper scripts
 - updated branch docs/version strings to `0.97spec` and marked the repository as transitional Python/PySide6 relative to the native Win32/C++ target
 
 ## 0.95 - 2026-03-20
@@ -19,7 +19,7 @@
 
 - fixed the Windows text injection layer to use a Unicode `SendInput` path for ordinary text and clearer logging for text-vs-post-action failures
 - updated the documentation for focus/privilege expectations, SHA256 generation, and build-manifest recording for packaged artifacts
-- added `BUILD_MANIFEST_TEMPLATE.md`, `generate_sha256.bat`, and `ScaleLogger_build_release.bat` to support a cleaner v0.94 release workflow with standard `SHA256SUMS.txt` output and a generated build manifest
+- added a generated-manifest release workflow with `generate_sha256.bat` for cleaner packaged release traceability
 
 ## 0.93 - 2026-03-20
 

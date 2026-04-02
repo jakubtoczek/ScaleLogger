@@ -231,6 +231,8 @@ python main.py
 ### One-file build helper
 
 ```powershell
+ScaleLogger_build_tagged_release.bat v0.97spec
+# or
 ScaleLogger_build_tagged_release.bat --tag v0.97spec
 ```
 

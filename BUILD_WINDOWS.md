@@ -62,13 +62,15 @@ python main.py
 ## 7. Tagged release helper build (one-file + checksum + manifest)
 
 ```powershell
+ScaleLogger_build_tagged_release.bat v0.97spec
+# or
 ScaleLogger_build_tagged_release.bat --tag v0.97spec
 ```
 
 This helper script:
 
 - checks for `py -3.12-64`
-- requires explicit `--tag <tag>`
+- requires a release tag, either positional (`script.bat TAG`) or named (`script.bat --tag TAG`)
 - creates a fresh `.venv64` by default
 - accepts `--keep-venv` for a faster rebuild that reuses the existing environment
 - installs runtime and build dependencies
