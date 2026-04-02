@@ -1,15 +1,42 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-if /I "%1"=="--keep-venv" (
-  set KEEP_VENV=1
+set "KEEP_VENV="
+set "RELEASE_TAG="
+
+:parse_args
+if "%~1"=="" goto args_done
+if /I "%~1"=="--keep-venv" (
+  set "KEEP_VENV=1"
+  shift
+  goto parse_args
+)
+if /I "%~1"=="--tag" (
+  if "%~2"=="" (
+    echo Missing value after --tag.
+    exit /b 1
+  )
+  set "RELEASE_TAG=%~2"
+  shift
+  shift
+  goto parse_args
+)
+echo Unknown argument: %~1
+echo Usage: %~nx0 --tag TAG [--keep-venv]
+exit /b 1
+
+:args_done
+if not defined RELEASE_TAG (
+  echo Missing required --tag argument.
+  echo Example: %~nx0 --tag v0.97spec
+  exit /b 1
 )
 
-set "APP_VERSION=0.95"
+set "APP_VERSION=0.97spec"
 set "RELEASE_DIR=release"
-set "OUTPUT_EXE=%RELEASE_DIR%\ScaleLogger.exe"
-set "CHECKSUM_FILE=%RELEASE_DIR%\SHA256SUMS.txt"
-set "MANIFEST_FILE=%RELEASE_DIR%\BUILD_MANIFEST_%APP_VERSION%.txt"
+set "OUTPUT_EXE=%RELEASE_DIR%\ScaleLogger_%RELEASE_TAG%.exe"
+set "CHECKSUM_FILE=%RELEASE_DIR%\SHA256SUMS_%RELEASE_TAG%.txt"
+set "MANIFEST_FILE=%RELEASE_DIR%\BUILD_MANIFEST_%RELEASE_TAG%.txt"
 set "BUILD_SCRIPT=%~nx0"
 
 where py >nul 2>nul
@@ -24,7 +51,7 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
-for %%F in (main.py requirements.txt generate_sha256.bat BUILD_MANIFEST_TEMPLATE.md icon.ico) do (
+for %%F in (main.py requirements.txt requirements-build.txt generate_sha256.bat) do (
   if not exist "%%F" (
     echo Missing %%F at repository root.
     exit /b 1
@@ -42,11 +69,11 @@ if defined KEEP_VENV (
 )
 
 if not exist .venv64 (
-py -3.12-64 -m venv .venv64
-if %errorlevel% neq 0 (
-  echo Failed to create .venv64.
-  exit /b %errorlevel%
-)
+  py -3.12-64 -m venv .venv64
+  if %errorlevel% neq 0 (
+    echo Failed to create .venv64.
+    exit /b %errorlevel%
+  )
 )
 
 if exist "%RELEASE_DIR%" rmdir /s /q "%RELEASE_DIR%"
@@ -62,11 +89,8 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 
 python -m pip install -r requirements.txt
 if %errorlevel% neq 0 exit /b %errorlevel%
-
-if exist requirements-build.txt (
-  python -m pip install -r requirements-build.txt
-  if %errorlevel% neq 0 exit /b %errorlevel%
-)
+python -m pip install -r requirements-build.txt
+if %errorlevel% neq 0 exit /b %errorlevel%
 
 python -m compileall main.py app tests
 if %errorlevel% neq 0 (
@@ -74,19 +98,23 @@ if %errorlevel% neq 0 (
   exit /b %errorlevel%
 )
 
+set "ICON_ARGS="
+if exist icon.ico (
+  set "ICON_ARGS=--windows-icon-from-ico=icon.ico --include-data-files=icon.ico=icon.ico"
+)
+
 python -m nuitka ^
   --standalone ^
   --onefile ^
   --enable-plugin=pyside6 ^
   --windows-console-mode=disable ^
-  --windows-icon-from-ico=icon.ico ^
-  --include-data-files=icon.ico=icon.ico ^
+  !ICON_ARGS! ^
   --output-dir=%RELEASE_DIR% ^
-  --output-filename=ScaleLogger.exe ^
+  --output-filename=ScaleLogger_%RELEASE_TAG%.exe ^
   --assume-yes-for-downloads ^
   main.py
 if %errorlevel% neq 0 (
-  echo Release build failed.
+  echo Tagged release build failed.
   exit /b %errorlevel%
 )
 
@@ -105,7 +133,7 @@ if %errorlevel% neq 0 (
 call generate_sha256.bat "%OUTPUT_EXE%" "%CHECKSUM_FILE%"
 if %errorlevel% neq 0 exit /b %errorlevel%
 
-python -m app.release_support manifest "%MANIFEST_FILE%" "%CHECKSUM_FILE%" "ScaleLogger.exe" "%BUILD_SCRIPT%"
+python -m app.release_support manifest "%MANIFEST_FILE%" "%CHECKSUM_FILE%" "ScaleLogger_%RELEASE_TAG%.exe" "%BUILD_SCRIPT%"
 if %errorlevel% neq 0 (
   echo Failed to generate the build manifest.
   exit /b %errorlevel%
@@ -120,9 +148,10 @@ if not "%CLEANUP_STATUS%"=="0" (
 )
 
 echo.
-echo Release build complete.
-echo Executable: %OUTPUT_EXE%
-echo Checksum:   %CHECKSUM_FILE%
-echo Manifest:   %MANIFEST_FILE%
-echo Unsigned one-file builds may still trigger SmartScreen or Defender reputation checks.
+echo Tagged Python/Nuitka build complete for ScaleLogger %APP_VERSION%.
+echo Tag:       %RELEASE_TAG%
+echo Executable %OUTPUT_EXE%
+echo Checksum:  %CHECKSUM_FILE%
+echo Manifest:  %MANIFEST_FILE%
+echo NOTE: This repository branch still uses Python/PySide6 packaging.
 endlocal

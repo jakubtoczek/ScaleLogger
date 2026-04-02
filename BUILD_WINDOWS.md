@@ -51,7 +51,7 @@ If you want a custom Windows executable icon, place a real `icon.ico` file manua
 C:\Projects\ScaleLogger\icon.ico
 ```
 
-Missing `icon.ico` is safe at runtime, but the build scripts intentionally fail early if the icon file is absent because they embed it in the packaged executable.
+Missing `icon.ico` is safe at runtime and the tagged builder will continue without embedding a custom icon.
 
 ## 6. Run from source
 
@@ -59,38 +59,27 @@ Missing `icon.ico` is safe at runtime, but the build scripts intentionally fail 
 python main.py
 ```
 
-## 7. Release helper build (one-file + checksum + manifest)
+## 7. Tagged release helper build (one-file + checksum + manifest)
 
 ```powershell
-ScaleLogger_build_release.bat
+ScaleLogger_build_tagged_release.bat --tag v0.97spec
 ```
 
 This helper script:
 
 - checks for `py -3.12-64`
+- requires explicit `--tag <tag>`
 - creates a fresh `.venv64` by default
 - accepts `--keep-venv` for a faster rebuild that reuses the existing environment
 - installs runtime and build dependencies
 - runs `compileall` as a non-GUI sanity check
-- builds a one-file `ScaleLogger.exe` into `release\`
-- writes `release\SHA256SUMS.txt` in standard single-line release format
+- builds a one-file `ScaleLogger_<tag>.exe` into `release\`
+- writes `release\SHA256SUMS_<tag>.txt` in standard single-line release format
 - verifies the final one-file executable before hashing it
-- writes `release\BUILD_MANIFEST_0.95.txt`
+- writes `release\BUILD_MANIFEST_<tag>.txt`
 - removes `release\main.build`, `release\main.dist`, and `release\main.onefile-build` after a successful build when cleanup is possible
 
-## 8. One-file build (manual/full 64-bit workflow)
-
-```powershell
-build_nuitka_onefile.bat
-```
-
-## 9. Standalone build (full 64-bit workflow)
-
-```powershell
-build_nuitka_standalone.bat
-```
-
-## 10. Generate SHA256 for an existing release artifact
+## 8. Generate SHA256 for an existing release artifact
 
 ```powershell
 generate_sha256.bat path\to\ScaleLogger.exe
@@ -102,9 +91,9 @@ The helper uses Windows `certutil`, extracts the SHA256 value, and writes `SHA25
 <sha256>  ScaleLogger.exe
 ```
 
-## 11. Build manifest details
+## 9. Build manifest details
 
-Use `BUILD_MANIFEST_TEMPLATE.md` for manual builds, or keep the auto-generated `BUILD_MANIFEST_0.95.txt` from `ScaleLogger_build_release.bat`.
+Use the auto-generated `BUILD_MANIFEST_<tag>.txt` from `ScaleLogger_build_tagged_release.bat`.
 
 The manifest records:
 
@@ -125,7 +114,7 @@ The manifest records:
 - One-file builds may still be more fragile on managed Windows systems because antivirus and endpoint tooling can interfere with temporary extraction or file locking.
 - Unsigned one-file executables may trigger Defender or SmartScreen detections on some systems.
 - Standalone builds may trigger fewer detections than one-file builds on some systems.
-- Code signing / SignPath is planned for 1.0, but it is not required for v0.95.
+- Code signing / SignPath is planned for a future native release.
 - Relative config example paths such as `logs` and `presets` resolve under the persistent per-user ScaleLogger data directory by design.
 - The app uses normal user-home path resolution rather than hardcoded English Windows folder names, so localized Windows installations are supported.
 
@@ -181,7 +170,7 @@ Limitations:
 - do not disable Defender entirely
 - this behavior is expected for unsigned one-file applications
 
-Alternative:
+Branch status note:
 
-- standalone builds do not extract runtime files to a temp folder
-- standalone builds may trigger fewer antivirus detections on some systems
+- The design target is a native Win32/C++20/CMake app.
+- This branch is still transitional Python/PySide6 packaging.

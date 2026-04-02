@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.97spec - 2026-04-02
+
+- follow-up fixes: forced no-serial connect/disconnect is now race-safe and cannot flip back to connected after a disconnect
+- parser minus-sign stripping now mirrors guarded plus behavior and only strips a valid single numeric minus prefix
+- replaced legacy release helper with `ScaleLogger_build_tagged_release.bat` and removed old `ScaleLogger_build_release.bat`
+- removed obsolete `build_nuitka_onefile.bat` and `build_nuitka_standalone.bat`
+- updated branch docs/version strings to `0.97spec` and marked the repository as transitional Python/PySide6 relative to the native Win32/C++ target
+
 ## 0.95 - 2026-03-20
 
 - added COM-port scanning and a compact Test Receive dialog in Serial settings to make serial troubleshooting easier without affecting the main capture flow

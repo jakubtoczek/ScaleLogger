@@ -129,15 +129,18 @@ class SerialManager(QObject):
         self._worker: SerialWorker | None = None
         self._state = "disconnected"
         self._forced_no_serial = False
+        self._connect_attempt_id = 0
 
     def connect_port(self, settings: SerialSettings) -> None:
+        self._connect_attempt_id += 1
+        attempt_id = self._connect_attempt_id
         self.disconnect_port(wait_ms=2000)
         self._set_state("connecting")
         force_no_serial = os.getenv("SCALELOGGER_FORCE_NO_SERIAL", "").strip().lower()
         if force_no_serial in {"1", "true", "yes", "on"}:
             self._forced_no_serial = True
             self.info.emit("SCALELOGGER_FORCE_NO_SERIAL is enabled; skipping serial device open.")
-            QTimer.singleShot(10, lambda: self._set_state("connected"))
+            QTimer.singleShot(10, lambda: self._complete_forced_connect(attempt_id))
             return
 
         self._forced_no_serial = False
@@ -158,6 +161,7 @@ class SerialManager(QObject):
         self._thread.start()
 
     def disconnect_port(self, wait_ms: int = 1500) -> None:
+        self._connect_attempt_id += 1
         if self._forced_no_serial:
             self._forced_no_serial = False
             self._set_state("disconnected")
@@ -188,3 +192,10 @@ class SerialManager(QObject):
     def _set_state(self, state: str) -> None:
         self._state = state
         self.state_changed.emit(state)
+
+    def _complete_forced_connect(self, attempt_id: int) -> None:
+        if not self._forced_no_serial:
+            return
+        if attempt_id != self._connect_attempt_id:
+            return
+        self._set_state("connected")

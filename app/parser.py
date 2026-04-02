@@ -9,6 +9,7 @@ NUMERIC_PATTERN = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
 SPACED_SIGN_PATTERN = re.compile(r"^([+-])\s+(.+)$")
 AUTO_SUFFIX_PATTERN = re.compile(r"^([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*([A-Za-zµμ]+)$")
 SINGLE_PLUS_VALUE_PATTERN = re.compile(r"^\+(?:\d|\.)")
+SINGLE_MINUS_VALUE_PATTERN = re.compile(r"^-(?:\d|\.)")
 UNICODE_MINUS_TRANSLATION = str.maketrans(
     {
         "\u2212": "-",
@@ -89,6 +90,6 @@ class ScaleLineParser:
             candidate = f"{match.group(1)}{match.group(2).lstrip()}"
         if drop_plus_sign and SINGLE_PLUS_VALUE_PATTERN.match(candidate):
             candidate = candidate[1:]
-        if drop_minus_sign and candidate.startswith("-"):
+        if drop_minus_sign and SINGLE_MINUS_VALUE_PATTERN.match(candidate):
             candidate = candidate[1:]
         return candidate

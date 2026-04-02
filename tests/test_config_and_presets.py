@@ -22,7 +22,7 @@ from app.parser import ScaleLineParser
 from app.paths import AppPaths
 from app.presets import discover_presets, load_preset, resolve_startup_preset_name, save_preset
 from app.release_support import build_manifest_text, cleanup_nuitka_artifacts, verify_release_executable
-from app.serial_manager import discard_open_stale_input
+from app.serial_manager import SerialManager, discard_open_stale_input
 from app.serial_tools import list_available_serial_ports, port_value_from_label
 from app.version import APP_CONFIG_FILENAME, APP_LOGS_DIRNAME, APP_NAME, APP_PRESETS_DIRNAME, about_text
 
@@ -198,8 +198,8 @@ class ConfigAndPresetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             checksum_path = Path(tmp) / "SHA256SUMS.txt"
             checksum_path.write_text("abc123  ScaleLogger.exe\n", encoding="utf-8")
-            manifest = build_manifest_text(checksum_path, "ScaleLogger.exe", "ScaleLogger_build_release.bat")
-        self.assertIn("Version: 0.95", manifest)
+            manifest = build_manifest_text(checksum_path, "ScaleLogger.exe", "ScaleLogger_build_tagged_release.bat")
+        self.assertIn("Version: 0.97spec", manifest)
         self.assertIn("Output filename: ScaleLogger.exe", manifest)
         self.assertIn("SHA256 file: SHA256SUMS.txt", manifest)
         self.assertIn("SHA256: abc123", manifest)
@@ -296,6 +296,15 @@ class ConfigAndPresetTests(unittest.TestCase):
         self.assertEqual(parser.process("-  0.00123 g", settings).processed_text, "0.00123")
         self.assertEqual(parser.process("-0", settings).processed_text, "0")
         self.assertEqual(parser.process("-0.000", settings).processed_text, "0.000")
+
+    def test_parser_does_not_strip_minus_for_malformed_multi_sign_input(self) -> None:
+        parser = ScaleLineParser()
+        settings = AppSettings.built_in_defaults().parsing
+        settings.drop_minus_sign = True
+        for raw in ["--1 g", "-+1 g", "- -1 g"]:
+            with self.subTest(raw=raw):
+                result = parser.process(raw, settings)
+                self.assertFalse(result.ok)
 
     def test_parser_rejects_extra_leading_signs_even_when_plus_drop_is_enabled(self) -> None:
         parser = ScaleLineParser()
@@ -419,8 +428,26 @@ class ConfigAndPresetTests(unittest.TestCase):
 
     def test_about_text_omits_author_name(self) -> None:
         text = about_text()
-        self.assertIn("ScaleLogger 0.95", text)
+        self.assertIn("ScaleLogger 0.97spec", text)
         self.assertNotIn("Jakub Toczek", text)
+
+    def test_force_no_serial_connect_disconnect_is_race_safe(self) -> None:
+        manager = SerialManager()
+        callback_holder: dict[str, object] = {}
+
+        def capture_single_shot(_delay: int, callback) -> None:
+            callback_holder["callback"] = callback
+
+        with mock.patch.dict("os.environ", {"SCALELOGGER_FORCE_NO_SERIAL": "1"}):
+            with mock.patch("app.serial_manager.QTimer.singleShot", side_effect=capture_single_shot):
+                manager.connect_port(AppSettings.built_in_defaults().serial)
+                manager.disconnect_port()
+
+        callback = callback_holder.get("callback")
+        self.assertIsNotNone(callback)
+        assert callback is not None
+        callback()
+        self.assertEqual(manager._state, "disconnected")
 
 
 if __name__ == "__main__":

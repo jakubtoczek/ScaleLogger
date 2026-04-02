@@ -1,4 +1,4 @@
-# ScaleLogger 0.95
+# ScaleLogger 0.97spec
 
 ScaleLogger is a lightweight **Windows-only** desktop utility for receiving serial data from a laboratory balance and sending the resulting value to the **currently focused window**.
 
@@ -17,7 +17,7 @@ Repository URL: `github.com/jakubtoczek/ScaleLogger`
 - Python **3.12 64-bit** for development and packaging
 - `requirements.txt` for source-run/runtime dependencies
 - `requirements-build.txt` for build/package dependencies
-- Nuitka standalone build first, one-file build second
+- Transitional packaging on this branch uses Python + PySide6 + Nuitka
 
 ## What the app does
 
@@ -50,7 +50,7 @@ Windows note:
 
 ## Version
 
-Current repository/app version: **0.95**.
+Current repository/app version: **0.97spec**.
 
 ## Config vs preset format
 
@@ -89,8 +89,7 @@ The repository includes text-only templates and helpers:
 
 - `ScaleLogger.config.json.example`
 - `presets/TR-602.json.example`
-- `BUILD_MANIFEST_TEMPLATE.md`
-- `ScaleLogger_build_release.bat`
+- `ScaleLogger_build_tagged_release.bat`
 - `generate_sha256.bat`
 
 The config example intentionally keeps `logs_folder` and `presets_folder` as relative values. Those values resolve under the persistent per-user ScaleLogger data directory rather than the repository root or a temp extraction folder.
@@ -123,7 +122,7 @@ The simple settings UI exposes **Startup preset** instead of the full startup-mo
 
 `Connect on startup` is enabled by default. When it is enabled, ScaleLogger finishes loading config/preset state and then starts the serial connection in the background automatically.
 
-## Serial settings usability in v0.95
+## Serial settings usability in v0.97spec
 
 ### COM port scanning
 
@@ -232,33 +231,25 @@ python main.py
 ### One-file build helper
 
 ```powershell
-ScaleLogger_build_release.bat
+ScaleLogger_build_tagged_release.bat --tag v0.97spec
 ```
 
-This helper creates a fresh `.venv64` by default, verifies the final one-file executable before hashing it, writes `SHA256SUMS.txt`, writes `BUILD_MANIFEST_0.95.txt`, and removes temporary Nuitka artifact folders from `release\` after a successful build. Pass `--keep-venv` for a faster rebuild that reuses the existing environment.
-
-### Manual one-file build
-
-```powershell
-build_nuitka_onefile.bat
-```
-
-### Standalone build
-
-```powershell
-build_nuitka_standalone.bat
-```
+This helper creates a fresh `.venv64` by default, verifies the final one-file executable before hashing it, writes tag-specific checksum and manifest files (`SHA256SUMS_<tag>.txt`, `BUILD_MANIFEST_<tag>.txt`), and removes temporary Nuitka artifact folders from `release\` after a successful build. Pass `--keep-venv` for a faster rebuild that reuses the existing environment.
 
 Recommended notes:
 
 - use Python 3.12 64-bit
 - use `py -3.12-64` for packaging
 - packaged executables do not require Python on the target machine
-- one-file builds may be scanned more aggressively than standalone builds on some systems
+- one-file builds may be scanned aggressively on some systems
 - signing / SignPath is planned for 1.0
 - for local trusted testing, see `BUILD_WINDOWS.md` for Windows Defender guidance
 
 See `BUILD_WINDOWS.md` for the detailed 64-bit Windows build workflow.
+
+## Branch status note
+
+The product design target is a native Win32 / C++20 / CMake implementation. This repository snapshot remains a transitional Python/PySide6 codebase and is not yet aligned to that native implementation target.
 
 ## License
 

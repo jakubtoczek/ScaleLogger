@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 APP_NAME = "ScaleLogger"
-APP_VERSION = "0.95"
+APP_VERSION = "0.97spec"
 APP_ID = "jakubtoczek.ScaleLogger"
 APP_WINDOW_TITLE = f"{APP_NAME} {APP_VERSION}"
 APP_REPOSITORY_URL = "github.com/jakubtoczek/ScaleLogger"

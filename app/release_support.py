@@ -9,7 +9,10 @@ import sys
 
 from .version import APP_NAME, APP_VERSION
 
-DEFAULT_NOTES = "Unsigned v0.95 build. SHA256 and the build manifest improve traceability; signing is planned for 1.0."
+DEFAULT_NOTES = (
+    "Unsigned transitional Python/PySide6 build. SHA256 and build manifest improve traceability while native "
+    "Win32/C++ implementation is still in progress."
+)
 ARTIFACT_DIRS = ("main.build", "main.dist", "main.onefile-build")
 MIN_RELEASE_EXE_SIZE = 1_000_000
 
