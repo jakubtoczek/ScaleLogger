@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import os
 import time
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, QTimer, Signal
 import serial
 
 from .config import SerialSettings, normalize_serial_port_name
@@ -127,10 +128,19 @@ class SerialManager(QObject):
         self._thread: QThread | None = None
         self._worker: SerialWorker | None = None
         self._state = "disconnected"
+        self._forced_no_serial = False
 
     def connect_port(self, settings: SerialSettings) -> None:
         self.disconnect_port(wait_ms=2000)
         self._set_state("connecting")
+        force_no_serial = os.getenv("SCALELOGGER_FORCE_NO_SERIAL", "").strip().lower()
+        if force_no_serial in {"1", "true", "yes", "on"}:
+            self._forced_no_serial = True
+            self.info.emit("SCALELOGGER_FORCE_NO_SERIAL is enabled; skipping serial device open.")
+            QTimer.singleShot(10, lambda: self._set_state("connected"))
+            return
+
+        self._forced_no_serial = False
         normalized_settings = replace(settings, port=normalize_serial_port_name(settings.port, system_name="Windows"))
 
         self._thread = QThread()
@@ -148,6 +158,10 @@ class SerialManager(QObject):
         self._thread.start()
 
     def disconnect_port(self, wait_ms: int = 1500) -> None:
+        if self._forced_no_serial:
+            self._forced_no_serial = False
+            self._set_state("disconnected")
+            return
         if self._worker is not None:
             self._worker.stop()
         if self._thread is not None:

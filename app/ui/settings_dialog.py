@@ -212,6 +212,7 @@ class SettingsDialog(QDialog):
         self.normalize_sign_checkbox = QCheckBox("Normalize sign spacing")
         self.normalize_sign_checkbox.setToolTip('Example: "-  0.12" becomes "-0.12".')
         self.preserve_plus_checkbox = QCheckBox("Preserve leading +")
+        self.preserve_minus_checkbox = QCheckBox("Preserve leading -")
         self.numeric_validation_checkbox = QCheckBox("Require numeric result")
         formatting_form.addRow("Mode", self.mode_combo)
         formatting_form.addRow(self.trim_checkbox)
@@ -219,6 +220,7 @@ class SettingsDialog(QDialog):
         formatting_form.addRow("Known suffix", self.suffix_edit)
         formatting_form.addRow(self.normalize_sign_checkbox)
         formatting_form.addRow(self.preserve_plus_checkbox)
+        formatting_form.addRow(self.preserve_minus_checkbox)
         formatting_form.addRow(self.numeric_validation_checkbox)
 
         after_send_group = QGroupBox("After-send")
@@ -228,6 +230,8 @@ class SettingsDialog(QDialog):
         self.post_action_combo.addItems(POST_ACTIONS)
         self.post_action_combo.currentTextChanged.connect(self._update_custom_sequence_visibility)
         after_send_form.addRow("Action", self.post_action_combo)
+        self.dry_run_checkbox = QCheckBox("Dry run (parse/log only, do not inject)")
+        after_send_form.addRow(self.dry_run_checkbox)
         after_send_layout.addLayout(after_send_form)
 
         self.custom_sequence_widget = QWidget()
@@ -366,8 +370,10 @@ class SettingsDialog(QDialog):
         self.suffix_edit.setText(settings.parsing.suffix)
         self.normalize_sign_checkbox.setChecked(settings.parsing.normalize_sign)
         self.preserve_plus_checkbox.setChecked(not settings.parsing.drop_plus_sign)
+        self.preserve_minus_checkbox.setChecked(not settings.parsing.drop_minus_sign)
         self.numeric_validation_checkbox.setChecked(settings.parsing.numeric_validation)
         self.post_action_combo.setCurrentText(settings.output.post_action)
+        self.dry_run_checkbox.setChecked(settings.output.dry_run)
         self._update_custom_sequence_display()
         self._update_custom_sequence_visibility(settings.output.post_action)
 
@@ -408,9 +414,11 @@ class SettingsDialog(QDialog):
         settings.parsing.suffix = self.suffix_edit.text()
         settings.parsing.normalize_sign = self.normalize_sign_checkbox.isChecked()
         settings.parsing.drop_plus_sign = not self.preserve_plus_checkbox.isChecked()
+        settings.parsing.drop_minus_sign = not self.preserve_minus_checkbox.isChecked()
         settings.parsing.numeric_validation = self.numeric_validation_checkbox.isChecked()
         settings.output.post_action = self.post_action_combo.currentText()
         settings.output.custom_sequence = list(self._custom_sequence)
+        settings.output.dry_run = self.dry_run_checkbox.isChecked()
         settings.validate()
 
         startup_preset_name = self.startup_preset_combo.currentData() or ""

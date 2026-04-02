@@ -364,6 +364,10 @@ class MainWindow(QMainWindow):
                 self._log("warning", f"Raw: {raw_line!r} → Parse warning: {result.message}")
             return
 
+        if self._settings.output.dry_run:
+            self._log("info", f"Dry run active; skipped send for {result.processed_text!r} (raw={raw_line!r})")
+            return
+
         send_result = self._sender.send_text_and_action(
             result.processed_text,
             self._settings.output.post_action,

@@ -41,7 +41,7 @@ class ScaleLineParser:
             processed = processed.strip()
 
         if settings.normalize_sign:
-            processed = self._normalize_sign(processed, settings.drop_plus_sign)
+            processed = self._normalize_sign(processed, settings.drop_plus_sign, settings.drop_minus_sign)
 
         if settings.strip_suffix:
             processed = self._strip_suffix(processed, settings.suffix)
@@ -82,11 +82,13 @@ class ScaleLineParser:
             return match.group(1)
         return candidate
 
-    def _normalize_sign(self, text: str, drop_plus_sign: bool) -> str:
+    def _normalize_sign(self, text: str, drop_plus_sign: bool, drop_minus_sign: bool) -> str:
         candidate = text.translate(UNICODE_MINUS_TRANSLATION)
         match = SPACED_SIGN_PATTERN.match(candidate)
         if match:
             candidate = f"{match.group(1)}{match.group(2).lstrip()}"
         if drop_plus_sign and SINGLE_PLUS_VALUE_PATTERN.match(candidate):
+            candidate = candidate[1:]
+        if drop_minus_sign and candidate.startswith("-"):
             candidate = candidate[1:]
         return candidate

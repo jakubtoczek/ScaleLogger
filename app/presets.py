@@ -36,11 +36,13 @@ PRESET_FIELDS = {
     "suffix",
     "normalize_sign",
     "drop_plus_sign",
+    "drop_minus_sign",
     "numeric_validation",
     "post_action",
     "custom_sequence",
+    "dry_run",
 }
-REQUIRED_PRESET_FIELDS = PRESET_FIELDS - {"name", "custom_sequence"}
+REQUIRED_PRESET_FIELDS = PRESET_FIELDS - {"name", "custom_sequence", "drop_minus_sign", "dry_run"}
 
 
 def discover_presets(folder: Path) -> PresetDiscovery:
@@ -120,9 +122,11 @@ def save_preset(path: Path, name: str, settings: AppSettings) -> None:
         "suffix": settings.parsing.suffix,
         "normalize_sign": settings.parsing.normalize_sign,
         "drop_plus_sign": settings.parsing.drop_plus_sign,
+        "drop_minus_sign": settings.parsing.drop_minus_sign,
         "numeric_validation": settings.parsing.numeric_validation,
         "post_action": settings.output.post_action,
         "custom_sequence": settings.output.custom_sequence,
+        "dry_run": settings.output.dry_run,
     }
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -145,10 +149,12 @@ def _flat_to_nested_settings(payload: dict[str, object]) -> dict[str, object]:
             "suffix": payload["suffix"],
             "normalize_sign": payload["normalize_sign"],
             "drop_plus_sign": payload["drop_plus_sign"],
+            "drop_minus_sign": payload.get("drop_minus_sign", False),
             "numeric_validation": payload["numeric_validation"],
         },
         "output": {
             "post_action": payload["post_action"],
             "custom_sequence": payload.get("custom_sequence", []),
+            "dry_run": payload.get("dry_run", False),
         },
     }

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import re
 import sys
 
 from .config import AppConfig
 from .version import APP_CONFIG_FILENAME, APP_LOGS_DIRNAME, APP_NAME, APP_PRESETS_DIRNAME
+
+WINDOWS_ENV_PATTERN = re.compile(r"%([^%]+)%")
 
 
 @dataclass(slots=True)
@@ -29,7 +33,8 @@ class AppPaths:
         )
 
     def resolve_user_path(self, raw_path: str, default_name: str) -> Path:
-        candidate = Path(raw_path).expanduser() if raw_path else Path(default_name)
+        expanded_path = _expand_user_variables(raw_path) if raw_path else ""
+        candidate = Path(expanded_path).expanduser() if expanded_path else Path(default_name)
         if candidate.is_absolute():
             try:
                 candidate = candidate.resolve(strict=False).relative_to(self.data_dir)
@@ -83,3 +88,9 @@ class AppPaths:
             if candidate.exists():
                 return candidate
         return None
+
+
+def _expand_user_variables(raw_path: str) -> str:
+    expanded = os.path.expandvars(raw_path)
+    expanded = WINDOWS_ENV_PATTERN.sub(lambda match: os.getenv(match.group(1), match.group(0)), expanded)
+    return expanded.replace("\\", "/")

@@ -47,6 +47,7 @@ class ParsingSettings:
     suffix: str = "g"
     normalize_sign: bool = True
     drop_plus_sign: bool = False
+    drop_minus_sign: bool = False
     numeric_validation: bool = True
 
 
@@ -54,6 +55,7 @@ class ParsingSettings:
 class OutputSettings:
     post_action: str = "down"
     custom_sequence: list[str] = field(default_factory=list)
+    dry_run: bool = False
 
 
 @dataclass(slots=True)
@@ -92,6 +94,9 @@ class AppSettings:
         settings.parsing.suffix = str(parsing_payload.get("suffix", settings.parsing.suffix))
         settings.parsing.normalize_sign = _to_bool(parsing_payload.get("normalize_sign"), settings.parsing.normalize_sign)
         settings.parsing.drop_plus_sign = _to_bool(parsing_payload.get("drop_plus_sign"), settings.parsing.drop_plus_sign)
+        settings.parsing.drop_minus_sign = _to_bool(
+            parsing_payload.get("drop_minus_sign"), settings.parsing.drop_minus_sign
+        )
         settings.parsing.numeric_validation = _to_bool(
             parsing_payload.get("numeric_validation"), settings.parsing.numeric_validation
         )
@@ -101,6 +106,7 @@ class AppSettings:
         settings.output.custom_sequence = _normalize_key_sequence(
             output_payload.get("custom_sequence"), settings.output.custom_sequence or []
         )
+        settings.output.dry_run = _to_bool(output_payload.get("dry_run"), settings.output.dry_run)
 
         settings.validate()
         return settings

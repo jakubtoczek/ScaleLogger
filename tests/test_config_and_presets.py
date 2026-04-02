@@ -100,6 +100,19 @@ class ConfigAndPresetTests(unittest.TestCase):
         self.assertTrue(str(paths.presets_dir(config)).endswith("presets"))
         self.assertTrue(str(paths.logs_dir(config)).endswith("logs"))
 
+    def test_paths_expand_percent_style_environment_variables(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp) / APP_NAME
+            paths = AppPaths(
+                data_dir=data_dir,
+                bundle_dir=data_dir / "bundle",
+                executable_dir=data_dir / "bin",
+                config_path=data_dir / APP_CONFIG_FILENAME,
+            )
+            with mock.patch.dict("os.environ", {"USERPROFILE": str(data_dir)}):
+                resolved = paths.resolve_user_path(r"%USERPROFILE%\\ScaleLogger\\logs", APP_LOGS_DIRNAME)
+            self.assertEqual(resolved, data_dir / "ScaleLogger" / "logs")
+
     def test_paths_keep_user_data_inside_persistent_data_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / APP_NAME
@@ -272,6 +285,18 @@ class ConfigAndPresetTests(unittest.TestCase):
         self.assertEqual(parser.process("+0", settings).processed_text, "0")
         self.assertEqual(parser.process("+0.000", settings).processed_text, "0.000")
 
+    def test_parser_can_drop_minus_sign_when_configured(self) -> None:
+        parser = ScaleLineParser()
+        settings = AppSettings.built_in_defaults().parsing
+        settings.drop_minus_sign = True
+        for raw in ["-  0.00123 g", "-0", "-0.000"]:
+            with self.subTest(raw=raw):
+                result = parser.process(raw, settings)
+                self.assertTrue(result.ok)
+        self.assertEqual(parser.process("-  0.00123 g", settings).processed_text, "0.00123")
+        self.assertEqual(parser.process("-0", settings).processed_text, "0")
+        self.assertEqual(parser.process("-0.000", settings).processed_text, "0.000")
+
     def test_parser_rejects_extra_leading_signs_even_when_plus_drop_is_enabled(self) -> None:
         parser = ScaleLineParser()
         settings = AppSettings.built_in_defaults().parsing
@@ -338,11 +363,15 @@ class ConfigAndPresetTests(unittest.TestCase):
             settings = AppSettings.built_in_defaults()
             settings.parsing.normalize_sign = True
             settings.parsing.drop_plus_sign = True
+            settings.parsing.drop_minus_sign = True
+            settings.output.dry_run = True
             save_preset(path, "Signs", settings)
             loaded = load_preset(path)
             self.assertEqual(loaded.settings.serial.port, "COM6")
             self.assertTrue(loaded.settings.parsing.normalize_sign)
             self.assertTrue(loaded.settings.parsing.drop_plus_sign)
+            self.assertTrue(loaded.settings.parsing.drop_minus_sign)
+            self.assertTrue(loaded.settings.output.dry_run)
             self.assertEqual(loaded.settings.serial.eol, "\r\n")
 
     def test_output_sender_builds_unicode_text_inputs(self) -> None:
