@@ -6,6 +6,31 @@
 
 #include <setupapi.h>
 
+namespace {
+std::string DecodeEolBytes(const std::wstring& escaped) {
+    std::string out;
+    out.reserve(escaped.size());
+    for (size_t i = 0; i < escaped.size(); ++i) {
+        if (escaped[i] == L'\\' && i + 1 < escaped.size()) {
+            if (escaped[i + 1] == L'r') {
+                out.push_back('\r');
+                ++i;
+                continue;
+            }
+            if (escaped[i + 1] == L'n') {
+                out.push_back('\n');
+                ++i;
+                continue;
+            }
+        }
+        if (escaped[i] <= 0x7F) {
+            out.push_back(static_cast<char>(escaped[i]));
+        }
+    }
+    return out;
+}
+}
+
 SerialPort::~SerialPort() {
     Disconnect();
 }
@@ -116,8 +141,7 @@ std::optional<std::wstring> SerialPort::TestReceive(const SerialSettings& settin
     PurgeComm(tempHandle, PURGE_RXCLEAR | PURGE_TXCLEAR);
     Sleep(60);
 
-    const auto eol = DecodeEol(settings.eol);
-    const std::string eolNarrow(eol.begin(), eol.end());
+    const std::string eolNarrow = DecodeEolBytes(settings.eol);
     std::string buffer;
     char chunk[128] = {};
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(waitMs);
@@ -158,7 +182,7 @@ std::vector<PortInfo> SerialPort::ScanPorts() const {
 }
 
 void SerialPort::RunReadLoop() {
-    const std::wstring eol = DecodeEol(settings_.eol);
+    const std::string eolNarrow = DecodeEolBytes(settings_.eol);
     std::string buffer;
     char chunk[128] = {};
     while (running_) {
@@ -174,7 +198,6 @@ void SerialPort::RunReadLoop() {
         buffer.append(chunk, chunk + bytesRead);
 
         while (true) {
-            std::string eolNarrow(eol.begin(), eol.end());
             const auto pos = buffer.find(eolNarrow);
             if (pos == std::string::npos) break;
             const std::string line = buffer.substr(0, pos);

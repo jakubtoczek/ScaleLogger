@@ -63,15 +63,15 @@ LRESULT MainWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE: {
             statusLabel_ = CreateWindowW(L"STATIC", L"Status: Disconnected", WS_CHILD | WS_VISIBLE,
-                10, 10, 500, 24, hwnd_, reinterpret_cast<HMENU>(ID_STATUS), instance_, nullptr);
+                10, 10, 500, 24, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_STATUS)), instance_, nullptr);
             CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE,
-                600, 10, 90, 28, hwnd_, reinterpret_cast<HMENU>(ID_CONNECT), instance_, nullptr);
+                600, 10, 90, 28, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_CONNECT)), instance_, nullptr);
             CreateWindowW(L"BUTTON", L"Settings", WS_CHILD | WS_VISIBLE,
-                700, 10, 90, 28, hwnd_, reinterpret_cast<HMENU>(ID_SETTINGS), instance_, nullptr);
+                700, 10, 90, 28, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SETTINGS)), instance_, nullptr);
             CreateWindowW(L"BUTTON", L"About", WS_CHILD | WS_VISIBLE,
-                800, 10, 80, 28, hwnd_, reinterpret_cast<HMENU>(ID_ABOUT), instance_, nullptr);
+                800, 10, 80, 28, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_ABOUT)), instance_, nullptr);
             logEdit_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
-                10, 45, 870, 550, hwnd_, reinterpret_cast<HMENU>(ID_LOG), instance_, nullptr);
+                10, 45, 870, 550, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_LOG)), instance_, nullptr);
 
             controller_->SetUiLogSink([this](const std::wstring& line) { AppendLog(line); });
             controller_->SetStatusSink([this](HealthState state, const std::wstring& text) { UpdateStatus(state, text); });
@@ -137,12 +137,11 @@ void MainWindow::UpdateStatus(HealthState state, const std::wstring& text) {
 }
 
 void MainWindow::UpdateStatusUi(HealthState state, const std::wstring& text) {
-    std::wstring dot = L"\x25CF";
-    if (state == HealthState::Active) dot = L"\x1F7E2";
-    else if (state == HealthState::Idle) dot = L"\x1F7E0";
-    else if (state == HealthState::Error) dot = L"\x1F534";
-    else dot = L"\x1F534";
-    SetWindowTextW(statusLabel_, (dot + L" Status: " + text).c_str());
+    std::wstring prefix = L"[DISC]";
+    if (state == HealthState::Active) prefix = L"[OK]";
+    else if (state == HealthState::Idle) prefix = L"[IDLE]";
+    else if (state == HealthState::Error) prefix = L"[ERR]";
+    SetWindowTextW(statusLabel_, (prefix + L" Status: " + text).c_str());
 }
 
 void MainWindow::OpenSettings() {
