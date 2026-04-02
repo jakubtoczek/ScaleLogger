@@ -1923,7 +1923,7 @@ static SCALELOGGER_NOINLINE int RunMainDialogImplBody(HINSTANCE hInstance, int n
 }
 
 SCALELOGGER_NOINLINE int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
-  return RunMainDialogImpl(hInstance, nCmdShow);
+  return RunMainDialogFresh(hInstance, nCmdShow);
 }
 
 SCALELOGGER_NOINLINE int RunMainDialogFresh(HINSTANCE hInstance, int nCmdShow) {
