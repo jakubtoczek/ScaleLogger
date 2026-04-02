@@ -1,0 +1,25 @@
+{
+  "data_root": "%USERPROFILE%\\ScaleLogger",
+  "connect_on_startup": false,
+  "serial": {
+    "port": "COM6",
+    "baud_rate": 1200,
+    "data_bits": 7,
+    "parity": 0,
+    "stop_bits": 1,
+    "timeout_ms": 1000,
+    "eol": "\\r\\n"
+  },
+  "parse": {
+    "trim_whitespace": true,
+    "strip_suffix": true,
+    "suffix": "g",
+    "normalize_sign": true,
+    "require_numeric": true
+  },
+  "output": {
+    "dry_run": false,
+    "post_action": 1,
+    "custom_sequence": ""
+  }
+}
