@@ -85,6 +85,27 @@ powershell -NoProfile -Command "Get-FileHash -Algorithm SHA256 '%RELEASE_DIR%\de
 powershell -NoProfile -Command "Get-FileHash -Algorithm SHA256 '%MANIFEST%' | ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), [System.IO.Path]::GetFileName($_.Path) }" >> "%SHA_FILE%" || exit /b 1
 powershell -NoProfile -Command "Get-FileHash -Algorithm SHA256 '%README_RELEASE%' | ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), [System.IO.Path]::GetFileName($_.Path) }" >> "%SHA_FILE%" || exit /b 1
 
+echo [STEP] Cleaning temporary build tree...
+if exist "%BUILD_DIR%" (
+  rmdir /S /Q "%BUILD_DIR%"
+  if exist "%BUILD_DIR%" (
+    echo [WARN] Could not remove temporary build directory: "%BUILD_DIR%"
+  ) else (
+    echo [INFO] Removed temporary build directory: "%BUILD_DIR%"
+  )
+) else (
+  echo [INFO] Temporary build directory not found, cleanup skipped.
+)
+
+for %%D in ("%ROOT_DIR%\\out\\build\\tagged-release" "%ROOT_DIR%\\out\\build" "%ROOT_DIR%\\out") do (
+  if exist "%%~fD" (
+    dir /B "%%~fD" >nul 2>&1
+    if errorlevel 1 (
+      rmdir "%%~fD" >nul 2>&1
+    )
+  )
+)
+
 echo [SUCCESS] Tagged release build complete.
 echo [SUCCESS] Release folder: "%RELEASE_DIR%"
 exit /b 0

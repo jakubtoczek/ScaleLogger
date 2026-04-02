@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <sstream>
+#include <vector>
 
 #include "SettingsWindow.hpp"
 
@@ -11,6 +12,8 @@ constexpr int ID_SETTINGS = 1002;
 constexpr int ID_ABOUT = 1003;
 constexpr int ID_LOG = 1004;
 constexpr int ID_STATUS = 1005;
+constexpr int ID_SCAN = 1006;
+constexpr int ID_TEST = 1007;
 }
 
 MainWindow::MainWindow(std::shared_ptr<AppController> controller) : controller_(std::move(controller)) {}
@@ -64,14 +67,18 @@ LRESULT MainWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_CREATE: {
             statusLabel_ = CreateWindowW(L"STATIC", L"Status: Disconnected", WS_CHILD | WS_VISIBLE,
                 10, 10, 500, 24, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_STATUS)), instance_, nullptr);
-            CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE,
+            connectButton_ = CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE,
                 600, 10, 90, 28, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_CONNECT)), instance_, nullptr);
             CreateWindowW(L"BUTTON", L"Settings", WS_CHILD | WS_VISIBLE,
                 700, 10, 90, 28, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SETTINGS)), instance_, nullptr);
+            CreateWindowW(L"BUTTON", L"Scan Ports", WS_CHILD | WS_VISIBLE,
+                600, 44, 90, 28, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_SCAN)), instance_, nullptr);
+            CreateWindowW(L"BUTTON", L"Test Receive", WS_CHILD | WS_VISIBLE,
+                700, 44, 90, 28, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_TEST)), instance_, nullptr);
             CreateWindowW(L"BUTTON", L"About", WS_CHILD | WS_VISIBLE,
                 800, 10, 80, 28, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_ABOUT)), instance_, nullptr);
             logEdit_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_READONLY | WS_VSCROLL,
-                10, 45, 870, 550, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_LOG)), instance_, nullptr);
+                10, 80, 870, 515, hwnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_LOG)), instance_, nullptr);
 
             controller_->SetUiLogSink([this](const std::wstring& line) { AppendLog(line); });
             controller_->SetStatusSink([this](HealthState state, const std::wstring& text) { UpdateStatus(state, text); });
@@ -84,6 +91,26 @@ LRESULT MainWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
                     return 0;
                 case ID_SETTINGS:
                     OpenSettings();
+                    return 0;
+                case ID_SCAN:
+                    controller_->ScanPortsAsync([this](std::vector<PortInfo> ports) {
+                        auto* payload = new std::wstring;
+                        if (ports.empty()) {
+                            *payload = L"No COM ports detected.";
+                        } else {
+                            *payload = L"Detected ports:\n";
+                            for (const auto& p : ports) {
+                                *payload += L"- " + p.portName + L" (" + p.friendlyName + L")\n";
+                            }
+                        }
+                        PostMessageW(hwnd_, WM_APP_SCAN_RESULT, 0, reinterpret_cast<LPARAM>(payload));
+                    });
+                    return 0;
+                case ID_TEST:
+                    controller_->TestReceiveAsync([this](std::wstring line) {
+                        auto* payload = new std::wstring(std::move(line));
+                        PostMessageW(hwnd_, WM_APP_TEST_RESULT, 0, reinterpret_cast<LPARAM>(payload));
+                    });
                     return 0;
                 case ID_ABOUT:
                     MessageBoxW(hwnd_, L"ScaleLogger clean reimplementation\nNative Win32/C++20", L"About", MB_OK | MB_ICONINFORMATION);
@@ -110,6 +137,16 @@ LRESULT MainWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             if (payload) {
                 UpdateStatusUi(state, *payload);
             }
+            return 0;
+        }
+        case WM_APP_SCAN_RESULT: {
+            std::unique_ptr<std::wstring> payload(reinterpret_cast<std::wstring*>(lParam));
+            if (payload) ShowInfo(L"Scan Ports", *payload);
+            return 0;
+        }
+        case WM_APP_TEST_RESULT: {
+            std::unique_ptr<std::wstring> payload(reinterpret_cast<std::wstring*>(lParam));
+            if (payload) ShowInfo(L"Test Receive", *payload);
             return 0;
         }
     }
@@ -141,7 +178,16 @@ void MainWindow::UpdateStatusUi(HealthState state, const std::wstring& text) {
     if (state == HealthState::Active) prefix = L"[OK]";
     else if (state == HealthState::Idle) prefix = L"[IDLE]";
     else if (state == HealthState::Error) prefix = L"[ERR]";
-    SetWindowTextW(statusLabel_, (prefix + L" Status: " + text).c_str());
+    const auto port = controller_->Config().serial.port;
+    SetWindowTextW(statusLabel_, (prefix + L" Status: " + text + L" | Port: " + port).c_str());
+    if (connectButton_) {
+        const bool connectedState = (state == HealthState::Active || state == HealthState::Idle);
+        SetWindowTextW(connectButton_, connectedState ? L"Disconnect" : L"Connect");
+    }
+}
+
+void MainWindow::ShowInfo(const std::wstring& title, const std::wstring& message) {
+    MessageBoxW(hwnd_, message.c_str(), title.c_str(), MB_OK | MB_ICONINFORMATION);
 }
 
 void MainWindow::OpenSettings() {
