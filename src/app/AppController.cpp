@@ -6,7 +6,6 @@
 #include <cctype>
 #include <condition_variable>
 #include <cstdlib>
-#include <ctime>
 #include <filesystem>
 #include <iomanip>
 #include <mutex>
@@ -68,15 +67,6 @@ std::string FormatTimeout(float value) {
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(2) << value;
   return oss.str();
-}
-
-std::string LogModeText(LogMode mode) {
-  switch (mode) {
-    case LogMode::SingleFile: return "single_file";
-    case LogMode::None: return "none";
-    case LogMode::PerSession:
-    default: return "per_session";
-  }
 }
 
 void ResolveAndSanitize(std::filesystem::path dataRoot, AppSettings& settings, AppConfig& config) {
@@ -145,8 +135,6 @@ void AppController::Initialize() {
   std::filesystem::create_directories(std::filesystem::path(config_.logsFolder), ec);
   if (ec) EmitLog("WARN: Failed to create logs directory: " + std::filesystem::path(config_.logsFolder).string(), true);
 
-  FlushBufferedFileLogs();
-
   if (!resolutionError.empty()) {
     EmitLog("ERROR: Startup config resolution failed; using defaults. " + resolutionError, true);
   }
@@ -156,7 +144,6 @@ void AppController::Initialize() {
           "; databits=" + std::to_string(settings_.serial.dataBits) + "; parity=" + std::string(1, settings_.serial.parity) +
           "; stopbits=" + FormatStopBits(settings_.serial.stopBits) + "; timeout=" + FormatTimeout(settings_.serial.timeoutSeconds) +
           "; eol=" + EscapeForLog(settings_.serial.eol));
-  EmitLog("Startup logging: folder=" + config_.logsFolder + "; mode=" + LogModeText(config_.logMode) + "; pattern=" + config_.logFilePattern);
   EmitLog("Initialize end");
 }
 
@@ -234,20 +221,10 @@ void AppController::ApplySettings(const AppSettings& nextSettings, const AppConf
   if (!settingsChanged && !configChanged) return;
 
   const bool serialReconnectRequired = SerialSettingsRequireReconnect(settings_.serial, resolvedSettings.serial);
-  const bool logDestinationChanged = config_.logsFolder != resolvedConfig.logsFolder || config_.logMode != resolvedConfig.logMode ||
-                                     config_.logFilePattern != resolvedConfig.logFilePattern;
 
   settings_ = resolvedSettings;
   config_ = resolvedConfig;
   configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
-
-  if (logDestinationChanged) {
-    std::lock_guard<std::mutex> lock(fileLogMutex_);
-    if (logFile_.is_open()) logFile_.close();
-    activeLogPath_.clear();
-    sessionLogName_.clear();
-    logWriteErrorNotified_ = false;
-  }
 
   if (persistToDisk) {
     if (SaveConfig(configPath_, config_, &settings_)) EmitLog("Configuration saved");
@@ -378,114 +355,11 @@ void AppController::LogMessage(const std::string& message, bool isError) { EmitL
 bool AppController::IsConnected() const { return connected_ || serial_.IsConnected(); }
 
 void AppController::EmitLog(const std::string& message, bool isError) const {
-  WriteLogFileLine(message, isError);
   if (logSink_) logSink_(message, isError);
 }
 
 void AppController::EmitConnectionState(bool connected) const {
   if (connectionStateSink_) connectionStateSink_(connected);
-}
-
-void AppController::WriteLogFileLine(const std::string& message, bool isError) const {
-  (void)isError;
-  if (config_.logMode == LogMode::None && !fileLogBufferingActive_) return;
-
-  std::string warning;
-  {
-    std::lock_guard<std::mutex> lock(fileLogMutex_);
-
-    if (fileLogBufferingActive_) {
-      bufferedFileLogs_.push_back({message, isError});
-      return;
-    }
-
-    const auto path = ResolveLogPath();
-    if (path.empty()) return;
-
-    if (activeLogPath_ != path) {
-      if (logFile_.is_open()) logFile_.close();
-
-      std::error_code ec;
-      std::filesystem::create_directories(path.parent_path(), ec);
-      if (ec) {
-        activeLogPath_ = path;
-        if (!logWriteErrorNotified_) {
-          warning = "ERROR: Unable to prepare log directory: " + path.parent_path().string();
-          logWriteErrorNotified_ = true;
-        }
-        return;
-      }
-
-      logFile_.open(path, std::ios::out | std::ios::app);
-      activeLogPath_ = path;
-      logWriteErrorNotified_ = false;
-    }
-
-    if (!logFile_.is_open()) {
-      if (!logWriteErrorNotified_) {
-        warning = "ERROR: Unable to write to log file: " + path.string();
-        logWriteErrorNotified_ = true;
-      }
-      return;
-    }
-
-    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::tm tmNow{};
-#ifdef _WIN32
-    localtime_s(&tmNow, &now);
-#else
-    localtime_r(&now, &tmNow);
-#endif
-
-    char stamp[16];
-    std::strftime(stamp, sizeof(stamp), "%H:%M:%S", &tmNow);
-    logFile_ << "[" << stamp << "] " << message << "\n";
-    logFile_.flush();
-
-    if (!logFile_ && !logWriteErrorNotified_) {
-      warning = "ERROR: Failed while flushing log file: " + path.string();
-      logWriteErrorNotified_ = true;
-    }
-  }
-
-  if (!warning.empty() && logSink_) logSink_(warning, true);
-}
-
-void AppController::FlushBufferedFileLogs() {
-  std::vector<BufferedLogEntry> pending;
-  {
-    std::lock_guard<std::mutex> lock(fileLogMutex_);
-    if (!fileLogBufferingActive_) return;
-    fileLogBufferingActive_ = false;
-    pending.swap(bufferedFileLogs_);
-  }
-
-  for (const auto& entry : pending) {
-    WriteLogFileLine("[startup-buffered] " + entry.message, entry.isError);
-  }
-}
-
-std::filesystem::path AppController::ResolveLogPath() const {
-  const auto logsDir = std::filesystem::path(config_.logsFolder);
-  if (config_.logMode == LogMode::None) return {};
-  if (config_.logMode == LogMode::SingleFile) return logsDir / "ScaleLogger.log";
-
-  if (sessionLogName_.empty()) {
-    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    std::tm tmNow{};
-#ifdef _WIN32
-    localtime_s(&tmNow, &now);
-#else
-    localtime_r(&now, &tmNow);
-#endif
-
-    char buffer[128]{};
-    const auto pattern = config_.logFilePattern.empty() ? std::string("ScaleLogger_%Y%m%d_%H%M%S.log") : config_.logFilePattern;
-    std::strftime(buffer, sizeof(buffer), pattern.c_str(), &tmNow);
-    sessionLogName_ = buffer;
-  }
-
-  return logsDir / sessionLogName_;
 }
 
 } // namespace scalelogger
