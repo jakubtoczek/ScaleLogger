@@ -46,10 +46,6 @@ constexpr UINT kMsgStartupAutoConnect = WM_APP + 3;
 constexpr UINT kMsgSettingsFinalizeCombos = WM_APP + 4;
 constexpr UINT kMsgSettingsFinalizeDisplay = WM_APP + 5;
 constexpr UINT kMsgComboEditNormalizeSelection = WM_APP + 6;
-constexpr UINT kMsgFreshStartupStep1InitController = WM_APP + 7;
-constexpr UINT kMsgFreshStartupStep2SyncUi = WM_APP + 8;
-constexpr UINT kMsgFreshStartupStep3PostInitTasks = WM_APP + 9;
-constexpr UINT kMsgFreshStartupStep4OptionalConnectAndScan = WM_APP + 10;
 
 constexpr int kSettingsTab = 200;
 constexpr int kSettingsApply = 201;
@@ -121,8 +117,6 @@ UiState g_ui;
 HBRUSH g_darkBrush = CreateSolidBrush(RGB(32, 32, 32));
 enum class ConnectionUiState { Disconnected, Connecting, Connected };
 ConnectionUiState g_connectionUiState = ConnectionUiState::Disconnected;
-bool g_freshDeferredControllerInitPending = false;
-bool g_freshStartupControllerInitialized = false;
 void LoadSettingsIntoControls(HWND settingsHwnd);
 std::wstring GetControlText(HWND control);
 void AddLogLine(const std::string& text);
@@ -253,42 +247,13 @@ void TraceEarly(const std::string&) {}
 
 void TraceEarlyLiteral(const char*) {}
 
-bool IsDeferredControllerInitDisabled() {
-  const char* raw = std::getenv("SCALELOGGER_DISABLE_DEFERRED_CONTROLLER_INIT");
-  return raw && std::string(raw) == "1";
-}
-
-bool UseThinFreshStartup() {
-  const char* raw = std::getenv("SCALELOGGER_USE_THIN_FRESH_STARTUP");
-  return !raw || std::string(raw) != "0";
-}
-
-bool UsePreviousDeferredStartup() {
-  const char* raw = std::getenv("SCALELOGGER_USE_PREVIOUS_DEFERRED_STARTUP");
-  return raw && std::string(raw) == "1";
-}
-
-int GetFreshPostedStartupLimit() {
-  const char* raw = std::getenv("SCALELOGGER_FRESH_POSTED_STARTUP_LIMIT");
-  if (!raw || !*raw) return -1;
-  char* end = nullptr;
-  const long parsed = std::strtol(raw, &end, 10);
-  if (end == raw || (end && *end != '\0') || parsed < 1 || parsed > 4) return -1;
-  return static_cast<int>(parsed);
-}
-
-bool ShouldStopFreshPostedStartupStep(int step) {
-  const int limit = GetFreshPostedStartupLimit();
-  return limit == step;
-}
-
-void RunFreshPostedStartupStep3PostInitTasks() {
+void RunPostInitTasks() {
   if (!g_ui.controller) return;
   const auto& cfg = g_ui.controller->Config();
   if (cfg.darkMode) AddLogLine(std::string("Dark mode is experimental in ") + kAppVersion + " and is disabled by default.");
 }
 
-void RunFreshPostedStartupStep4OptionalConnectAndScan(HWND hwnd) {
+void RunStartupConnectAndScan(HWND hwnd) {
   if (!g_ui.controller) return;
   const auto& cfg = g_ui.controller->Config();
   const char* disableStartupConnect = std::getenv("SCALELOGGER_DISABLE_STARTUP_CONNECT");
@@ -1398,29 +1363,6 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case kMsgUiConnectionState:
       UpdateConnectionUi(wParam != 0);
       return 0;
-    case kMsgFreshStartupStep1InitController:
-      TraceEarlyLiteral("TRACE: Fresh startup step1 entered");
-      if (g_freshDeferredControllerInitPending && g_ui.controller) {
-        g_ui.controller->Initialize();
-        g_freshStartupControllerInitialized = true;
-        g_freshDeferredControllerInitPending = false;
-      }
-      if (!ShouldStopFreshPostedStartupStep(1)) PostMessageW(hwnd, kMsgFreshStartupStep2SyncUi, 0, 0);
-      return 0;
-    case kMsgFreshStartupStep2SyncUi:
-      TraceEarlyLiteral("TRACE: Fresh startup step2 entered");
-      if (g_ui.controller) UpdateConnectionUi(g_ui.controller->IsConnected());
-      if (!ShouldStopFreshPostedStartupStep(2)) PostMessageW(hwnd, kMsgFreshStartupStep3PostInitTasks, 0, 0);
-      return 0;
-    case kMsgFreshStartupStep3PostInitTasks:
-      TraceEarlyLiteral("TRACE: Fresh startup step3 entered");
-      RunFreshPostedStartupStep3PostInitTasks();
-      if (!ShouldStopFreshPostedStartupStep(3)) PostMessageW(hwnd, kMsgFreshStartupStep4OptionalConnectAndScan, 0, 0);
-      return 0;
-    case kMsgFreshStartupStep4OptionalConnectAndScan:
-      TraceEarlyLiteral("TRACE: Fresh startup step4 entered");
-      RunFreshPostedStartupStep4OptionalConnectAndScan(hwnd);
-      return 0;
     case kMsgStartupAutoConnect:
       AddLogLine("Handling deferred startup auto-connect.");
       if (g_ui.controller) {
@@ -1550,10 +1492,6 @@ struct FreshStartupContext {
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage0_Entry(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE0 entered");
-  g_freshDeferredControllerInitPending = false;
-  g_freshStartupControllerInitialized = false;
-  TraceEarly(std::string("TRACE: STAGE0 thin fresh startup mode=") + (UseThinFreshStartup() ? "enabled" : "disabled"));
-  TraceEarly(std::string("TRACE: STAGE0 previous deferred startup mode=") + (UsePreviousDeferredStartup() ? "enabled" : "disabled"));
   return RunMainDialogStage1_InitializeUi(ctx);
 }
 
@@ -1618,24 +1556,13 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage4B_InitializeController(FreshS
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4B1_ControllerInitialize(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4B1 entered");
-  const bool forceSynchronous = IsDeferredControllerInitDisabled();
-  const bool useThin = UseThinFreshStartup();
-  const bool usePreviousDeferred = UsePreviousDeferredStartup();
-  if (forceSynchronous) {
-    TraceEarlyLiteral("TRACE: STAGE4B1 synchronous controller init override");
-    g_ui.controller->Initialize();
-    g_freshStartupControllerInitialized = true;
-  } else if (useThin || usePreviousDeferred) {
-    TraceEarlyLiteral("TRACE: STAGE4B1 posting fresh startup step1");
-    g_freshDeferredControllerInitPending = true;
-    PostMessageW(ctx->hwnd, kMsgFreshStartupStep1InitController, 0, 0);
-  }
+  g_ui.controller->Initialize();
   return RunMainDialogStage4B2_ReadConnectionState(ctx);
 }
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4B2_ReadConnectionState(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4B2 entered");
-  ctx->initialConnected = g_freshStartupControllerInitialized && g_ui.controller ? g_ui.controller->IsConnected() : false;
+  ctx->initialConnected = g_ui.controller ? g_ui.controller->IsConnected() : false;
   return RunMainDialogStage4B3_UpdateConnectionUi(ctx);
 }
 
@@ -1652,12 +1579,8 @@ static SCALELOGGER_NOINLINE int RunMainDialogStage4B4_PostInitHandoff(FreshStart
 
 static SCALELOGGER_NOINLINE int RunMainDialogStage4C_StartupConnectAndScan(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE4C entered");
-  if (g_freshStartupControllerInitialized && !g_freshDeferredControllerInitPending) {
-    RunFreshPostedStartupStep3PostInitTasks();
-    RunFreshPostedStartupStep4OptionalConnectAndScan(ctx->hwnd);
-  } else {
-    TraceEarlyLiteral("TRACE: STAGE4C startup tasks deferred to posted startup pipeline");
-  }
+  RunPostInitTasks();
+  RunStartupConnectAndScan(ctx->hwnd);
   return RunMainDialogStage4D_BeforeMessageLoop(ctx);
 }
 
