@@ -1624,10 +1624,6 @@ static SCALELOGGER_NOINLINE int RunMainDialogFreshBody(HINSTANCE hInstance, int 
 }
 
 
-SCALELOGGER_NOINLINE int RunMainDialog(HINSTANCE hInstance, int nCmdShow) {
-  return RunMainDialogFresh(hInstance, nCmdShow);
-}
-
 SCALELOGGER_NOINLINE int RunMainDialogFresh(HINSTANCE hInstance, int nCmdShow) {
   TraceEarlyLiteral("TRACE: RAW entered RunMainDialogFresh");
   TraceEarlyLiteral("TRACE: RAW passed first line RunMainDialogFresh");

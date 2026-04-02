@@ -8,7 +8,6 @@ namespace scalelogger {
 
 #ifdef _WIN32
 int RunMainDialogFresh(HINSTANCE hInstance, int nCmdShow);
-int RunMainDialog(HINSTANCE hInstance, int nCmdShow);
 #endif
 
 } // namespace scalelogger
