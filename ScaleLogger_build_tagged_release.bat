@@ -3,9 +3,20 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 set "KEEP_VENV="
 set "RELEASE_TAG="
+set "POSITIONAL_TAG="
 
 :parse_args
 if "%~1"=="" goto args_done
+set "ARG=%~1"
+if not "%ARG:~0,1%"=="-" (
+  if defined POSITIONAL_TAG (
+    echo Multiple positional tags are not supported: %POSITIONAL_TAG% and %~1
+    exit /b 1
+  )
+  set "POSITIONAL_TAG=%~1"
+  shift
+  goto parse_args
+)
 if /I "%~1"=="--keep-venv" (
   set "KEEP_VENV=1"
   shift
@@ -16,19 +27,32 @@ if /I "%~1"=="--tag" (
     echo Missing value after --tag.
     exit /b 1
   )
+  if defined POSITIONAL_TAG (
+    echo Do not pass both positional tag and --tag. Choose one form.
+    exit /b 1
+  )
+  if defined RELEASE_TAG (
+    echo --tag was specified more than once.
+    exit /b 1
+  )
   set "RELEASE_TAG=%~2"
   shift
   shift
   goto parse_args
 )
 echo Unknown argument: %~1
-echo Usage: %~nx0 --tag TAG [--keep-venv]
+echo Usage: %~nx0 TAG [--keep-venv]
+echo    or: %~nx0 --tag TAG [--keep-venv]
 exit /b 1
 
 :args_done
+if defined POSITIONAL_TAG (
+  set "RELEASE_TAG=%POSITIONAL_TAG%"
+)
 if not defined RELEASE_TAG (
-  echo Missing required --tag argument.
-  echo Example: %~nx0 --tag v0.97spec
+  echo Missing required release tag.
+  echo Example: %~nx0 v0.97spec
+  echo    or: %~nx0 --tag v0.97spec
   exit /b 1
 )
 
