@@ -6,7 +6,7 @@
 
 namespace {
 int ShowFatalMessage(const char* details) {
-  MessageBoxA(nullptr, details, "ScaleLogger", MB_OK | MB_ICONERROR | MB_TOPMOST);
+  MessageBoxA(nullptr, details ? details : "Unexpected fatal error.", "ScaleLogger", MB_OK | MB_ICONERROR | MB_TOPMOST);
   return 1;
 }
 } // namespace

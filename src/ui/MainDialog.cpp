@@ -1529,7 +1529,6 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     default:
       return DefWindowProcW(hwnd, msg, wParam, lParam);
   }
-  return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 } // namespace
 
@@ -1891,11 +1890,9 @@ static SCALELOGGER_NOINLINE int RunMainDialogImplBody(HINSTANCE hInstance, int n
   const auto& cfg = g_ui.controller->Config();
   if (cfg.darkMode) AddLogLine(std::string("Dark mode is experimental in ") + kAppVersion + " and is disabled by default.");
   const char* disableStartupConnect = std::getenv("SCALELOGGER_DISABLE_STARTUP_CONNECT");
-  AddLogLine(std::string("TRACE: Env SCALELOGGER_DISABLE_STARTUP_CONNECT=") + (disableStartupConnect ? disableStartupConnect : "<unset>"));
   TraceEarly("TRACE: Before startup auto-connect decision");
   const bool startupConnectDisabledByEnv = disableStartupConnect && std::string(disableStartupConnect) == "1";
   if (cfg.connectOnStartup && startupConnectDisabledByEnv) {
-    AddLogLine("TRACE: Startup auto-connect DISABLED by env override");
     AddLogLine("Startup auto-connect disabled by environment override.");
   } else if (cfg.connectOnStartup) {
     AddLogLine("Posting deferred startup auto-connect.");
