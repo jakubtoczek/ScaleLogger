@@ -1490,6 +1490,21 @@ struct FreshStartupContext {
   HWND hwnd{nullptr};
 };
 
+static int RunMainDialogStage0_Entry(FreshStartupContext* ctx);
+static int RunMainDialogStage1_InitializeUi(FreshStartupContext* ctx);
+static int RunMainDialogStage2_CreateController(FreshStartupContext* ctx);
+static int RunMainDialogStage3_CreateMainWindow(FreshStartupContext* ctx);
+static int RunMainDialogStage4_PostCreate(FreshStartupContext* ctx);
+static int RunMainDialogStage4A_ShowWindow(FreshStartupContext* ctx);
+static int RunMainDialogStage4B_InitializeController(FreshStartupContext* ctx);
+static int RunMainDialogStage4B1_ControllerInitialize(FreshStartupContext* ctx);
+static int RunMainDialogStage4B2_ReadConnectionState(FreshStartupContext* ctx);
+static int RunMainDialogStage4B3_UpdateConnectionUi(FreshStartupContext* ctx);
+static int RunMainDialogStage4B4_PostInitHandoff(FreshStartupContext* ctx);
+static int RunMainDialogStage4C_StartupConnectAndScan(FreshStartupContext* ctx);
+static int RunMainDialogStage4D_BeforeMessageLoop(FreshStartupContext* ctx);
+static int RunMainDialogStage5_MessageLoop(FreshStartupContext* ctx);
+
 static SCALELOGGER_NOINLINE int RunMainDialogStage0_Entry(FreshStartupContext* ctx) {
   TraceEarlyLiteral("TRACE: STAGE0 entered");
   return RunMainDialogStage1_InitializeUi(ctx);
