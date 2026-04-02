@@ -158,35 +158,7 @@ void AppController::Connect() {
 
   const bool connected = serial_.Connect(
       settings_.serial,
-      [this](const std::string& rawLine) {
-        try {
-          const auto parsed = parser_.Process(rawLine, settings_.parsing);
-          if (!parsed.ok) {
-            EmitLog("Parse rejected: " + parsed.message + " raw='" + rawLine + "'", true);
-            return;
-          }
-
-          EmitLog("Parsed value: '" + parsed.processed + "' from raw='" + rawLine + "'");
-          const auto sendResult = injector_.SendTextAndAction(Utf8ToWide(parsed.processed), settings_.output);
-          if (sendResult.status == InputInjector::SendStatus::Success) {
-            EmitLog("Injection succeeded for parsed value: '" + parsed.processed + "'");
-            return;
-          }
-
-          if (sendResult.status == InputInjector::SendStatus::TextFailed) {
-            EmitLog("Text injection failed for value: '" + parsed.processed + "'", true);
-            return;
-          }
-
-          if (!sendResult.failedToken.empty()) {
-            EmitLog("Post-action failed for token: " + sendResult.failedToken, true);
-          } else {
-            EmitLog("Post-action key injection failed", true);
-          }
-        } catch (const std::exception& ex) {
-          EmitLog(std::string("ERROR: Exception while handling serial line callback: ") + ex.what(), true);
-        }
-      },
+      [this](const std::string& rawLine) { HandleSerialLine(rawLine); },
       [this](const std::string& m) { EmitLog(m); },
       [this](const std::string& m) { EmitLog(m, true); });
 
@@ -330,6 +302,37 @@ void AppController::EmitLog(const std::string& message, bool isError) const {
 
 void AppController::EmitConnectionState(bool connected) const {
   if (connectionStateSink_) connectionStateSink_(connected);
+}
+
+void AppController::HandleSerialLine(const std::string& rawLine) {
+  try {
+    const auto parsed = parser_.Process(rawLine, settings_.parsing);
+    if (!parsed.ok) {
+      EmitLog("Parse rejected: " + parsed.message + " raw='" + rawLine + "'", true);
+      return;
+    }
+    HandleParsedValue(rawLine, parsed.processed);
+  } catch (const std::exception& ex) {
+    EmitLog(std::string("ERROR: Exception while handling serial line callback: ") + ex.what(), true);
+  }
+}
+
+void AppController::HandleParsedValue(const std::string& rawLine, const std::string& processedValue) {
+  EmitLog("Parsed value: '" + processedValue + "' from raw='" + rawLine + "'");
+  const auto sendResult = injector_.SendTextAndAction(Utf8ToWide(processedValue), settings_.output);
+  if (sendResult.status == InputInjector::SendStatus::Success) {
+    EmitLog("Injection succeeded for parsed value: '" + processedValue + "'");
+    return;
+  }
+  if (sendResult.status == InputInjector::SendStatus::TextFailed) {
+    EmitLog("Text injection failed for value: '" + processedValue + "'", true);
+    return;
+  }
+  if (!sendResult.failedToken.empty()) {
+    EmitLog("Post-action failed for token: " + sendResult.failedToken, true);
+  } else {
+    EmitLog("Post-action key injection failed", true);
+  }
 }
 
 } // namespace scalelogger

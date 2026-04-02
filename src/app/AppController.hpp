@@ -48,6 +48,8 @@ class AppController {
  private:
   void EmitLog(const std::string& message, bool isError = false) const;
   void EmitConnectionState(bool connected) const;
+  void HandleSerialLine(const std::string& rawLine);
+  void HandleParsedValue(const std::string& rawLine, const std::string& processedValue);
 
   std::filesystem::path dataRoot_;
   std::filesystem::path configPath_;
