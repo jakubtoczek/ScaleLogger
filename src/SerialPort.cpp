@@ -88,15 +88,62 @@ void SerialPort::SetLineCallback(LineCallback callback) {
 }
 
 std::optional<std::wstring> SerialPort::TestReceive(const SerialSettings& settings, int waitMs) {
-    std::optional<std::wstring> result;
-    if (IsConnected()) return result;
-    if (!Connect(settings)) return result;
-    Sleep(waitMs);
-    Disconnect();
-    return result;
+    if (IsConnected()) return std::nullopt;
+
+    std::wstring device = L"\\\\.\\" + settings.port;
+    HANDLE tempHandle = CreateFileW(device.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (tempHandle == INVALID_HANDLE_VALUE) {
+        return std::nullopt;
+    }
+
+    DCB dcb{};
+    dcb.DCBlength = sizeof(DCB);
+    GetCommState(tempHandle, &dcb);
+    dcb.BaudRate = settings.baudRate;
+    dcb.ByteSize = static_cast<BYTE>(settings.dataBits);
+    dcb.Parity = static_cast<BYTE>(settings.parity);
+    dcb.StopBits = static_cast<BYTE>(settings.stopBits);
+    if (!SetCommState(tempHandle, &dcb)) {
+        CloseHandle(tempHandle);
+        return std::nullopt;
+    }
+
+    COMMTIMEOUTS to{};
+    to.ReadIntervalTimeout = 50;
+    to.ReadTotalTimeoutConstant = 100;
+    SetCommTimeouts(tempHandle, &to);
+
+    PurgeComm(tempHandle, PURGE_RXCLEAR | PURGE_TXCLEAR);
+    Sleep(60);
+
+    const auto eol = DecodeEol(settings.eol);
+    const std::string eolNarrow(eol.begin(), eol.end());
+    std::string buffer;
+    char chunk[128] = {};
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(waitMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+        DWORD bytesRead = 0;
+        if (!ReadFile(tempHandle, chunk, sizeof(chunk), &bytesRead, nullptr)) {
+            break;
+        }
+        if (bytesRead == 0) {
+            continue;
+        }
+        buffer.append(chunk, chunk + bytesRead);
+        const auto pos = buffer.find(eolNarrow);
+        if (pos != std::string::npos) {
+            const std::string line = buffer.substr(0, pos);
+            CloseHandle(tempHandle);
+            return std::wstring(line.begin(), line.end());
+        }
+    }
+
+    CloseHandle(tempHandle);
+    return std::nullopt;
 }
 
 std::vector<PortInfo> SerialPort::ScanPorts() const {
+    // TODO: enrich with SetupAPI metadata (friendly name, manufacturer, bus type).
     std::vector<PortInfo> ports;
     for (int i = 1; i <= 32; ++i) {
         std::wstring name = L"COM" + std::to_wstring(i);

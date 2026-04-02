@@ -9,6 +9,16 @@ cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 ```
 
+## Tagged release build (Windows)
+
+Run from repo root:
+
+```bat
+ScaleLogger_build_tagged_release.bat
+```
+
+This creates a timestamp-tagged Release build and packages artifacts into `release\`.
+
 ## Runtime behavior
 
 - Deterministic startup: defaults -> user config -> fallback `default_config.json`.

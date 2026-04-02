@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <regex>
 #include <sstream>
 
@@ -33,6 +34,11 @@ bool AppConfigService::Save(const AppConfig& config, const std::wstring& path) {
     out << L"{\n";
     out << L"  \"data_root\": \"" << config.dataRoot << L"\",\n";
     out << L"  \"connect_on_startup\": " << (config.connectOnStartup ? L"true" : L"false") << L",\n";
+    out << L"  \"logging\": {\n";
+    out << L"    \"folder\": \"" << config.logging.folder << L"\",\n";
+    out << L"    \"mode\": " << static_cast<int>(config.logging.mode) << L",\n";
+    out << L"    \"verbose\": " << (config.logging.verbose ? L"true" : L"false") << L"\n";
+    out << L"  },\n";
     out << L"  \"serial\": {\n";
     out << L"    \"port\": \"" << config.serial.port << L"\",\n";
     out << L"    \"baud_rate\": " << config.serial.baudRate << L",\n";
@@ -47,6 +53,8 @@ bool AppConfigService::Save(const AppConfig& config, const std::wstring& path) {
     out << L"    \"strip_suffix\": " << (config.parse.stripSuffix ? L"true" : L"false") << L",\n";
     out << L"    \"suffix\": \"" << config.parse.suffix << L"\",\n";
     out << L"    \"normalize_sign\": " << (config.parse.normalizeSign ? L"true" : L"false") << L",\n";
+    out << L"    \"preserve_plus\": " << (config.parse.preservePlus ? L"true" : L"false") << L",\n";
+    out << L"    \"preserve_minus\": " << (config.parse.preserveMinus ? L"true" : L"false") << L",\n";
     out << L"    \"require_numeric\": " << (config.parse.requireNumeric ? L"true" : L"false") << L"\n";
     out << L"  },\n";
     out << L"  \"output\": {\n";
@@ -120,6 +128,9 @@ void AppConfigService::TryReadJsonOverrides(AppConfig& config, const std::wstrin
 
     if (auto v = readString(L"data_root")) config.dataRoot = *v;
     if (auto v = readBool(L"connect_on_startup")) config.connectOnStartup = *v;
+    if (auto v = readString(L"folder")) config.logging.folder = *v;
+    if (auto v = readInt(L"mode")) config.logging.mode = static_cast<LogMode>(*v);
+    if (auto v = readBool(L"verbose")) config.logging.verbose = *v;
     if (auto v = readString(L"port")) config.serial.port = *v;
     if (auto v = readInt(L"baud_rate")) config.serial.baudRate = *v;
     if (auto v = readInt(L"data_bits")) config.serial.dataBits = *v;
@@ -131,6 +142,8 @@ void AppConfigService::TryReadJsonOverrides(AppConfig& config, const std::wstrin
     if (auto v = readBool(L"strip_suffix")) config.parse.stripSuffix = *v;
     if (auto v = readString(L"suffix")) config.parse.suffix = *v;
     if (auto v = readBool(L"normalize_sign")) config.parse.normalizeSign = *v;
+    if (auto v = readBool(L"preserve_plus")) config.parse.preservePlus = *v;
+    if (auto v = readBool(L"preserve_minus")) config.parse.preserveMinus = *v;
     if (auto v = readBool(L"require_numeric")) config.parse.requireNumeric = *v;
     if (auto v = readBool(L"dry_run")) config.output.dryRun = *v;
     if (auto v = readInt(L"post_action")) config.output.postAction = static_cast<PostAction>(*v);

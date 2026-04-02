@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include <windows.h>
 
@@ -17,8 +18,13 @@ private:
     LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam);
 
     void AppendLog(const std::wstring& line);
+    void AppendLogUi(const std::wstring& line);
     void UpdateStatus(HealthState state, const std::wstring& text);
+    void UpdateStatusUi(HealthState state, const std::wstring& text);
     void OpenSettings();
+
+    static constexpr UINT WM_APP_APPEND_LOG = WM_APP + 101;
+    static constexpr UINT WM_APP_UPDATE_STATUS = WM_APP + 102;
 
     std::shared_ptr<AppController> controller_;
     HINSTANCE instance_ = nullptr;

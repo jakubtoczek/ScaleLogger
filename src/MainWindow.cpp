@@ -1,5 +1,6 @@
 #include "MainWindow.hpp"
 
+#include <memory>
 #include <sstream>
 
 #include "SettingsWindow.hpp"
@@ -96,11 +97,32 @@ LRESULT MainWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             controller_->Disconnect();
             PostQuitMessage(0);
             return 0;
+        case WM_APP_APPEND_LOG: {
+            std::unique_ptr<std::wstring> payload(reinterpret_cast<std::wstring*>(lParam));
+            if (payload) {
+                AppendLogUi(*payload);
+            }
+            return 0;
+        }
+        case WM_APP_UPDATE_STATUS: {
+            std::unique_ptr<std::wstring> payload(reinterpret_cast<std::wstring*>(lParam));
+            const auto state = static_cast<HealthState>(wParam);
+            if (payload) {
+                UpdateStatusUi(state, *payload);
+            }
+            return 0;
+        }
     }
     return DefWindowProcW(hwnd_, msg, wParam, lParam);
 }
 
 void MainWindow::AppendLog(const std::wstring& line) {
+    if (!hwnd_) return;
+    auto* payload = new std::wstring(line);
+    PostMessageW(hwnd_, WM_APP_APPEND_LOG, 0, reinterpret_cast<LPARAM>(payload));
+}
+
+void MainWindow::AppendLogUi(const std::wstring& line) {
     if (!logEdit_) return;
     const int length = GetWindowTextLengthW(logEdit_);
     SendMessageW(logEdit_, EM_SETSEL, length, length);
@@ -109,6 +131,12 @@ void MainWindow::AppendLog(const std::wstring& line) {
 }
 
 void MainWindow::UpdateStatus(HealthState state, const std::wstring& text) {
+    if (!hwnd_) return;
+    auto* payload = new std::wstring(text);
+    PostMessageW(hwnd_, WM_APP_UPDATE_STATUS, static_cast<WPARAM>(state), reinterpret_cast<LPARAM>(payload));
+}
+
+void MainWindow::UpdateStatusUi(HealthState state, const std::wstring& text) {
     std::wstring dot = L"\x25CF";
     if (state == HealthState::Active) dot = L"\x1F7E2";
     else if (state == HealthState::Idle) dot = L"\x1F7E0";
