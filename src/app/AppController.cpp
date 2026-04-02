@@ -149,15 +149,6 @@ void AppController::Initialize() {
 
 void AppController::Connect() {
   EmitLog("Connect begin");
-  if (const char* forceNoSerial = std::getenv("SCALELOGGER_FORCE_NO_SERIAL")) {
-    if (std::string(forceNoSerial) == "1") {
-      connected_ = false;
-      EmitConnectionState(false);
-      EmitLog("Connect skipped: SCALELOGGER_FORCE_NO_SERIAL=1");
-      return;
-    }
-  }
-
   if (connected_ || serial_.IsConnected()) {
     connected_ = true;
     EmitConnectionState(true);
