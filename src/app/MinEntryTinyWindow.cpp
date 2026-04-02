@@ -17,7 +17,6 @@ LRESULT CALLBACK TinyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 } // namespace
 
 int LaunchTinyWindow(HINSTANCE hInstance, int nCmdShow) {
-  OutputDebugStringA("TRACE: TinyWindow entered\n");
   WNDCLASSW wc{};
   wc.lpfnWndProc = TinyWndProc;
   wc.hInstance = hInstance;
@@ -30,7 +29,6 @@ int LaunchTinyWindow(HINSTANCE hInstance, int nCmdShow) {
   if (!hwnd) return 970;
   ShowWindow(hwnd, nCmdShow);
   UpdateWindow(hwnd);
-  OutputDebugStringA("TRACE: TinyWindow success\n");
   PostMessageW(hwnd, WM_CLOSE, 0, 0);
   MSG msg;
   while (GetMessageW(&msg, nullptr, 0, 0) > 0) {

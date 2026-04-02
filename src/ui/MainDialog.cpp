@@ -119,11 +119,6 @@ struct UiState {
 
 UiState g_ui;
 HBRUSH g_darkBrush = CreateSolidBrush(RGB(32, 32, 32));
-HBRUSH g_settingsDebugParentBrush = CreateSolidBrush(RGB(255, 64, 64));
-HBRUSH g_settingsDebugTabBodyBrush = CreateSolidBrush(RGB(64, 128, 255));
-HBRUSH g_settingsDebugReadOnlyEditBrush = CreateSolidBrush(RGB(255, 235, 64));
-HBRUSH g_settingsDebugStaticBrush = CreateSolidBrush(RGB(255, 64, 220));
-HBRUSH g_settingsDebugDefaultBrush = CreateSolidBrush(RGB(64, 220, 140));
 enum class ConnectionUiState { Disconnected, Connecting, Connected };
 ConnectionUiState g_connectionUiState = ConnectionUiState::Disconnected;
 bool g_freshDeferredControllerInitPending = false;
@@ -135,12 +130,7 @@ void TraceEarly(const std::string& message);
 void TraceEarlyLiteral(const char* text);
 
 bool IsSettingsPaintDebugEnabled() {
-  static int state = -1;
-  if (state < 0) {
-    const char* raw = std::getenv("SCALELOGGER_SETTINGS_PAINT_DEBUG");
-    state = (raw && std::string(raw) == "1") ? 1 : 0;
-  }
-  return state == 1;
+  return false;
 }
 
 void TraceSettingsPaintDebug(const std::string& message) {
@@ -167,7 +157,7 @@ constexpr int kSettingsBottomButtonHeight = 32;
 }
 
 bool IsComboDebugLoggingEnabled() {
-  return g_ui.controller && g_ui.controller->Config().debugComboLogging;
+  return false;
 }
 
 LRESULT CALLBACK EditableComboEditSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
@@ -259,19 +249,9 @@ std::string ToUtf8(const std::wstring& text) {
   return out;
 }
 
-void TraceEarly(const std::string& message) {
-  OutputDebugStringA((message + "\n").c_str());
-  std::fprintf(stderr, "%s\n", message.c_str());
-}
+void TraceEarly(const std::string&) {}
 
-void TraceEarlyLiteral(const char* text) {
-  // Raw crash-isolation helper: avoids temporary-object construction at earliest function-entry boundaries.
-  if (!text) return;
-  OutputDebugStringA(text);
-  OutputDebugStringA("\n");
-  std::fputs(text, stderr);
-  std::fputc('\n', stderr);
-}
+void TraceEarlyLiteral(const char*) {}
 
 bool IsDeferredControllerInitDisabled() {
   const char* raw = std::getenv("SCALELOGGER_DISABLE_DEFERRED_CONTROLLER_INIT");
@@ -370,7 +350,7 @@ LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
 
   switch (draw->dwDrawStage) {
     case CDDS_PREPAINT: {
-      FillRect(draw->hdc, &draw->rc, debugPaint ? g_settingsDebugParentBrush : g_darkBrush);
+      FillRect(draw->hdc, &draw->rc, debugPaint ? g_darkBrush : g_darkBrush);
       if (debugPaint) TraceSettingsPaintDebug("tab custom draw: CDDS_PREPAINT");
       return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
     }
@@ -407,7 +387,7 @@ LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
     case CDDS_POSTPAINT: {
       RECT tabClient = draw->rc;
       TabCtrl_AdjustRect(draw->hdr.hwndFrom, FALSE, &tabClient);
-      FillRect(draw->hdc, &tabClient, debugPaint ? g_settingsDebugTabBodyBrush : g_darkBrush);
+      FillRect(draw->hdc, &tabClient, debugPaint ? g_darkBrush : g_darkBrush);
       if (debugPaint) TraceSettingsPaintDebug("tab custom draw: CDDS_POSTPAINT (tab body fill)");
       return CDRF_DODEFAULT;
     }
@@ -1184,7 +1164,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       if (!IsDarkModeEnabled() && !debugPaint) break;
       RECT rc{};
       GetClientRect(hwnd, &rc);
-      FillRect(reinterpret_cast<HDC>(wParam), &rc, debugPaint ? g_settingsDebugParentBrush : g_darkBrush);
+      FillRect(reinterpret_cast<HDC>(wParam), &rc, debugPaint ? g_darkBrush : g_darkBrush);
       if (debugPaint) TraceSettingsPaintDebug("settings parent: WM_ERASEBKGND");
       return 1;
     }
@@ -1203,16 +1183,16 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         if (readOnlyEdit) {
           SetBkColor(dc, RGB(255, 235, 64));
           TraceSettingsPaintDebug("WM_CTLCOLOR* readonly edit id=" + std::to_string(GetDlgCtrlID(control)));
-          return reinterpret_cast<LRESULT>(g_settingsDebugReadOnlyEditBrush);
+          return reinterpret_cast<LRESULT>(g_darkBrush);
         }
         if (std::wcscmp(className, L"Static") == 0) {
           SetBkColor(dc, RGB(255, 64, 220));
           TraceSettingsPaintDebug("WM_CTLCOLOR* static id=" + std::to_string(GetDlgCtrlID(control)));
-          return reinterpret_cast<LRESULT>(g_settingsDebugStaticBrush);
+          return reinterpret_cast<LRESULT>(g_darkBrush);
         }
         SetBkColor(dc, RGB(64, 220, 140));
         TraceSettingsPaintDebug("WM_CTLCOLOR* class=" + ToUtf8(className) + " id=" + std::to_string(GetDlgCtrlID(control)));
-        return reinterpret_cast<LRESULT>(g_settingsDebugDefaultBrush);
+        return reinterpret_cast<LRESULT>(g_darkBrush);
       }
       const auto brush = HandleDarkCtlColor(reinterpret_cast<HDC>(wParam));
       if (brush != 0) return brush;
