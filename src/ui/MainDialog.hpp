@@ -7,23 +7,6 @@
 namespace scalelogger {
 
 #ifdef _WIN32
-using RunMainDialogFn = int (*)(HINSTANCE, int);
-int ProbeMainDialogBasic();
-int ProbeMainDialogTraceEarly();
-int ProbeMainDialogWithArgs(HINSTANCE hInstance, int nCmdShow);
-int ProbeMainDialogTouchUi(HINSTANCE hInstance);
-int ProbeRunMainDialogImplDirect(HINSTANCE hInstance, int nCmdShow);
-int ProbeRunMainDialogWrapper(HINSTANCE hInstance, int nCmdShow);
-int ProbeRunMainDialogImplDirectViaTrampoline(HINSTANCE hInstance, int nCmdShow);
-int ProbeRunMainDialogWrapperViaTrampoline(HINSTANCE hInstance, int nCmdShow);
-int ProbeMainDialogSentinelA();
-int ProbeMainDialogSentinelWithArgs(HINSTANCE hInstance, int nCmdShow);
-int ProbeRunMainDialogWrapperFresh(HINSTANCE hInstance, int nCmdShow);
-int ProbeRunMainDialogImplDirectFresh(HINSTANCE hInstance, int nCmdShow);
-int ProbeRunMainDialogWrapperBodyFresh(HINSTANCE hInstance, int nCmdShow);
-int ProbeRunMainDialogImplBodyFresh(HINSTANCE hInstance, int nCmdShow);
-int ProbeRunMainDialogFresh(HINSTANCE hInstance, int nCmdShow);
-int ProbeRunMainDialogFreshBody(HINSTANCE hInstance, int nCmdShow);
 int RunMainDialogFresh(HINSTANCE hInstance, int nCmdShow);
 int RunMainDialog(HINSTANCE hInstance, int nCmdShow);
 #endif
