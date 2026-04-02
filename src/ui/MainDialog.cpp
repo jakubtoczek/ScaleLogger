@@ -1529,6 +1529,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     default:
       return DefWindowProcW(hwnd, msg, wParam, lParam);
   }
+  return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 } // namespace
 
