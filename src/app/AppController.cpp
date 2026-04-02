@@ -105,6 +105,7 @@ void AppController::Initialize() {
   AppConfig loadedConfig{};
   AppSettings loadedSettings{};
   std::string source = "in-memory defaults";
+  std::string resolutionError;
 
   const auto userConfigPath = configPath_;
   const auto defaultConfigPath = ConfigService::ResolveDefaultConfigPath(dataRoot_);
@@ -119,17 +120,26 @@ void AppController::Initialize() {
       loadedSettings = LoadConfigSettings(defaultConfigPath);
       source = "default config: " + defaultConfigPath.string();
     }
+    ResolveAndSanitize(dataRoot_, loadedSettings, loadedConfig);
+    configPath_ = std::filesystem::path(loadedConfig.configFolder) / loadedConfig.configFileName;
   } catch (const std::exception& ex) {
     loadedConfig = AppConfig{};
     loadedSettings = AppSettings{};
-    source = std::string("fallback defaults after load failure: ") + ex.what();
+    source = "in-memory defaults";
+    resolutionError = ex.what();
+    try {
+      ResolveAndSanitize(dataRoot_, loadedSettings, loadedConfig);
+      configPath_ = std::filesystem::path(loadedConfig.configFolder) / loadedConfig.configFileName;
+    } catch (...) {
+      // Keep startup alive with plain defaults if sanitize/resolve unexpectedly fails.
+    }
   }
-
-  ResolveAndSanitize(dataRoot_, loadedSettings, loadedConfig);
 
   settings_ = loadedSettings;
   config_ = loadedConfig;
-  configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
+  if (configPath_.empty()) {
+    configPath_ = std::filesystem::path(config_.configFolder) / config_.configFileName;
+  }
 
   std::error_code ec;
   std::filesystem::create_directories(std::filesystem::path(config_.logsFolder), ec);
@@ -137,6 +147,9 @@ void AppController::Initialize() {
 
   FlushBufferedFileLogs();
 
+  if (!resolutionError.empty()) {
+    EmitLog("ERROR: Startup config resolution failed; using defaults. " + resolutionError, true);
+  }
   EmitLog("Startup config source: " + source);
   EmitLog("Startup effective config path: " + configPath_.string());
   EmitLog("Startup serial: port=" + settings_.serial.port + "; baudrate=" + std::to_string(settings_.serial.baudRate) +
