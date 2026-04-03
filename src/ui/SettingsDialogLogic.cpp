@@ -37,7 +37,6 @@ constexpr int kAppLogModeCombo = 502;
 constexpr int kAppConnectStartupCheck = 503;
 constexpr int kAppPathsLabel = 505;
 constexpr int kAppConfigFolderEdit = 508;
-constexpr int kAppDarkModeCheck = 511;
 constexpr int kSerialSummaryEdit = 520;
 constexpr int kOutputSummaryEdit = 521;
 
@@ -290,7 +289,7 @@ void LoadSettingsIntoControls(const Context& ctx, HWND settingsHwnd) {
       L"Config: " + (std::filesystem::path(config.configFolder) / ctx.toWide(config.configFileName)).wstring() +
       L"\r\nLogs: " + std::filesystem::path(config.logsFolder).wstring() + L" (" +
       (config.logMode == LogMode::None ? L"none" : (config.logMode == LogMode::SingleFile ? L"single_file" : L"per_session")) + L")" +
-      L"\r\nDark mode (experimental): " + std::wstring(config.darkMode ? L"on" : L"off") +
+      L"\r\nDark mode (main window): " + std::wstring(config.darkMode ? L"on" : L"off") +
       L"\r\nSerial: " + ctx.toWide(settings.serial.port) + L" @ " + ctx.toWide(std::to_string(settings.serial.baudRate)) + L" baud" +
       L"\r\nOutput: " + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") + L"; action=" + action;
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppPathsLabel), pathSummary.c_str());
@@ -309,7 +308,6 @@ void LoadSettingsIntoControls(const Context& ctx, HWND settingsHwnd) {
                                L"; PostAction=" + action;
   if (settings.output.postAction == PostAction::CustomSequence) outputSummary += L"; Sequence=" + sequence;
   SetWindowTextW(GetDlgItem(settingsHwnd, kOutputSummaryEdit), outputSummary.c_str());
-  SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_SETCHECK, config.darkMode ? BST_CHECKED : BST_UNCHECKED, 0);
 }
 
 bool ReadSerialSettingsFromControls(const Context& ctx, HWND settingsHwnd, AppSettings& settingsOut, std::string& error) {
@@ -386,7 +384,6 @@ void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveR
 
   nextConfig.logsFolder = ctx.toUtf8(ctx.getControlText(GetDlgItem(settingsHwnd, kAppLogsFolderEdit)));
   nextConfig.connectOnStartup = SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
-  nextConfig.darkMode = SendMessageW(GetDlgItem(settingsHwnd, kAppDarkModeCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
 
   const int changedFieldCount =
       ConfigService::CountSettingsDifferences(beforeSettings, nextSettings) + ConfigService::CountConfigDifferences(beforeConfig, nextConfig);

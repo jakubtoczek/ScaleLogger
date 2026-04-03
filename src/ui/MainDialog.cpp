@@ -85,7 +85,6 @@ constexpr int kAppLogsBrowseBtn = 507;
 constexpr int kAppConfigFolderEdit = 508;
 constexpr int kAppConfigBrowseBtn = 509;
 constexpr int kAppConfigFileNameEdit = 510;
-constexpr int kAppDarkModeCheck = 511;
 constexpr int kSerialSummaryEdit = 520;
 constexpr int kOutputSummaryEdit = 521;
 constexpr wchar_t kSettingsWindowClassName[] = L"ScaleLoggerSettingsWindow";
@@ -114,7 +113,7 @@ struct UiState {
 };
 
 UiState g_ui;
-HBRUSH g_darkBrush = CreateSolidBrush(RGB(32, 32, 32));
+HBRUSH g_darkBrush = CreateSolidBrush(RGB(26, 26, 26));
 enum class ConnectionUiState { Disconnected, Connecting, Connected };
 ConnectionUiState g_connectionUiState = ConnectionUiState::Disconnected;
 void LoadSettingsIntoControls(HWND settingsHwnd);
@@ -248,9 +247,6 @@ void TraceEarly(const std::string&) {}
 void TraceEarlyLiteral(const char*) {}
 
 void RunPostInitTasks() {
-  if (!g_ui.controller) return;
-  const auto& cfg = g_ui.controller->Config();
-  if (cfg.darkMode) AddLogLine(std::string("Dark mode is experimental in ") + kAppVersion + " and is disabled by default.");
 }
 
 void RunStartupConnectAndScan(HWND hwnd) {
@@ -303,70 +299,19 @@ bool IsDarkModeEnabled() {
 
 LRESULT HandleDarkCtlColor(HDC hdc) {
   if (!IsDarkModeEnabled()) return 0;
-  SetTextColor(hdc, RGB(235, 235, 235));
-  SetBkColor(hdc, RGB(32, 32, 32));
+  SetTextColor(hdc, RGB(210, 210, 210));
+  SetBkColor(hdc, RGB(26, 26, 26));
   return reinterpret_cast<LRESULT>(g_darkBrush);
 }
 
 LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
-  auto* draw = reinterpret_cast<LPNMCUSTOMDRAW>(lParam);
-  const bool debugPaint = IsSettingsPaintDebugEnabled();
-  if (!draw || (!IsDarkModeEnabled() && !debugPaint)) return CDRF_DODEFAULT;
-
-  switch (draw->dwDrawStage) {
-    case CDDS_PREPAINT: {
-      FillRect(draw->hdc, &draw->rc, debugPaint ? g_darkBrush : g_darkBrush);
-      if (debugPaint) TraceSettingsPaintDebug("tab custom draw: CDDS_PREPAINT");
-      return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
-    }
-    case CDDS_ITEMPREPAINT: {
-      const int tabIndex = static_cast<int>(draw->dwItemSpec);
-      const int selectedIndex = TabCtrl_GetCurSel(draw->hdr.hwndFrom);
-      const COLORREF tabColor = debugPaint ? ((tabIndex == selectedIndex) ? RGB(255, 140, 0) : RGB(160, 80, 255))
-                                           : ((tabIndex == selectedIndex) ? RGB(58, 58, 58) : RGB(40, 40, 40));
-
-      HBRUSH tabBrush = CreateSolidBrush(tabColor);
-      FillRect(draw->hdc, &draw->rc, tabBrush);
-      HBRUSH borderBrush = CreateSolidBrush(debugPaint ? RGB(255, 255, 255) : RGB(78, 78, 78));
-      FrameRect(draw->hdc, &draw->rc, borderBrush);
-      DeleteObject(borderBrush);
-      DeleteObject(tabBrush);
-
-      RECT textRect = draw->rc;
-      textRect.left += 8;
-      textRect.right -= 8;
-
-      wchar_t text[128] = {};
-      TCITEMW item{};
-      item.mask = TCIF_TEXT;
-      item.pszText = text;
-      item.cchTextMax = static_cast<int>(std::size(text));
-      if (TabCtrl_GetItem(draw->hdr.hwndFrom, tabIndex, &item)) {
-        SetBkMode(draw->hdc, TRANSPARENT);
-        SetTextColor(draw->hdc, RGB(235, 235, 235));
-        DrawTextW(draw->hdc, text, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-      }
-      if (debugPaint) TraceSettingsPaintDebug("tab custom draw: CDDS_ITEMPREPAINT index=" + std::to_string(tabIndex));
-      return CDRF_SKIPDEFAULT;
-    }
-    case CDDS_POSTPAINT: {
-      RECT tabClient = draw->rc;
-      TabCtrl_AdjustRect(draw->hdr.hwndFrom, FALSE, &tabClient);
-      FillRect(draw->hdc, &tabClient, debugPaint ? g_darkBrush : g_darkBrush);
-      if (debugPaint) TraceSettingsPaintDebug("tab custom draw: CDDS_POSTPAINT (tab body fill)");
-      return CDRF_DODEFAULT;
-    }
-    default: return CDRF_DODEFAULT;
-  }
+  (void)lParam;
+  return CDRF_DODEFAULT;
 }
 
 void ApplySettingsTabTheme(HWND settingsTab) {
   if (!settingsTab) return;
-  if (IsDarkModeEnabled()) {
-    SetWindowTheme(settingsTab, L"", L"");
-  } else {
-    SetWindowTheme(settingsTab, nullptr, nullptr);
-  }
+  SetWindowTheme(settingsTab, nullptr, nullptr);
   InvalidateRect(settingsTab, nullptr, TRUE);
 }
 
@@ -1094,9 +1039,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       AddControl(g_ui.applicationTabControls,
                  CreateWindowW(L"BUTTON", L"Connect on startup", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 8, top + 142, 220, 24, hwnd,
                                reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppConnectStartupCheck)), nullptr, nullptr));
-      AddControl(g_ui.applicationTabControls,
-                 CreateWindowW(L"BUTTON", L"Dark mode (experimental)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 250, top + 142, 190, 24, hwnd,
-                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppDarkModeCheck)), nullptr, nullptr));
       
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
@@ -1123,45 +1065,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       PostMessageW(hwnd, kMsgSettingsFinalizeCombos, 0, 0);
       PostMessageW(hwnd, kMsgSettingsFinalizeDisplay, 0, 0);
       return 0;
-    }
-    case WM_ERASEBKGND: {
-      const bool debugPaint = IsSettingsPaintDebugEnabled();
-      if (!IsDarkModeEnabled() && !debugPaint) break;
-      RECT rc{};
-      GetClientRect(hwnd, &rc);
-      FillRect(reinterpret_cast<HDC>(wParam), &rc, debugPaint ? g_darkBrush : g_darkBrush);
-      if (debugPaint) TraceSettingsPaintDebug("settings parent: WM_ERASEBKGND");
-      return 1;
-    }
-    case WM_CTLCOLORSTATIC:
-    case WM_CTLCOLOREDIT:
-    case WM_CTLCOLORLISTBOX:
-    case WM_CTLCOLORBTN: {
-      if (IsSettingsPaintDebugEnabled()) {
-        HWND control = reinterpret_cast<HWND>(lParam);
-        HDC dc = reinterpret_cast<HDC>(wParam);
-        wchar_t className[64]{};
-        GetClassNameW(control, className, static_cast<int>(std::size(className)));
-        const LONG style = GetWindowLongW(control, GWL_STYLE);
-        const bool readOnlyEdit = std::wcscmp(className, L"Edit") == 0 && (style & ES_READONLY) != 0;
-        SetTextColor(dc, RGB(10, 10, 10));
-        if (readOnlyEdit) {
-          SetBkColor(dc, RGB(255, 235, 64));
-          TraceSettingsPaintDebug("WM_CTLCOLOR* readonly edit id=" + std::to_string(GetDlgCtrlID(control)));
-          return reinterpret_cast<LRESULT>(g_darkBrush);
-        }
-        if (std::wcscmp(className, L"Static") == 0) {
-          SetBkColor(dc, RGB(255, 64, 220));
-          TraceSettingsPaintDebug("WM_CTLCOLOR* static id=" + std::to_string(GetDlgCtrlID(control)));
-          return reinterpret_cast<LRESULT>(g_darkBrush);
-        }
-        SetBkColor(dc, RGB(64, 220, 140));
-        TraceSettingsPaintDebug("WM_CTLCOLOR* class=" + ToUtf8(className) + " id=" + std::to_string(GetDlgCtrlID(control)));
-        return reinterpret_cast<LRESULT>(g_darkBrush);
-      }
-      const auto brush = HandleDarkCtlColor(reinterpret_cast<HDC>(wParam));
-      if (brush != 0) return brush;
-      break;
     }
     case kMsgSettingsFinalizeCombos:
       FinalizeEditableComboFirstPaint(hwnd);
