@@ -85,6 +85,7 @@ constexpr int kAppLogsBrowseBtn = 507;
 constexpr int kAppConfigFolderEdit = 508;
 constexpr int kAppConfigBrowseBtn = 509;
 constexpr int kAppConfigFileNameEdit = 510;
+constexpr int kAppDarkModeCheck = 511;
 constexpr int kSerialSummaryEdit = 520;
 constexpr int kOutputSummaryEdit = 521;
 constexpr wchar_t kSettingsWindowClassName[] = L"ScaleLoggerSettingsWindow";
@@ -1039,6 +1040,9 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       AddControl(g_ui.applicationTabControls,
                  CreateWindowW(L"BUTTON", L"Connect on startup", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 8, top + 142, 220, 24, hwnd,
                                reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppConnectStartupCheck)), nullptr, nullptr));
+      AddControl(g_ui.applicationTabControls,
+                 CreateWindowW(L"BUTTON", L"Dark mode (main window only)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 250, top + 142, 230, 24, hwnd,
+                               reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppDarkModeCheck)), nullptr, nullptr));
       
       AddControl(g_ui.applicationTabControls,
                  CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
