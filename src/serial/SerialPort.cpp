@@ -25,7 +25,6 @@ std::string DescribeOpenError(DWORD err) {
 bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLine, const LogHandler& onLog, const LogHandler& onError) {
   Disconnect();
 
-  if (onLog) onLog("TRACE: SerialPort::Connect before CreateFile");
   const std::string full = "\\\\.\\" + settings.port;
   handle_ = CreateFileA(full.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
   if (handle_ == INVALID_HANDLE_VALUE) {
@@ -34,8 +33,6 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLi
     onError("Serial connection failed on " + settings.port + ": " + DescribeOpenError(err));
     return false;
   }
-  if (onLog) onLog("TRACE: SerialPort::Connect after CreateFile handle=" + std::to_string(reinterpret_cast<uintptr_t>(handle_)));
-
   DCB dcb{};
   dcb.DCBlength = sizeof(DCB);
   if (!GetCommState(handle_, &dcb)) {
@@ -54,8 +51,6 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLi
     Disconnect();
     return false;
   }
-  if (onLog) onLog("TRACE: SerialPort::Connect after DCB configuration");
-
   COMMTIMEOUTS t{};
   t.ReadIntervalTimeout = MAXDWORD;
   t.ReadTotalTimeoutConstant = static_cast<DWORD>(settings.timeoutSeconds * 1000);
@@ -68,7 +63,6 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLi
   }
 
   // Required stale-buffer handling order.
-  if (onLog) onLog("TRACE: SerialPort::Connect before PurgeComm/drain");
   if (!PurgeComm(handle_, PURGE_RXCLEAR | PURGE_RXABORT) && onError) {
     const auto err = GetLastError();
     onError("PurgeComm(pre-drain) failed: error=" + std::to_string(static_cast<unsigned long>(err)));
@@ -82,7 +76,6 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLi
     const auto err = GetLastError();
     onError("PurgeComm(post-drain) failed: error=" + std::to_string(static_cast<unsigned long>(err)));
   }
-  if (onLog) onLog("TRACE: SerialPort::Connect after PurgeComm/drain");
   onLog("Discarded buffered serial data on connect.");
 
   settings_ = settings;
@@ -93,7 +86,6 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLi
   connected_ = true;
   if (onLog_) onLog_("Serial connection opened on " + settings.port + " at " + std::to_string(settings.baudRate) + " baud.");
   if (onLog_) onLog_("Serial receive thread starting.");
-  if (onLog_) onLog_("TRACE: SerialPort::Connect before starting receive thread");
 
   receiveThread_ = std::thread([this]() {
     try {
@@ -105,25 +97,17 @@ bool SerialPort::Connect(const SerialSettings& settings, const LineHandler& onLi
       if (onError_) onError_("ERROR: Unhandled exception in serial receive thread");
     }
   });
-  if (onLog_) onLog_("TRACE: SerialPort::Connect after starting receive thread");
   return true;
 }
 
 void SerialPort::ReceiveLoop() {
   std::string buffer;
   bool firstDispatchedLine = false;
-  bool firstDispatchTraceLogged = false;
-  bool firstReadLogged = false;
   char ch = 0;
   DWORD read = 0;
-  if (onLog_) onLog_("TRACE: Serial receive loop entered.");
 
   while (!stopRequested_.load()) {
     const BOOL ok = ReadFile(handle_, &ch, 1, &read, nullptr);
-    if (!firstReadLogged && onLog_) {
-      onLog_("TRACE: ReadFile returned bytes=" + std::to_string(static_cast<unsigned long>(read)));
-      firstReadLogged = true;
-    }
     if (read > 1) {
       if (onError_) onError_("ReadFile returned unexpected byte count > buffer size");
       continue;
@@ -149,10 +133,6 @@ void SerialPort::ReceiveLoop() {
           firstDispatchedLine = true;
         }
         try {
-          if (!firstDispatchTraceLogged && onLog_) {
-            onLog_("TRACE: Serial receive loop before onLine dispatch");
-            firstDispatchTraceLogged = true;
-          }
           onLine_(line);
         } catch (const std::exception& ex) {
           if (onError_) onError_(std::string("ERROR: Exception while dispatching received serial line: ") + ex.what());
