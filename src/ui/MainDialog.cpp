@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -239,6 +240,20 @@ std::string ToUtf8(const std::wstring& text) {
   std::string out(static_cast<std::size_t>(sizeNeeded), '\0');
   WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), out.data(), sizeNeeded, nullptr, nullptr);
   return out;
+}
+
+std::optional<std::string> CaptureTokenFromVirtualKey(WPARAM virtualKey) {
+  switch (virtualKey) {
+    case VK_RETURN: return "enter";
+    case VK_TAB: return "tab";
+    case VK_UP: return "up";
+    case VK_DOWN: return "down";
+    case VK_LEFT: return "left";
+    case VK_RIGHT: return "right";
+    case VK_ESCAPE: return "esc";
+    case VK_SPACE: return "space";
+    default: return std::nullopt;
+  }
 }
 
 void TraceEarly(const std::string&) {}
@@ -1137,12 +1152,13 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_KEYDOWN:
       if (g_ui.captureCustomSequenceKey) {
         g_ui.captureCustomSequenceKey = false;
-        char keyName[32]{};
-        const LONG scan = static_cast<LONG>(MapVirtualKeyA(static_cast<UINT>(wParam), MAPVK_VK_TO_VSC) << 16);
-        GetKeyNameTextA(scan, keyName, sizeof(keyName));
-        if (keyName[0] == '\0') wsprintfA(keyName, "VK_%u", static_cast<unsigned>(wParam));
+        const auto capturedToken = CaptureTokenFromVirtualKey(wParam);
+        if (!capturedToken.has_value()) {
+          AddLogLine("Unsupported custom sequence key. Use only Enter, Tab, or arrow keys.");
+          return 0;
+        }
         const auto existing = ToUtf8(GetControlText(GetDlgItem(hwnd, kOutputCustomSequenceEdit)));
-        const auto updated = existing.empty() ? std::string(keyName) : (existing + "," + keyName);
+        const auto updated = existing.empty() ? *capturedToken : (existing + "," + *capturedToken);
         SetWindowTextW(GetDlgItem(hwnd, kOutputCustomSequenceEdit), ToWide(updated).c_str());
         return 0;
       }
