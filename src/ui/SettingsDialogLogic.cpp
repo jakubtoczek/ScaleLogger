@@ -2,6 +2,7 @@
 
 #ifdef _WIN32
 #include "app/ConfigService.hpp"
+#include "core/KeySequence.hpp"
 
 #include <Windows.h>
 
@@ -98,6 +99,28 @@ bool TryParseFloat(const std::wstring& text, float& out) {
     out = std::stof(text, &idx);
     return idx == text.size();
   } catch (...) { return false; }
+}
+
+std::string TrimForLog(std::string value) {
+  auto isSpace = [](unsigned char ch) { return std::isspace(ch) != 0; };
+  while (!value.empty() && isSpace(static_cast<unsigned char>(value.front()))) value.erase(value.begin());
+  while (!value.empty() && isSpace(static_cast<unsigned char>(value.back()))) value.pop_back();
+  return value;
+}
+
+std::vector<std::string> ParseCustomSequenceWithWarnings(const std::string& text, std::vector<std::string>& rejectedTokens) {
+  std::vector<std::string> out;
+  std::stringstream ss(text);
+  std::string item;
+  while (std::getline(ss, item, ',')) {
+    if (auto normalized = NormalizeKeyToken(item); normalized.has_value()) {
+      out.push_back(*normalized);
+      continue;
+    }
+    const auto token = TrimForLog(item);
+    if (!token.empty()) rejectedTokens.push_back(token);
+  }
+  return out;
 }
 
 std::string BuildChangeSummary(const AppSettings& beforeSettings, const AppSettings& afterSettings, const AppConfig& beforeConfig,
@@ -383,6 +406,22 @@ void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveR
   else if (action == "none") nextSettings.output.postAction = PostAction::None;
   else if (action == "custom_sequence") nextSettings.output.postAction = PostAction::CustomSequence;
   else nextSettings.output.postAction = PostAction::Down;
+  {
+    std::vector<std::string> rejectedTokens;
+    nextSettings.output.customSequence =
+        ParseCustomSequenceWithWarnings(ctx.toUtf8(ctx.getControlText(GetDlgItem(settingsHwnd, kOutputCustomSequenceEdit))), rejectedTokens);
+    if (!rejectedTokens.empty()) {
+      std::string rejectedJoined;
+      for (std::size_t i = 0; i < rejectedTokens.size(); ++i) {
+        if (i) rejectedJoined += ", ";
+        rejectedJoined += rejectedTokens[i];
+      }
+      ctx.controller->LogMessage("WARN: Ignored invalid custom sequence token(s): " + rejectedJoined, true);
+    }
+    if (nextSettings.output.postAction == PostAction::CustomSequence && nextSettings.output.customSequence.empty()) {
+      ctx.controller->LogMessage("WARN: post_action=custom_sequence with empty sequence; no post-action key will be sent.", true);
+    }
+  }
 
   nextConfig.logsFolder = ctx.toUtf8(ctx.getControlText(GetDlgItem(settingsHwnd, kAppLogsFolderEdit)));
   nextConfig.connectOnStartup = SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;
