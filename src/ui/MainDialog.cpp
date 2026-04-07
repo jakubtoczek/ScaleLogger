@@ -1154,7 +1154,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         g_ui.captureCustomSequenceKey = false;
         const auto capturedToken = CaptureTokenFromVirtualKey(wParam);
         if (!capturedToken.has_value()) {
-          AddLogLine("Unsupported custom sequence key. Use only Enter, Tab, or arrow keys.");
+          AddLogLine("Unsupported custom sequence key. Use Enter, Tab, arrow keys, Esc, or Space.");
           return 0;
         }
         const auto existing = ToUtf8(GetControlText(GetDlgItem(hwnd, kOutputCustomSequenceEdit)));

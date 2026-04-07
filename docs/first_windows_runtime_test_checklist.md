@@ -105,17 +105,17 @@ Run these output modes against a focused target:
 - `enter`
 - `tab`
 - `none`
-- `custom_sequence` (include `f10`, `f11`, `f12` in sequence)
+- `custom_sequence` (use canonical tokens only: `enter`, `tab`, `up`, `down`, `left`, `right`, optional `esc`, `space`)
 
 Pass criteria:
 - Built-in post-actions emit expected key behavior.
 - Custom sequence tokens execute in order.
-- `F10/F11/F12` tokens execute correctly when provided in sequence.
+- Unsupported tokens are rejected and do not execute.
 
 Expected Results:
 - `down/right/enter/tab` move/confirm focus exactly once per send.
 - `none` injects text without additional key movement.
-- `custom_sequence` applies tokens in order, including correct behavior for `F10/F11/F12`.
+- `custom_sequence` applies supported canonical tokens in order.
 
 ## 7) Validate release script consistency
 From repo root in `cmd.exe`:
