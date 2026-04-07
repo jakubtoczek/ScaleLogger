@@ -143,7 +143,7 @@ Mark readiness:
 
 ## Known non-blocking items for this phase
 - Config JSON handling uses embedded lightweight parser/writer code.
-- Runtime UI is intentionally minimal (test-shell level).
+- Runtime UI is intentionally minimal and focused on stable production behavior.
 - Additional real-device serial edge-case validation is still required.
 
 ## Test Result Recording

@@ -59,7 +59,7 @@ ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with
 - `log_file_pattern`
 - `log_mode` (`none`, `single_file`, `per_session`)
 - `connect_on_startup`
-- `dark_mode` (experimental; default is `false`)
+- `dark_mode` (main-window dark styling toggle; default is `false`)
 - `debug_combo_logging` (optional diagnostics; default is `false`)
 - `enable_startup_trace` (controls early TRACE lines in fatal forensics; default `true`)
 - `enable_fatal_log_file` (controls writing `%TEMP%\\ScaleLogger_fatal.log`; default `true`)

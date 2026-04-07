@@ -20,7 +20,7 @@
 
 ## 0.95 - 2026-03-20
 
-- added COM-port scanning and a compact Test Receive dialog in Serial settings to make serial troubleshooting easier without affecting the main capture flow
+- added COM-port scanning in Serial settings to make port selection and troubleshooting easier without affecting the main capture flow
 - simplified the settings UI by grouping parsing/output options, switching baud/timeout to editable dropdowns, simplifying startup-preset behavior, adding persistent log recording modes, and adding a compact custom after-send key-sequence editor
 - improved runtime icon handling for source / standalone / one-file use when `icon.ico` is available, while keeping missing icons safe and non-fatal
 - polished the release workflow with verified one-file output, a corrected `BUILD_MANIFEST_0.95.txt`, standard `SHA256SUMS.txt`, safer cleanup of temporary Nuitka artifact folders, and clearer Defender/SmartScreen testing guidance

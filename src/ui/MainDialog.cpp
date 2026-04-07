@@ -3,7 +3,6 @@
 #ifdef _WIN32
 #include "app/AppController.hpp"
 #include "core/AppVersion.hpp"
-#include "core/ValueParser.hpp"
 #include "ui/AboutDialog.hpp"
 #include "ui/SettingsDialogLogic.hpp"
 
@@ -55,7 +54,6 @@ constexpr int kSettingsSaveAsConfig = 204;
 
 constexpr int kSerialPortCombo = 300;
 constexpr int kSerialScanBtn = 301;
-constexpr int kSerialTestBtn = 302;
 constexpr int kSerialBaudCombo = 303;
 constexpr int kSerialDataBitsCombo = 304;
 constexpr int kSerialParityCombo = 305;
@@ -675,10 +673,6 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   settingslogic::LoadSettingsIntoControls(BuildSettingsLogicContext(), settingsHwnd);
 }
 
-bool ReadSerialSettingsFromControls(HWND settingsHwnd, AppSettings& settingsOut, std::string& error) {
-  return settingslogic::ReadSerialSettingsFromControls(BuildSettingsLogicContext(), settingsHwnd, settingsOut, error);
-}
-
 void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested) {
   settingslogic::ApplySettingsFromControls(BuildSettingsLogicContext(), settingsHwnd, saveRequested);
 }
@@ -768,28 +762,6 @@ void SaveAsConfigFromControls(HWND settingsHwnd) {
   else AddLogLine("ERROR: Failed to save configuration: " + outputPath.string());
 }
 
-void RunTestReceive(HWND settingsHwnd) {
-  AppSettings testSettings = g_ui.controller->Settings();
-  std::string serialError;
-  if (!ReadSerialSettingsFromControls(settingsHwnd, testSettings, serialError)) {
-    AddLogLine("ERROR: " + serialError);
-    MessageBoxW(settingsHwnd, ToWide(serialError).c_str(), L"ScaleLogger", MB_OK | MB_ICONERROR);
-    return;
-  }
-
-  std::string line;
-  std::string error;
-  if (g_ui.controller->TestReceive(testSettings.serial, line, error)) {
-    AddLogLine("Raw received line: '" + line + "'");
-    ValueParser parser;
-    const auto parsed = parser.Process(line, testSettings.parsing);
-    if (parsed.ok) AddLogLine("Parsed value: '" + parsed.processed + "'");
-    else AddLogLine("Parse rejected: " + parsed.message);
-  } else {
-    AddLogLine("Test Receive failed: " + error);
-  }
-}
-
 void LayoutSettingsWindow(HWND hwnd) {
   RECT rc{};
   GetClientRect(hwnd, &rc);
@@ -821,11 +793,10 @@ void LayoutSettingsWindow(HWND hwnd) {
     MoveWindow(GetDlgItem(hwnd, id), fieldLeft + browsedFieldWidth + 6, y, browseWidth, uilayout::kStandardControlHeight, TRUE);
   };
 
-  const int serialButtonsWidth = 96 + 100 + 9;
+  const int serialButtonsWidth = 96 + 6;
   const int serialFieldWidth = (std::max)(150, fullFieldWidth - serialButtonsWidth);
   moveCombo(kSerialPortCombo, top, serialFieldWidth);
   MoveWindow(GetDlgItem(hwnd, kSerialScanBtn), fieldLeft + serialFieldWidth + 6, top, 98, uilayout::kStandardControlHeight, TRUE);
-  MoveWindow(GetDlgItem(hwnd, kSerialTestBtn), fieldLeft + serialFieldWidth + 108, top, 102, uilayout::kStandardControlHeight, TRUE);
   moveCombo(kSerialBaudCombo, top + 36);
   moveCombo(kSerialDataBitsCombo, top + 72);
   moveCombo(kSerialParityCombo, top + 108);
@@ -907,8 +878,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       SendMessageW(port, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"COM6"));
       AddControl(g_ui.serialTabControls, CreateWindowW(L"BUTTON", L"Scan Ports", WS_CHILD | WS_VISIBLE, fieldLeft + 440, top, 96, 24, hwnd,
                                                        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSerialScanBtn)), nullptr, nullptr));
-      AddControl(g_ui.serialTabControls, CreateWindowW(L"BUTTON", L"Test Receive", WS_CHILD | WS_VISIBLE, fieldLeft + 545, top, 100, 24, hwnd,
-                                                       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSerialTestBtn)), nullptr, nullptr));
 
       label(L"Baud", top + 36, g_ui.serialTabControls);
       HWND baud = editableCombo(kSerialBaudCombo, top + 36, 645, g_ui.serialTabControls);
@@ -1116,9 +1085,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
           return 0;
         case kSerialScanBtn:
           RefreshPortList(hwnd);
-          return 0;
-        case kSerialTestBtn:
-          RunTestReceive(hwnd);
           return 0;
         case kOutputActionCombo:
           if (HIWORD(wParam) == CBN_SELCHANGE) UpdateCustomSequenceUiState(hwnd);
