@@ -318,11 +318,6 @@ LRESULT HandleDarkCtlColor(HDC hdc) {
   return reinterpret_cast<LRESULT>(g_darkBrush);
 }
 
-LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
-  (void)lParam;
-  return CDRF_DODEFAULT;
-}
-
 void ApplySettingsTabTheme(HWND settingsTab) {
   if (!settingsTab) return;
   SetWindowTheme(settingsTab, nullptr, nullptr);
@@ -1063,7 +1058,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_NOTIFY: {
       auto* header = reinterpret_cast<LPNMHDR>(lParam);
       if (header && header->idFrom == kSettingsTab) {
-        if (header->code == NM_CUSTOMDRAW) return HandleSettingsTabCustomDraw(lParam);
         if (header->code == TCN_SELCHANGE) ShowTab(static_cast<std::size_t>(TabCtrl_GetCurSel(g_ui.settingsTab)));
       }
       return 0;

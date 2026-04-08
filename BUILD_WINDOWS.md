@@ -34,10 +34,7 @@ This produces:
 - `release\SHA256SUMS.txt`
 - `release\BUILD_MANIFEST_<version>.txt` (version comes from `CMakeLists.txt`)
 
-`ScaleLogger_build_tagged_release.bat` is the authoritative repo-local tagged release wrapper. External helper scripts such as `extbuild.bat` are convenience wrappers outside this repo and are not the source of truth.
-
 ## Notes
-- The repository no longer uses Python/PySide6/Nuitka for the main build/release path.
 - If your shell exports `RC=0`/`RC=1`, clear it before configure (`set RC=`). The release script and configure preset now do this defensively.
 - For crashes before the UI log appears, check `%TEMP%\\ScaleLogger_fatal.log` (early startup traces + fatal exception breadcrumbs).
 - Startup fallback `default_config.json` is read from the executable directory when user config is missing.

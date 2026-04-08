@@ -2,11 +2,6 @@
 
 ScaleLogger is a Windows-only native C++20 desktop utility for reading serial scale output and injecting values into the currently focused window.
 
-## Status
-This repository now uses the **native C++/Win32/CMake** implementation as the primary code path.
-
-Legacy Python/PySide6/Nuitka runtime/build files were removed from the active build path.
-
 ## Tech stack
 - C++20
 - Win32 APIs (GUI, serial, SendInput)
@@ -31,7 +26,7 @@ Prerequisites:
 - Visual Studio 2026 (MSVC x64 toolchain)
 - CMake available in `PATH`
 
-## Repo-local release wrapper
+## Release bundle generation
 For a fresh-clone reproducible release package, run:
 
 ```bat
@@ -41,14 +36,14 @@ Optional:
 ```bat
 ScaleLogger_build_tagged_release.bat [build_tag] [keep]
 ```
-Default behavior removes `out\` after successful packaging. Add `keep` to preserve `out\` and other intermediate build artifacts for debugging.
+Default behavior removes `out\` after successful packaging. Add `keep` to preserve `out\` and intermediate build artifacts.
 
-The wrapper always configures/builds in Release first, then produces:
+The wrapper configures/builds in Release first, then produces:
 - `release\ScaleLogger_<buildtag>.exe`
 - `release\SHA256SUMS.txt`
 - `release\BUILD_MANIFEST_<version>.txt`
 
-## Configuration JSON format
+## Configuration overview
 ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with fields such as:
 - `config_folder`, `config_file_name`
 - `logs_folder`
@@ -65,6 +60,8 @@ ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with
 
 To keep schema consistency, config files also carry serial/parsing/output fields (including `custom_sequence` and `eol`) in the same single full-config file.
 The single configuration file is the runtime source of truth for app-level and serial/parsing/output behavior.
+When `post_action` is `custom_sequence`, the intended supported tokens are:
+`enter`, `tab`, `up`, `down`, `left`, `right` (optional: `esc`, `space`).
 
 Path rule:
 - `config_folder` and `logs_folder` are treated as runtime-resolved filesystem paths.
@@ -72,14 +69,7 @@ Path rule:
 - Relative paths are resolved against the app data root (prefer `%USERPROFILE%\ScaleLogger` on Windows).
 - If user config is missing, startup fallback `default_config.json` is resolved from the executable directory (not from the process working directory).
 
-## Python compatibility notes
-Config loading is backward compatible with legacy Python-era keys:
-- `drop_plus_sign` maps to `preserve_plus_sign` behavior
-- `normalize_sign` is still honored
-- `eol` values `\\r\\n`, `\\n`, and `\\r` are interpreted as CRLF/LF/CR
-- `custom_sequence` is read from JSON arrays (for example `["down","down","right"]`)
-
-When compatibility mapping is applied, a runtime log line indicates it.
+Config loading remains backward compatible for `drop_plus_sign`, `normalize_sign`, and escaped EOL values (`\\r\\n`, `\\n`, `\\r`).
 
 ## Logging modes
 - **No file logging** (`log_mode: "none"`): UI log only.
@@ -88,7 +78,7 @@ When compatibility mapping is applied, a runtime log line indicates it.
 
 Runtime file logging flushes each line and emits a one-time visible error if file writes fail.
 
-## Early startup / fatal forensics
+## Logging and fatal diagnostics
 - Before UI/controller logging is fully initialized, startup traces are written to `%TEMP%\\ScaleLogger_fatal.log`.
 - This file is also used by the unhandled-exception path (`SetUnhandledExceptionFilter`) for fatal crash breadcrumbs.
 - Use this file first when the app exits or crashes before the normal in-app log window appears.
@@ -97,10 +87,10 @@ Runtime file logging flushes each line and emits a one-time visible error if fil
 - The crash report includes exception details (when known), startup-crash indicator, `%TEMP%\\ScaleLogger_fatal.log` path, and optional recent fatal trace text.
 - You can disable verbose startup tracing later with `enable_startup_trace=false` while keeping fatal file/dialog reporting enabled.
 
-Legacy note:
-- `standalone_mode` is tolerated in old config files but ignored by current runtime behavior.
+Compatibility note:
+- `standalone_mode` is tolerated in existing config files but ignored by runtime behavior.
 
-JSON parser note:
+Implementation note:
 - The runtime uses the repository's embedded lightweight JSON parsing/writing code in `src/core/AppConfig.cpp` (no external JSON dependency).
 
 ## Portable default paths
@@ -112,10 +102,6 @@ Use `ScaleLogger_build_tagged_release.bat` to create a native release folder wit
 - `ScaleLogger_<buildtag>.exe`
 - `SHA256SUMS.txt`
 - `BUILD_MANIFEST_<version>.txt` (version derived from `CMakeLists.txt`)
-
-`ScaleLogger_build_tagged_release.bat` is the authoritative repo-local tagged release wrapper. External helper scripts such as `extbuild.bat` are convenience wrappers outside this repo and are not the source of truth.
-The legacy untagged wrapper (`ScaleLogger_build_release.bat`) was removed to keep one canonical release workflow.
-Legacy diagnostic launch harnesses (`slfinal.bat`, `slwide.bat`, `slmin.bat`) were removed as part of startup simplification and should not be used.
 
 Release manifest includes runtime combo option arrays sourced from `default_config.json`:
 - `baud_rates`
