@@ -69,8 +69,6 @@ Path rule:
 - Relative paths are resolved against the app data root (prefer `%USERPROFILE%\ScaleLogger` on Windows).
 - If user config is missing, startup fallback `default_config.json` is resolved from the executable directory (not from the process working directory).
 
-Config loading remains backward compatible for `drop_plus_sign`, `normalize_sign`, and escaped EOL values (`\\r\\n`, `\\n`, `\\r`).
-
 ## Logging modes
 - **No file logging** (`log_mode: "none"`): UI log only.
 - **Single file** (`log_mode: "single_file"`): appends to one log file.
@@ -86,12 +84,6 @@ Runtime file logging flushes each line and emits a one-time visible error if fil
 - On fatal crashes, ScaleLogger also shows a small native crash dialog with a copyable report (Copy/Close buttons). If dialog creation fails, a MessageBox fallback is shown.
 - The crash report includes exception details (when known), startup-crash indicator, `%TEMP%\\ScaleLogger_fatal.log` path, and optional recent fatal trace text.
 - You can disable verbose startup tracing later with `enable_startup_trace=false` while keeping fatal file/dialog reporting enabled.
-
-Compatibility note:
-- `standalone_mode` is tolerated in existing config files but ignored by runtime behavior.
-
-Implementation note:
-- The runtime uses the repository's embedded lightweight JSON parsing/writing code in `src/core/AppConfig.cpp` (no external JSON dependency).
 
 ## Portable default paths
 `default_config.json` uses `%USERPROFILE%` placeholders for folder defaults.  

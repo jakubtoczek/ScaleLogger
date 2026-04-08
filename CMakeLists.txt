@@ -28,7 +28,7 @@ add_library(scalelogger_core
 target_include_directories(scalelogger_core PUBLIC src)
 
 if(WIN32)
-  # Keep one cache-level guard for stale configure caches.
+  # Guard against stale cache values that break RC discovery.
   if(DEFINED CMAKE_RC_COMPILER AND CMAKE_RC_COMPILER MATCHES "^[0-9]+$")
     message(WARNING "Clearing invalid cached CMAKE_RC_COMPILER='${CMAKE_RC_COMPILER}'.")
     unset(CMAKE_RC_COMPILER CACHE)

@@ -1,14 +1,12 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-REM ---------------------------------------------------------------------------
-REM ScaleLogger release wrapper with build-tagged executable output.
+REM ScaleLogger tagged release wrapper.
 REM Usage:
-REM   ScaleLogger_build_tagged_release.bat                     -> auto UTC build tag (yyyyMMddTHHmmssZ), cleanup enabled
-REM   ScaleLogger_build_tagged_release.bat custom_tag          -> explicit build tag override, cleanup enabled
-REM   ScaleLogger_build_tagged_release.bat keep                -> auto UTC build tag, preserve out\ and intermediate build artifacts
-REM   ScaleLogger_build_tagged_release.bat custom_tag keep     -> explicit build tag + preserve out\ and intermediate build artifacts
-REM ---------------------------------------------------------------------------
+REM   ScaleLogger_build_tagged_release.bat
+REM   ScaleLogger_build_tagged_release.bat custom_tag
+REM   ScaleLogger_build_tagged_release.bat keep
+REM   ScaleLogger_build_tagged_release.bat custom_tag keep
 
 set "TARGET_DIR=%~dp0"
 if "%TARGET_DIR:~-1%"=="\" set "TARGET_DIR=%TARGET_DIR:~0,-1%"
