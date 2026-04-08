@@ -1,5 +1,7 @@
 # ScaleLogger (Native Win32)
 
+Latest release: [Download ScaleLogger.exe](https://github.com/jakubtoczek/ScaleLogger/releases/latest/download/ScaleLogger.exe)
+
 ScaleLogger is a Windows-only native C++20 desktop utility for reading serial scale output and injecting values into the currently focused window.
 
 ## Tech stack
