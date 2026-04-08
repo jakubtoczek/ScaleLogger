@@ -76,13 +76,33 @@ Path rule:
 Runtime file logging flushes each line and emits a one-time visible error if file writes fail.
 
 ## Logging and fatal diagnostics
-- Before UI/controller logging is fully initialized, startup traces are written to `%TEMP%\\ScaleLogger_fatal.log`.
-- This file is also used by the unhandled-exception path (`SetUnhandledExceptionFilter`) for fatal crash breadcrumbs.
-- Use this file first when the app exits or crashes before the normal in-app log window appears.
-- These forensic lines are separate from normal runtime/session logging.
-- On fatal crashes, ScaleLogger also shows a small native crash dialog with a copyable report (Copy/Close buttons). If dialog creation fails, a MessageBox fallback is shown.
-- The crash report includes exception details (when known), startup-crash indicator, `%TEMP%\\ScaleLogger_fatal.log` path, and optional recent fatal trace text.
-- You can disable verbose startup tracing later with `enable_startup_trace=false` while keeping fatal file/dialog reporting enabled.
+
+ScaleLogger uses a dedicated early-startup and crash log:
+
+- Before UI logging is initialized, startup traces are written to:
+  `%TEMP%\\ScaleLogger_fatal.log`
+- This file is also used for fatal crash diagnostics (via `SetUnhandledExceptionFilter`)
+- Use this file first if the app exits or crashes before the in-app log appears
+
+These diagnostic traces are separate from normal runtime/session logging.
+
+On fatal crashes:
+- A small native crash dialog is shown (Copy / Close)
+- If dialog creation fails, a MessageBox fallback is used
+- The report includes:
+  - exception details (when available)
+  - startup-crash indicator
+  - path to `%TEMP%\\ScaleLogger_fatal.log`
+  - optional recent trace lines
+
+Configuration:
+- `enable_startup_trace` → enables early startup tracing
+- `enable_fatal_log_file` → controls writing the fatal log file
+- `show_crash_dialog` → enables crash dialog
+- `include_trace_in_crash_dialog` → embeds recent trace text in dialog
+
+You can disable startup tracing with:
+`enable_startup_trace=false`
 
 ## Portable default paths
 `default_config.json` uses `%USERPROFILE%` placeholders for folder defaults.  
