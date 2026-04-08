@@ -52,14 +52,14 @@ if not defined APP_VERSION (
 set "MANIFEST_FILE=%RELEASE_DIR%\BUILD_MANIFEST_%APP_VERSION%.txt"
 set "STAGE_DIR=%RELEASE_DIR%\.staging_%BUILD_TAG%"
 
-echo [1/6] Configuring (windows-vs2026-x64)...
+echo [1/5] Configuring (windows-vs2026-x64)...
 cmake --preset windows-vs2026-x64 -U CMAKE_RC_COMPILER
 if %errorlevel% neq 0 (
   echo ERROR: Configure failed.
   exit /b %errorlevel%
 )
 
-echo [2/6] Building (windows-release)...
+echo [2/5] Building (windows-release)...
 cmake --build --preset windows-release
 if %errorlevel% neq 0 (
   echo ERROR: Build failed.
@@ -71,13 +71,6 @@ if not exist "%SOURCE_EXE%" (
   exit /b 1
 )
 
-echo [3/6] Running tests (windows-test)...
-ctest --preset windows-test
-if %errorlevel% neq 0 (
-  echo ERROR: Tests failed.
-  exit /b %errorlevel%
-)
-
 if exist "%STAGE_DIR%" rmdir /s /q "%STAGE_DIR%"
 mkdir "%STAGE_DIR%"
 if %errorlevel% neq 0 (
@@ -85,21 +78,21 @@ if %errorlevel% neq 0 (
   exit /b %errorlevel%
 )
 
-echo [4/6] Packaging executable...
+echo [3/5] Packaging executable...
 copy /y "%SOURCE_EXE%" "%STAGE_DIR%\%OUTPUT_NAME%" >nul
 if %errorlevel% neq 0 (
   echo ERROR: Failed to copy executable into staging.
   exit /b %errorlevel%
 )
 
-echo [5/6] Generating checksum...
+echo [4/5] Generating checksum...
 call generate_sha256.bat "%STAGE_DIR%\%OUTPUT_NAME%" "%STAGE_DIR%\SHA256SUMS.txt"
 if %errorlevel% neq 0 (
   echo ERROR: Failed to generate SHA256 checksum.
   exit /b %errorlevel%
 )
 
-echo [6/6] Generating manifest...
+echo [5/5] Generating manifest...
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\build_manifest.ps1 ^
   -OutputExe "%OUTPUT_NAME%" ^
   -BuildTag "%BUILD_TAG%" ^

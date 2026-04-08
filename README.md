@@ -15,11 +15,8 @@ Legacy Python/PySide6/Nuitka runtime/build files were removed from the active bu
 
 ## Repository layout
 - `src/` native application code
-- `tests/` native tests (parser/config/key-sequence)
 - `resources/` icon + version resource script
-- `docs/migration_from_current_implementation.md` behavior-compatibility notes
 - `tools/` release helper scripts
-- `packaging/` release packaging notes
 
 ## Build on Windows
 See [BUILD_WINDOWS.md](BUILD_WINDOWS.md).
@@ -28,7 +25,6 @@ Quick start:
 ```powershell
 cmake --preset windows-vs2026-x64
 cmake --build --preset windows-release
-ctest --preset windows-test
 ```
 
 Prerequisites:
@@ -47,7 +43,7 @@ ScaleLogger_build_tagged_release.bat [build_tag] [keep]
 ```
 Default behavior removes `out\` after successful packaging. Add `keep` to preserve `out\` and other intermediate build artifacts for debugging.
 
-The wrapper always configures/builds/tests in Release first, then produces:
+The wrapper always configures/builds in Release first, then produces:
 - `release\ScaleLogger_<buildtag>.exe`
 - `release\SHA256SUMS.txt`
 - `release\BUILD_MANIFEST_<version>.txt`
@@ -126,12 +122,6 @@ Release manifest includes runtime combo option arrays sourced from `default_conf
 - `data_bits_options`
 - `parity_options`
 - `stop_bits_options`
-
-## First runtime validation
-Use [docs/first_windows_runtime_test_checklist.md](docs/first_windows_runtime_test_checklist.md) for the exact first real Windows runtime test pass (build -> launch -> COM/serial -> parse/inject -> after-send actions -> release script).
-
-## Compatibility/migration docs
-`docs/migration_from_current_implementation.md` captures the behavior mapping from the previous implementation and known intentional differences.
 
 ## License
 MIT (`LICENSE`).

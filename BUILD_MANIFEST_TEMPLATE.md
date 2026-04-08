@@ -12,7 +12,6 @@ Compiler: MSVC (Visual Studio 2026)
 CMake version:
 CMake configure preset: windows-vs2026-x64
 CMake build preset: windows-release
-CTest preset: windows-test
 Build script/command:
 Output filename: ScaleLogger.exe
 SHA256 file: SHA256SUMS.txt
