@@ -77,6 +77,10 @@ Path rule:
 
 Runtime file logging flushes each line and emits a one-time visible error if file writes fail.
 
+### Notes
+
+If your USB-serial adapter is not detected (e.g. appears as “USB-Serial Controller” in Device Manager), you may need to install the appropriate driver (CH340 / Prolific / FTDI).
+
 ## Logging and fatal diagnostics
 
 ScaleLogger uses a dedicated early-startup and crash log:
