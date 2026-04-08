@@ -231,16 +231,9 @@ std::string BuildChangeSummary(const AppSettings& beforeSettings, const AppSetti
     pushChange(changes, "config_file_name", beforeConfig.configFileName, afterConfig.configFileName);
   }
   if (beforeConfig.logMode != afterConfig.logMode) pushChange(changes, "log_mode", logModeText(beforeConfig.logMode), logModeText(afterConfig.logMode));
-  if (beforeConfig.lineLogMode != afterConfig.lineLogMode) {
-    pushChange(changes, "line_log_mode", beforeConfig.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact",
-               afterConfig.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact");
-  }
   if (beforeConfig.logsFolder != afterConfig.logsFolder) pushChange(changes, "logs_folder", beforeConfig.logsFolder, afterConfig.logsFolder);
   if (beforeConfig.logFilePattern != afterConfig.logFilePattern) {
     pushChange(changes, "log_file_pattern", beforeConfig.logFilePattern, afterConfig.logFilePattern);
-  }
-  if (beforeConfig.debugComboLogging != afterConfig.debugComboLogging) {
-    pushChange(changes, "debug_combo_logging", boolText(beforeConfig.debugComboLogging), boolText(afterConfig.debugComboLogging));
   }
 
   if (changes.empty()) return {};

@@ -117,7 +117,6 @@ int ConfigService::CountConfigDifferences(const AppConfig& before, const AppConf
   if (before.logsFolder != after.logsFolder) ++count;
   if (before.logFilePattern != after.logFilePattern) ++count;
   if (before.logMode != after.logMode) ++count;
-  if (before.lineLogMode != after.lineLogMode) ++count;
   if (before.connectOnStartup != after.connectOnStartup) ++count;
   if (before.darkMode != after.darkMode) ++count;
   if (before.baudRates != after.baudRates) ++count;

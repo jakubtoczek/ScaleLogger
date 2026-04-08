@@ -8,7 +8,6 @@ namespace scalelogger {
 enum class PostAction { Down, Right, Enter, Tab, None, CustomSequence };
 enum class ParseMode { Parsed, Raw };
 enum class LogMode { None, SingleFile, PerSession };
-enum class LineLogMode { Compact, Verbose };
 
 struct SerialSettings {
   std::string port{"COM6"};
@@ -48,10 +47,8 @@ struct AppConfig {
   std::string logsFolder{"logs"};
   std::string logFilePattern{"ScaleLogger_%Y%m%d_%H%M%S.log"};
   LogMode logMode{LogMode::PerSession};
-  LineLogMode lineLogMode{LineLogMode::Compact};
   bool connectOnStartup{true};
   bool darkMode{false};
-  bool debugComboLogging{false};
   bool enableStartupTrace{true};
   bool enableFatalLogFile{true};
   bool showCrashDialog{true};

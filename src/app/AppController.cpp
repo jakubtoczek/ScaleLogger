@@ -247,12 +247,7 @@ void AppController::HandleSerialLine(const std::string& rawLine) {
 void AppController::HandleParsedValue(const std::string& rawLine, const std::string& processedValue) {
   EmitLog("Raw: '" + rawLine + "' -> Parsed: '" + processedValue + "'");
   const auto sendResult = injector_.SendTextAndAction(Utf8ToWide(processedValue), settings_.output);
-  if (sendResult.status == InputInjector::SendStatus::Success) {
-    if (config_.lineLogMode == LineLogMode::Verbose) {
-      EmitLog("Injection succeeded for parsed value: '" + processedValue + "'");
-    }
-    return;
-  }
+  if (sendResult.status == InputInjector::SendStatus::Success) return;
   if (sendResult.status == InputInjector::SendStatus::TextFailed) {
     EmitLog("Text injection failed for value: '" + processedValue + "'", true);
     return;
