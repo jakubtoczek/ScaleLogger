@@ -33,7 +33,6 @@ class AppController {
   void ApplySettings(const AppSettings& nextSettings, const AppConfig& nextConfig, bool persistToDisk = true);
   SaveConfigResult SaveResolvedConfiguration();
   std::vector<std::string> ScanPorts() const;
-  bool TestReceive(const SerialSettings& settings, std::string& receivedLine, std::string& errorMessage);
 
   void SetLogSink(LogSink sink);
   void SetConnectionStateSink(ConnectionStateSink sink);

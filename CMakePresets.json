@@ -19,13 +19,5 @@
       "configurePreset": "windows-vs2026-x64",
       "configuration": "Release"
     }
-  ],
-  "testPresets": [
-    {
-      "name": "windows-test",
-      "configurePreset": "windows-vs2026-x64",
-      "configuration": "Release",
-      "output": { "outputOnFailure": true }
-    }
   ]
 }

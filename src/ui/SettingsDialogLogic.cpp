@@ -2,6 +2,7 @@
 
 #ifdef _WIN32
 #include "app/ConfigService.hpp"
+#include "core/KeySequence.hpp"
 
 #include <Windows.h>
 
@@ -98,6 +99,28 @@ bool TryParseFloat(const std::wstring& text, float& out) {
     out = std::stof(text, &idx);
     return idx == text.size();
   } catch (...) { return false; }
+}
+
+std::string TrimForLog(std::string value) {
+  auto isSpace = [](unsigned char ch) { return std::isspace(ch) != 0; };
+  while (!value.empty() && isSpace(static_cast<unsigned char>(value.front()))) value.erase(value.begin());
+  while (!value.empty() && isSpace(static_cast<unsigned char>(value.back()))) value.pop_back();
+  return value;
+}
+
+std::vector<std::string> ParseCustomSequenceWithWarnings(const std::string& text, std::vector<std::string>& rejectedTokens) {
+  std::vector<std::string> out;
+  std::stringstream ss(text);
+  std::string item;
+  while (std::getline(ss, item, ',')) {
+    if (auto normalized = NormalizeKeyToken(item); normalized.has_value()) {
+      out.push_back(*normalized);
+      continue;
+    }
+    const auto token = TrimForLog(item);
+    if (!token.empty()) rejectedTokens.push_back(token);
+  }
+  return out;
 }
 
 std::string BuildChangeSummary(const AppSettings& beforeSettings, const AppSettings& afterSettings, const AppConfig& beforeConfig,
@@ -208,16 +231,9 @@ std::string BuildChangeSummary(const AppSettings& beforeSettings, const AppSetti
     pushChange(changes, "config_file_name", beforeConfig.configFileName, afterConfig.configFileName);
   }
   if (beforeConfig.logMode != afterConfig.logMode) pushChange(changes, "log_mode", logModeText(beforeConfig.logMode), logModeText(afterConfig.logMode));
-  if (beforeConfig.lineLogMode != afterConfig.lineLogMode) {
-    pushChange(changes, "line_log_mode", beforeConfig.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact",
-               afterConfig.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact");
-  }
   if (beforeConfig.logsFolder != afterConfig.logsFolder) pushChange(changes, "logs_folder", beforeConfig.logsFolder, afterConfig.logsFolder);
   if (beforeConfig.logFilePattern != afterConfig.logFilePattern) {
     pushChange(changes, "log_file_pattern", beforeConfig.logFilePattern, afterConfig.logFilePattern);
-  }
-  if (beforeConfig.debugComboLogging != afterConfig.debugComboLogging) {
-    pushChange(changes, "debug_combo_logging", boolText(beforeConfig.debugComboLogging), boolText(afterConfig.debugComboLogging));
   }
 
   if (changes.empty()) return {};
@@ -290,7 +306,7 @@ void LoadSettingsIntoControls(const Context& ctx, HWND settingsHwnd) {
       L"Config: " + (std::filesystem::path(config.configFolder) / ctx.toWide(config.configFileName)).wstring() +
       L"\r\nLogs: " + std::filesystem::path(config.logsFolder).wstring() + L" (" +
       (config.logMode == LogMode::None ? L"none" : (config.logMode == LogMode::SingleFile ? L"single_file" : L"per_session")) + L")" +
-      L"\r\nDark mode (experimental): " + std::wstring(config.darkMode ? L"on" : L"off") +
+      L"\r\nDark mode (main window): " + std::wstring(config.darkMode ? L"on" : L"off") +
       L"\r\nSerial: " + ctx.toWide(settings.serial.port) + L" @ " + ctx.toWide(std::to_string(settings.serial.baudRate)) + L" baud" +
       L"\r\nOutput: " + (settings.parsing.mode == ParseMode::Raw ? L"raw" : L"parsed") + L"; action=" + action;
   SetWindowTextW(GetDlgItem(settingsHwnd, kAppPathsLabel), pathSummary.c_str());
@@ -383,6 +399,22 @@ void ApplySettingsFromControls(const Context& ctx, HWND settingsHwnd, bool saveR
   else if (action == "none") nextSettings.output.postAction = PostAction::None;
   else if (action == "custom_sequence") nextSettings.output.postAction = PostAction::CustomSequence;
   else nextSettings.output.postAction = PostAction::Down;
+  {
+    std::vector<std::string> rejectedTokens;
+    nextSettings.output.customSequence =
+        ParseCustomSequenceWithWarnings(ctx.toUtf8(ctx.getControlText(GetDlgItem(settingsHwnd, kOutputCustomSequenceEdit))), rejectedTokens);
+    if (!rejectedTokens.empty()) {
+      std::string rejectedJoined;
+      for (std::size_t i = 0; i < rejectedTokens.size(); ++i) {
+        if (i) rejectedJoined += ", ";
+        rejectedJoined += rejectedTokens[i];
+      }
+      ctx.controller->LogMessage("WARN: Ignored invalid custom sequence token(s): " + rejectedJoined, true);
+    }
+    if (nextSettings.output.postAction == PostAction::CustomSequence && nextSettings.output.customSequence.empty()) {
+      ctx.controller->LogMessage("WARN: post_action=custom_sequence with empty sequence; no post-action key will be sent.", true);
+    }
+  }
 
   nextConfig.logsFolder = ctx.toUtf8(ctx.getControlText(GetDlgItem(settingsHwnd, kAppLogsFolderEdit)));
   nextConfig.connectOnStartup = SendMessageW(GetDlgItem(settingsHwnd, kAppConnectStartupCheck), BM_GETCHECK, 0, 0) == BST_CHECKED;

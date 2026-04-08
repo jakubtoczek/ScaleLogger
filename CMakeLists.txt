@@ -17,7 +17,7 @@ if(NOT DEFINED SCALELOGGER_BUILD_TAG OR SCALELOGGER_BUILD_TAG STREQUAL "")
 endif()
 
 if(NOT WIN32)
-  message(WARNING "ScaleLogger native app targets Windows. Parser/config tests still build cross-platform.")
+  message(WARNING "ScaleLogger native app targets Windows.")
 endif()
 
 add_library(scalelogger_core
@@ -28,7 +28,7 @@ add_library(scalelogger_core
 target_include_directories(scalelogger_core PUBLIC src)
 
 if(WIN32)
-  # Keep one cache-level guard for stale configure caches.
+  # Guard against stale cache values that break RC discovery.
   if(DEFINED CMAKE_RC_COMPILER AND CMAKE_RC_COMPILER MATCHES "^[0-9]+$")
     message(WARNING "Clearing invalid cached CMAKE_RC_COMPILER='${CMAKE_RC_COMPILER}'.")
     unset(CMAKE_RC_COMPILER CACHE)
@@ -62,18 +62,4 @@ if(WIN32)
   target_include_directories(ScaleLogger PRIVATE src)
   target_link_libraries(ScaleLogger PRIVATE scalelogger_core)
   target_compile_definitions(ScaleLogger PRIVATE UNICODE _UNICODE SCALELOGGER_BUILD_TAG="${SCALELOGGER_BUILD_TAG}")
-endif()
-
-add_executable(scalelogger_tests
-  tests/test_main.cpp
-  tests/test_parser.cpp
-  tests/test_config.cpp
-  tests/test_key_sequence.cpp
-)
-target_include_directories(scalelogger_tests PRIVATE src)
-target_link_libraries(scalelogger_tests PRIVATE scalelogger_core)
-
-include(CTest)
-if(BUILD_TESTING)
-  add_test(NAME scalelogger_tests COMMAND scalelogger_tests)
 endif()

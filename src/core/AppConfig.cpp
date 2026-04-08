@@ -221,7 +221,6 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   cfg.logFilePattern = ExtractString(text, "log_file_pattern", cfg.logFilePattern);
   cfg.connectOnStartup = ExtractBool(text, "connect_on_startup", cfg.connectOnStartup);
   cfg.darkMode = ExtractBool(text, "dark_mode", cfg.darkMode);
-  cfg.debugComboLogging = ExtractBool(text, "debug_combo_logging", cfg.debugComboLogging);
   cfg.enableStartupTrace = ExtractBool(text, "enable_startup_trace", cfg.enableStartupTrace);
   cfg.enableFatalLogFile = ExtractBool(text, "enable_fatal_log_file", cfg.enableFatalLogFile);
   cfg.showCrashDialog = ExtractBool(text, "show_crash_dialog", cfg.showCrashDialog);
@@ -237,7 +236,6 @@ AppConfig LoadConfig(const std::filesystem::path& path) {
   if (!stopBitsOptions.empty()) cfg.stopBitsOptions = stopBitsOptions;
   const auto logMode = ExtractString(text, "log_mode", "per_session");
   cfg.logMode = logMode == "single_file" ? LogMode::SingleFile : (logMode == "none" ? LogMode::None : LogMode::PerSession);
-  cfg.lineLogMode = ExtractString(text, "line_log_mode", "compact") == "verbose" ? LineLogMode::Verbose : LineLogMode::Compact;
   return cfg;
 }
 
@@ -254,10 +252,8 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config, cons
       << "  \"log_file_pattern\": \"" << JsonEscape(config.logFilePattern) << "\",\n"
       << "  \"log_mode\": \""
       << (config.logMode == LogMode::SingleFile ? "single_file" : (config.logMode == LogMode::None ? "none" : "per_session")) << "\",\n"
-      << "  \"line_log_mode\": \"" << (config.lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
       << "  \"connect_on_startup\": " << (config.connectOnStartup ? "true" : "false") << ",\n"
       << "  \"dark_mode\": " << (config.darkMode ? "true" : "false") << ",\n"
-      << "  \"debug_combo_logging\": " << (config.debugComboLogging ? "true" : "false") << ",\n"
       << "  \"enable_startup_trace\": " << (config.enableStartupTrace ? "true" : "false") << ",\n"
       << "  \"enable_fatal_log_file\": " << (config.enableFatalLogFile ? "true" : "false") << ",\n"
       << "  \"show_crash_dialog\": " << (config.showCrashDialog ? "true" : "false") << ",\n"
@@ -419,10 +415,8 @@ bool SaveConfigSettings(const std::filesystem::path& path, const AppSettings& se
         << "  \"log_file_pattern\": \"" << JsonEscape(config->logFilePattern) << "\",\n"
         << "  \"log_mode\": \""
         << (config->logMode == LogMode::SingleFile ? "single_file" : (config->logMode == LogMode::None ? "none" : "per_session")) << "\",\n"
-        << "  \"line_log_mode\": \"" << (config->lineLogMode == LineLogMode::Verbose ? "verbose" : "compact") << "\",\n"
         << "  \"connect_on_startup\": " << (config->connectOnStartup ? "true" : "false") << ",\n"
         << "  \"dark_mode\": " << (config->darkMode ? "true" : "false") << ",\n"
-        << "  \"debug_combo_logging\": " << (config->debugComboLogging ? "true" : "false") << ",\n"
         << "  \"enable_startup_trace\": " << (config->enableStartupTrace ? "true" : "false") << ",\n"
         << "  \"enable_fatal_log_file\": " << (config->enableFatalLogFile ? "true" : "false") << ",\n"
         << "  \"show_crash_dialog\": " << (config->showCrashDialog ? "true" : "false") << ",\n"

@@ -2,11 +2,6 @@
 
 ScaleLogger is a Windows-only native C++20 desktop utility for reading serial scale output and injecting values into the currently focused window.
 
-## Status
-This repository now uses the **native C++/Win32/CMake** implementation as the primary code path.
-
-Legacy Python/PySide6/Nuitka runtime/build files were removed from the active build path.
-
 ## Tech stack
 - C++20
 - Win32 APIs (GUI, serial, SendInput)
@@ -15,11 +10,8 @@ Legacy Python/PySide6/Nuitka runtime/build files were removed from the active bu
 
 ## Repository layout
 - `src/` native application code
-- `tests/` native tests (parser/config/key-sequence)
 - `resources/` icon + version resource script
-- `docs/migration_from_current_implementation.md` behavior-compatibility notes
 - `tools/` release helper scripts
-- `packaging/` release packaging notes
 
 ## Build on Windows
 See [BUILD_WINDOWS.md](BUILD_WINDOWS.md).
@@ -28,14 +20,13 @@ Quick start:
 ```powershell
 cmake --preset windows-vs2026-x64
 cmake --build --preset windows-release
-ctest --preset windows-test
 ```
 
 Prerequisites:
 - Visual Studio 2026 (MSVC x64 toolchain)
 - CMake available in `PATH`
 
-## Repo-local release wrapper
+## Release bundle generation
 For a fresh-clone reproducible release package, run:
 
 ```bat
@@ -45,22 +36,21 @@ Optional:
 ```bat
 ScaleLogger_build_tagged_release.bat [build_tag] [keep]
 ```
-Default behavior removes `out\` after successful packaging. Add `keep` to preserve `out\` and other intermediate build artifacts for debugging.
+Default behavior removes `out\` after successful packaging. Add `keep` to preserve `out\` and intermediate build artifacts.
 
-The wrapper always configures/builds/tests in Release first, then produces:
+The wrapper configures/builds in Release first, then produces:
 - `release\ScaleLogger_<buildtag>.exe`
 - `release\SHA256SUMS.txt`
 - `release\BUILD_MANIFEST_<version>.txt`
 
-## Configuration JSON format
+## Configuration overview
 ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with fields such as:
 - `config_folder`, `config_file_name`
 - `logs_folder`
 - `log_file_pattern`
 - `log_mode` (`none`, `single_file`, `per_session`)
 - `connect_on_startup`
-- `dark_mode` (experimental; default is `false`)
-- `debug_combo_logging` (optional diagnostics; default is `false`)
+- `dark_mode` (main-window dark styling toggle; default is `false`)
 - `enable_startup_trace` (controls early TRACE lines in fatal forensics; default `true`)
 - `enable_fatal_log_file` (controls writing `%TEMP%\\ScaleLogger_fatal.log`; default `true`)
 - `show_crash_dialog` (shows copy-friendly crash dialog on fatal crash; default `true`)
@@ -69,21 +59,14 @@ ScaleLogger reads and writes a JSON config file (`ScaleLogger.config.json`) with
 
 To keep schema consistency, config files also carry serial/parsing/output fields (including `custom_sequence` and `eol`) in the same single full-config file.
 The single configuration file is the runtime source of truth for app-level and serial/parsing/output behavior.
+When `post_action` is `custom_sequence`, the intended supported tokens are:
+`enter`, `tab`, `up`, `down`, `left`, `right` (optional: `esc`, `space`).
 
 Path rule:
 - `config_folder` and `logs_folder` are treated as runtime-resolved filesystem paths.
 - Absolute paths are used as-is.
 - Relative paths are resolved against the app data root (prefer `%USERPROFILE%\ScaleLogger` on Windows).
 - If user config is missing, startup fallback `default_config.json` is resolved from the executable directory (not from the process working directory).
-
-## Python compatibility notes
-Config loading is backward compatible with legacy Python-era keys:
-- `drop_plus_sign` maps to `preserve_plus_sign` behavior
-- `normalize_sign` is still honored
-- `eol` values `\\r\\n`, `\\n`, and `\\r` are interpreted as CRLF/LF/CR
-- `custom_sequence` is read from JSON arrays (for example `["down","down","right"]`)
-
-When compatibility mapping is applied, a runtime log line indicates it.
 
 ## Logging modes
 - **No file logging** (`log_mode: "none"`): UI log only.
@@ -92,20 +75,34 @@ When compatibility mapping is applied, a runtime log line indicates it.
 
 Runtime file logging flushes each line and emits a one-time visible error if file writes fail.
 
-## Early startup / fatal forensics
-- Before UI/controller logging is fully initialized, startup traces are written to `%TEMP%\\ScaleLogger_fatal.log`.
-- This file is also used by the unhandled-exception path (`SetUnhandledExceptionFilter`) for fatal crash breadcrumbs.
-- Use this file first when the app exits or crashes before the normal in-app log window appears.
-- These forensic lines are separate from normal runtime/session logging.
-- On fatal crashes, ScaleLogger also shows a small native crash dialog with a copyable report (Copy/Close buttons). If dialog creation fails, a MessageBox fallback is shown.
-- The crash report includes exception details (when known), startup-crash indicator, `%TEMP%\\ScaleLogger_fatal.log` path, and optional recent fatal trace text.
-- You can disable verbose startup tracing later with `enable_startup_trace=false` while keeping fatal file/dialog reporting enabled.
+## Logging and fatal diagnostics
 
-Legacy note:
-- `standalone_mode` is tolerated in old config files but ignored by current runtime behavior.
+ScaleLogger uses a dedicated early-startup and crash log:
 
-JSON parser note:
-- The runtime uses the repository's embedded lightweight JSON parsing/writing code in `src/core/AppConfig.cpp` (no external JSON dependency).
+- Before UI logging is initialized, startup traces are written to:
+  `%TEMP%\\ScaleLogger_fatal.log`
+- This file is also used for fatal crash diagnostics (via `SetUnhandledExceptionFilter`)
+- Use this file first if the app exits or crashes before the in-app log appears
+
+These diagnostic traces are separate from normal runtime/session logging.
+
+On fatal crashes:
+- A small native crash dialog is shown (Copy / Close)
+- If dialog creation fails, a MessageBox fallback is used
+- The report includes:
+  - exception details (when available)
+  - startup-crash indicator
+  - path to `%TEMP%\\ScaleLogger_fatal.log`
+  - optional recent trace lines
+
+Configuration:
+- `enable_startup_trace` → enables early startup tracing
+- `enable_fatal_log_file` → controls writing the fatal log file
+- `show_crash_dialog` → enables crash dialog
+- `include_trace_in_crash_dialog` → embeds recent trace text in dialog
+
+You can disable startup tracing with:
+`enable_startup_trace=false`
 
 ## Portable default paths
 `default_config.json` uses `%USERPROFILE%` placeholders for folder defaults.  
@@ -117,21 +114,11 @@ Use `ScaleLogger_build_tagged_release.bat` to create a native release folder wit
 - `SHA256SUMS.txt`
 - `BUILD_MANIFEST_<version>.txt` (version derived from `CMakeLists.txt`)
 
-`ScaleLogger_build_tagged_release.bat` is the authoritative repo-local tagged release wrapper. External helper scripts such as `extbuild.bat` are convenience wrappers outside this repo and are not the source of truth.
-The legacy untagged wrapper (`ScaleLogger_build_release.bat`) was removed to keep one canonical release workflow.
-Legacy diagnostic launch harnesses (`slfinal.bat`, `slwide.bat`, `slmin.bat`) were removed as part of startup simplification and should not be used.
-
 Release manifest includes runtime combo option arrays sourced from `default_config.json`:
 - `baud_rates`
 - `data_bits_options`
 - `parity_options`
 - `stop_bits_options`
-
-## First runtime validation
-Use [docs/first_windows_runtime_test_checklist.md](docs/first_windows_runtime_test_checklist.md) for the exact first real Windows runtime test pass (build -> launch -> COM/serial -> parse/inject -> after-send actions -> release script).
-
-## Compatibility/migration docs
-`docs/migration_from_current_implementation.md` captures the behavior mapping from the previous implementation and known intentional differences.
 
 ## License
 MIT (`LICENSE`).

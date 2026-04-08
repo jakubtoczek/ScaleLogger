@@ -4,11 +4,9 @@
 
 #include <chrono>
 #include <cctype>
-#include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
 #include <iomanip>
-#include <mutex>
 #include <sstream>
 #include <system_error>
 #include <vector>
@@ -76,13 +74,6 @@ void ResolveAndSanitize(std::filesystem::path dataRoot, AppSettings& settings, A
   config.logsFolder = ConfigService::ResolveConfiguredPath(dataRoot, config.logsFolder).string();
 }
 
-bool PortNamesMatch(const std::string& lhs, const std::string& rhs) {
-  auto upper = [](std::string value) {
-    for (char& ch : value) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-    return value;
-  };
-  return upper(lhs) == upper(rhs);
-}
 } // namespace
 
 AppController::AppController(std::filesystem::path dataRoot)
@@ -224,70 +215,6 @@ AppController::SaveConfigResult AppController::SaveResolvedConfiguration() {
 
 std::vector<std::string> AppController::ScanPorts() const { return ScanComPorts(); }
 
-bool AppController::TestReceive(const SerialSettings& settings, std::string& receivedLine, std::string& errorMessage) {
-  EmitLog("Test receive begin on " + settings.port);
-  if (settings.port.empty()) {
-    errorMessage = "Test receive failed on <empty port>: no port selected.";
-    EmitLog(errorMessage, true);
-    return false;
-  }
-
-  if (serial_.IsConnected() && PortNamesMatch(settings_.serial.port, settings.port)) {
-    errorMessage = "Test Receive cannot run while already connected to " + settings.port + ". Disconnect first.";
-    EmitLog(errorMessage, true);
-    EmitLog("Test receive end on " + settings.port + ": blocked");
-    return false;
-  }
-
-  SerialPort probe;
-  std::mutex mutex;
-  std::condition_variable cv;
-  bool done = false;
-  bool ok = false;
-
-  const bool connected = probe.Connect(
-      settings,
-      [&](const std::string& line) {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (!done) {
-          receivedLine = line;
-          ok = true;
-          done = true;
-          cv.notify_all();
-        }
-      },
-      [](const std::string&) {},
-      [&](const std::string& err) {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (!done) {
-          errorMessage = err;
-          done = true;
-          cv.notify_all();
-        }
-      });
-
-  if (!connected) {
-    if (errorMessage.empty()) errorMessage = "Unable to open serial port " + settings.port + " for test receive.";
-    EmitLog("Test receive end on " + settings.port + ": open failed", true);
-    return false;
-  }
-
-  {
-    std::unique_lock<std::mutex> lock(mutex);
-    cv.wait_for(lock, std::chrono::seconds(3), [&]() { return done; });
-  }
-  probe.Disconnect();
-
-  if (!done) {
-    errorMessage = "No data received on " + settings.port + " — check device or COM port";
-    EmitLog("Test receive end on " + settings.port + ": timeout", true);
-    return false;
-  }
-
-  EmitLog("Test receive end on " + settings.port + ": success");
-  return ok;
-}
-
 void AppController::SetLogSink(LogSink sink) { logSink_ = std::move(sink); }
 
 void AppController::SetConnectionStateSink(ConnectionStateSink sink) { connectionStateSink_ = std::move(sink); }
@@ -318,12 +245,9 @@ void AppController::HandleSerialLine(const std::string& rawLine) {
 }
 
 void AppController::HandleParsedValue(const std::string& rawLine, const std::string& processedValue) {
-  EmitLog("Parsed value: '" + processedValue + "' from raw='" + rawLine + "'");
+  EmitLog("Raw: '" + rawLine + "' -> Parsed: '" + processedValue + "'");
   const auto sendResult = injector_.SendTextAndAction(Utf8ToWide(processedValue), settings_.output);
-  if (sendResult.status == InputInjector::SendStatus::Success) {
-    EmitLog("Injection succeeded for parsed value: '" + processedValue + "'");
-    return;
-  }
+  if (sendResult.status == InputInjector::SendStatus::Success) return;
   if (sendResult.status == InputInjector::SendStatus::TextFailed) {
     EmitLog("Text injection failed for value: '" + processedValue + "'", true);
     return;

@@ -3,7 +3,6 @@
 #ifdef _WIN32
 #include "app/AppController.hpp"
 #include "core/AppVersion.hpp"
-#include "core/ValueParser.hpp"
 #include "ui/AboutDialog.hpp"
 #include "ui/SettingsDialogLogic.hpp"
 
@@ -22,6 +21,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -55,7 +55,6 @@ constexpr int kSettingsSaveAsConfig = 204;
 
 constexpr int kSerialPortCombo = 300;
 constexpr int kSerialScanBtn = 301;
-constexpr int kSerialTestBtn = 302;
 constexpr int kSerialBaudCombo = 303;
 constexpr int kSerialDataBitsCombo = 304;
 constexpr int kSerialParityCombo = 305;
@@ -114,7 +113,7 @@ struct UiState {
 };
 
 UiState g_ui;
-HBRUSH g_darkBrush = CreateSolidBrush(RGB(32, 32, 32));
+HBRUSH g_darkBrush = CreateSolidBrush(RGB(26, 26, 26));
 enum class ConnectionUiState { Disconnected, Connecting, Connected };
 ConnectionUiState g_connectionUiState = ConnectionUiState::Disconnected;
 void LoadSettingsIntoControls(HWND settingsHwnd);
@@ -243,14 +242,25 @@ std::string ToUtf8(const std::wstring& text) {
   return out;
 }
 
+std::optional<std::string> CaptureTokenFromVirtualKey(WPARAM virtualKey) {
+  switch (virtualKey) {
+    case VK_RETURN: return "enter";
+    case VK_TAB: return "tab";
+    case VK_UP: return "up";
+    case VK_DOWN: return "down";
+    case VK_LEFT: return "left";
+    case VK_RIGHT: return "right";
+    case VK_ESCAPE: return "esc";
+    case VK_SPACE: return "space";
+    default: return std::nullopt;
+  }
+}
+
 void TraceEarly(const std::string&) {}
 
 void TraceEarlyLiteral(const char*) {}
 
 void RunPostInitTasks() {
-  if (!g_ui.controller) return;
-  const auto& cfg = g_ui.controller->Config();
-  if (cfg.darkMode) AddLogLine(std::string("Dark mode is experimental in ") + kAppVersion + " and is disabled by default.");
 }
 
 void RunStartupConnectAndScan(HWND hwnd) {
@@ -303,70 +313,14 @@ bool IsDarkModeEnabled() {
 
 LRESULT HandleDarkCtlColor(HDC hdc) {
   if (!IsDarkModeEnabled()) return 0;
-  SetTextColor(hdc, RGB(235, 235, 235));
-  SetBkColor(hdc, RGB(32, 32, 32));
+  SetTextColor(hdc, RGB(210, 210, 210));
+  SetBkColor(hdc, RGB(26, 26, 26));
   return reinterpret_cast<LRESULT>(g_darkBrush);
-}
-
-LRESULT HandleSettingsTabCustomDraw(LPARAM lParam) {
-  auto* draw = reinterpret_cast<LPNMCUSTOMDRAW>(lParam);
-  const bool debugPaint = IsSettingsPaintDebugEnabled();
-  if (!draw || (!IsDarkModeEnabled() && !debugPaint)) return CDRF_DODEFAULT;
-
-  switch (draw->dwDrawStage) {
-    case CDDS_PREPAINT: {
-      FillRect(draw->hdc, &draw->rc, debugPaint ? g_darkBrush : g_darkBrush);
-      if (debugPaint) TraceSettingsPaintDebug("tab custom draw: CDDS_PREPAINT");
-      return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
-    }
-    case CDDS_ITEMPREPAINT: {
-      const int tabIndex = static_cast<int>(draw->dwItemSpec);
-      const int selectedIndex = TabCtrl_GetCurSel(draw->hdr.hwndFrom);
-      const COLORREF tabColor = debugPaint ? ((tabIndex == selectedIndex) ? RGB(255, 140, 0) : RGB(160, 80, 255))
-                                           : ((tabIndex == selectedIndex) ? RGB(58, 58, 58) : RGB(40, 40, 40));
-
-      HBRUSH tabBrush = CreateSolidBrush(tabColor);
-      FillRect(draw->hdc, &draw->rc, tabBrush);
-      HBRUSH borderBrush = CreateSolidBrush(debugPaint ? RGB(255, 255, 255) : RGB(78, 78, 78));
-      FrameRect(draw->hdc, &draw->rc, borderBrush);
-      DeleteObject(borderBrush);
-      DeleteObject(tabBrush);
-
-      RECT textRect = draw->rc;
-      textRect.left += 8;
-      textRect.right -= 8;
-
-      wchar_t text[128] = {};
-      TCITEMW item{};
-      item.mask = TCIF_TEXT;
-      item.pszText = text;
-      item.cchTextMax = static_cast<int>(std::size(text));
-      if (TabCtrl_GetItem(draw->hdr.hwndFrom, tabIndex, &item)) {
-        SetBkMode(draw->hdc, TRANSPARENT);
-        SetTextColor(draw->hdc, RGB(235, 235, 235));
-        DrawTextW(draw->hdc, text, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-      }
-      if (debugPaint) TraceSettingsPaintDebug("tab custom draw: CDDS_ITEMPREPAINT index=" + std::to_string(tabIndex));
-      return CDRF_SKIPDEFAULT;
-    }
-    case CDDS_POSTPAINT: {
-      RECT tabClient = draw->rc;
-      TabCtrl_AdjustRect(draw->hdr.hwndFrom, FALSE, &tabClient);
-      FillRect(draw->hdc, &tabClient, debugPaint ? g_darkBrush : g_darkBrush);
-      if (debugPaint) TraceSettingsPaintDebug("tab custom draw: CDDS_POSTPAINT (tab body fill)");
-      return CDRF_DODEFAULT;
-    }
-    default: return CDRF_DODEFAULT;
-  }
 }
 
 void ApplySettingsTabTheme(HWND settingsTab) {
   if (!settingsTab) return;
-  if (IsDarkModeEnabled()) {
-    SetWindowTheme(settingsTab, L"", L"");
-  } else {
-    SetWindowTheme(settingsTab, nullptr, nullptr);
-  }
+  SetWindowTheme(settingsTab, nullptr, nullptr);
   InvalidateRect(settingsTab, nullptr, TRUE);
 }
 
@@ -729,10 +683,6 @@ void LoadSettingsIntoControls(HWND settingsHwnd) {
   settingslogic::LoadSettingsIntoControls(BuildSettingsLogicContext(), settingsHwnd);
 }
 
-bool ReadSerialSettingsFromControls(HWND settingsHwnd, AppSettings& settingsOut, std::string& error) {
-  return settingslogic::ReadSerialSettingsFromControls(BuildSettingsLogicContext(), settingsHwnd, settingsOut, error);
-}
-
 void ApplySettingsFromControls(HWND settingsHwnd, bool saveRequested) {
   settingslogic::ApplySettingsFromControls(BuildSettingsLogicContext(), settingsHwnd, saveRequested);
 }
@@ -822,28 +772,6 @@ void SaveAsConfigFromControls(HWND settingsHwnd) {
   else AddLogLine("ERROR: Failed to save configuration: " + outputPath.string());
 }
 
-void RunTestReceive(HWND settingsHwnd) {
-  AppSettings testSettings = g_ui.controller->Settings();
-  std::string serialError;
-  if (!ReadSerialSettingsFromControls(settingsHwnd, testSettings, serialError)) {
-    AddLogLine("ERROR: " + serialError);
-    MessageBoxW(settingsHwnd, ToWide(serialError).c_str(), L"ScaleLogger", MB_OK | MB_ICONERROR);
-    return;
-  }
-
-  std::string line;
-  std::string error;
-  if (g_ui.controller->TestReceive(testSettings.serial, line, error)) {
-    AddLogLine("Raw received line: '" + line + "'");
-    ValueParser parser;
-    const auto parsed = parser.Process(line, testSettings.parsing);
-    if (parsed.ok) AddLogLine("Parsed value: '" + parsed.processed + "'");
-    else AddLogLine("Parse rejected: " + parsed.message);
-  } else {
-    AddLogLine("Test Receive failed: " + error);
-  }
-}
-
 void LayoutSettingsWindow(HWND hwnd) {
   RECT rc{};
   GetClientRect(hwnd, &rc);
@@ -875,11 +803,10 @@ void LayoutSettingsWindow(HWND hwnd) {
     MoveWindow(GetDlgItem(hwnd, id), fieldLeft + browsedFieldWidth + 6, y, browseWidth, uilayout::kStandardControlHeight, TRUE);
   };
 
-  const int serialButtonsWidth = 96 + 100 + 9;
+  const int serialButtonsWidth = 96 + 6;
   const int serialFieldWidth = (std::max)(150, fullFieldWidth - serialButtonsWidth);
   moveCombo(kSerialPortCombo, top, serialFieldWidth);
   MoveWindow(GetDlgItem(hwnd, kSerialScanBtn), fieldLeft + serialFieldWidth + 6, top, 98, uilayout::kStandardControlHeight, TRUE);
-  MoveWindow(GetDlgItem(hwnd, kSerialTestBtn), fieldLeft + serialFieldWidth + 108, top, 102, uilayout::kStandardControlHeight, TRUE);
   moveCombo(kSerialBaudCombo, top + 36);
   moveCombo(kSerialDataBitsCombo, top + 72);
   moveCombo(kSerialParityCombo, top + 108);
@@ -961,8 +888,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       SendMessageW(port, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"COM6"));
       AddControl(g_ui.serialTabControls, CreateWindowW(L"BUTTON", L"Scan Ports", WS_CHILD | WS_VISIBLE, fieldLeft + 440, top, 96, 24, hwnd,
                                                        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSerialScanBtn)), nullptr, nullptr));
-      AddControl(g_ui.serialTabControls, CreateWindowW(L"BUTTON", L"Test Receive", WS_CHILD | WS_VISIBLE, fieldLeft + 545, top, 100, 24, hwnd,
-                                                       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kSerialTestBtn)), nullptr, nullptr));
 
       label(L"Baud", top + 36, g_ui.serialTabControls);
       HWND baud = editableCombo(kSerialBaudCombo, top + 36, 645, g_ui.serialTabControls);
@@ -1095,7 +1020,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                  CreateWindowW(L"BUTTON", L"Connect on startup", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 8, top + 142, 220, 24, hwnd,
                                reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppConnectStartupCheck)), nullptr, nullptr));
       AddControl(g_ui.applicationTabControls,
-                 CreateWindowW(L"BUTTON", L"Dark mode (experimental)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 250, top + 142, 190, 24, hwnd,
+                 CreateWindowW(L"BUTTON", L"Dark mode (main window only)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, left + 250, top + 142, 230, 24, hwnd,
                                reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAppDarkModeCheck)), nullptr, nullptr));
       
       AddControl(g_ui.applicationTabControls,
@@ -1124,45 +1049,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
       PostMessageW(hwnd, kMsgSettingsFinalizeDisplay, 0, 0);
       return 0;
     }
-    case WM_ERASEBKGND: {
-      const bool debugPaint = IsSettingsPaintDebugEnabled();
-      if (!IsDarkModeEnabled() && !debugPaint) break;
-      RECT rc{};
-      GetClientRect(hwnd, &rc);
-      FillRect(reinterpret_cast<HDC>(wParam), &rc, debugPaint ? g_darkBrush : g_darkBrush);
-      if (debugPaint) TraceSettingsPaintDebug("settings parent: WM_ERASEBKGND");
-      return 1;
-    }
-    case WM_CTLCOLORSTATIC:
-    case WM_CTLCOLOREDIT:
-    case WM_CTLCOLORLISTBOX:
-    case WM_CTLCOLORBTN: {
-      if (IsSettingsPaintDebugEnabled()) {
-        HWND control = reinterpret_cast<HWND>(lParam);
-        HDC dc = reinterpret_cast<HDC>(wParam);
-        wchar_t className[64]{};
-        GetClassNameW(control, className, static_cast<int>(std::size(className)));
-        const LONG style = GetWindowLongW(control, GWL_STYLE);
-        const bool readOnlyEdit = std::wcscmp(className, L"Edit") == 0 && (style & ES_READONLY) != 0;
-        SetTextColor(dc, RGB(10, 10, 10));
-        if (readOnlyEdit) {
-          SetBkColor(dc, RGB(255, 235, 64));
-          TraceSettingsPaintDebug("WM_CTLCOLOR* readonly edit id=" + std::to_string(GetDlgCtrlID(control)));
-          return reinterpret_cast<LRESULT>(g_darkBrush);
-        }
-        if (std::wcscmp(className, L"Static") == 0) {
-          SetBkColor(dc, RGB(255, 64, 220));
-          TraceSettingsPaintDebug("WM_CTLCOLOR* static id=" + std::to_string(GetDlgCtrlID(control)));
-          return reinterpret_cast<LRESULT>(g_darkBrush);
-        }
-        SetBkColor(dc, RGB(64, 220, 140));
-        TraceSettingsPaintDebug("WM_CTLCOLOR* class=" + ToUtf8(className) + " id=" + std::to_string(GetDlgCtrlID(control)));
-        return reinterpret_cast<LRESULT>(g_darkBrush);
-      }
-      const auto brush = HandleDarkCtlColor(reinterpret_cast<HDC>(wParam));
-      if (brush != 0) return brush;
-      break;
-    }
     case kMsgSettingsFinalizeCombos:
       FinalizeEditableComboFirstPaint(hwnd);
       return 0;
@@ -1172,7 +1058,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_NOTIFY: {
       auto* header = reinterpret_cast<LPNMHDR>(lParam);
       if (header && header->idFrom == kSettingsTab) {
-        if (header->code == NM_CUSTOMDRAW) return HandleSettingsTabCustomDraw(lParam);
         if (header->code == TCN_SELCHANGE) ShowTab(static_cast<std::size_t>(TabCtrl_GetCurSel(g_ui.settingsTab)));
       }
       return 0;
@@ -1209,9 +1094,6 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
           return 0;
         case kSerialScanBtn:
           RefreshPortList(hwnd);
-          return 0;
-        case kSerialTestBtn:
-          RunTestReceive(hwnd);
           return 0;
         case kOutputActionCombo:
           if (HIWORD(wParam) == CBN_SELCHANGE) UpdateCustomSequenceUiState(hwnd);
@@ -1264,12 +1146,13 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     case WM_KEYDOWN:
       if (g_ui.captureCustomSequenceKey) {
         g_ui.captureCustomSequenceKey = false;
-        char keyName[32]{};
-        const LONG scan = static_cast<LONG>(MapVirtualKeyA(static_cast<UINT>(wParam), MAPVK_VK_TO_VSC) << 16);
-        GetKeyNameTextA(scan, keyName, sizeof(keyName));
-        if (keyName[0] == '\0') wsprintfA(keyName, "VK_%u", static_cast<unsigned>(wParam));
+        const auto capturedToken = CaptureTokenFromVirtualKey(wParam);
+        if (!capturedToken.has_value()) {
+          AddLogLine("Unsupported custom sequence key. Use Enter, Tab, arrow keys, Esc, or Space.");
+          return 0;
+        }
         const auto existing = ToUtf8(GetControlText(GetDlgItem(hwnd, kOutputCustomSequenceEdit)));
-        const auto updated = existing.empty() ? std::string(keyName) : (existing + "," + keyName);
+        const auto updated = existing.empty() ? *capturedToken : (existing + "," + *capturedToken);
         SetWindowTextW(GetDlgItem(hwnd, kOutputCustomSequenceEdit), ToWide(updated).c_str());
         return 0;
       }
